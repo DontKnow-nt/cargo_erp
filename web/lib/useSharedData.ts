@@ -1,20 +1,71 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-export type DbParty = Record<string, unknown>;
-export type DbAwbBooking = Record<string, unknown>;
-export type DbDocketBooking = Record<string, unknown>;
-export type DbInvoice = Record<string, unknown>;
-export type DbPayment = Record<string, unknown>;
-export type DbOutstanding = Record<string, unknown>;
+// ── Shared types matching Prisma/DB fields ────────────────────────────────────
+export type DbParty = {
+  id: string; partyName: string; gstin?: string | null; contactPerson?: string | null;
+  phone?: string | null; email?: string | null; billingAddress?: string | null;
+  creditLimit: number; creditDays: number; status: string; createdAt: string;
+};
+
+export type DbAwbBooking = {
+  id: string; awbNo: string; partyId: string; partyName: string;
+  origin: string; destination: string; airlineName: string;
+  bookingDate: string; shipmentDate?: string | null;
+  weight: number; pieces: number; baseRate: number; markupAmount: number;
+  gstRate: number; gstAmount: number; totalAmount: number;
+  status: string; notes?: string | null; createdAt: string;
+};
+
+export type DbDocketBooking = {
+  id: string; docketNo: string; partyId: string; partyName: string;
+  bookingDate: string; origin?: string | null; destination?: string | null;
+  description?: string | null; rateFittedAmount: number; markupAmount: number;
+  gstRate: number; gstAmount: number; totalAmount: number;
+  dueDatePolicy: number; status: string; notes?: string | null;
+  linkedAwbId?: string | null; wayBillNo?: string | null;
+  consignee?: string | null; value?: number | null;
+  methodOfPacking?: string | null; createdAt: string;
+};
+
+export type DbInvoiceLine = {
+  id: string; invoiceId: string; description: string;
+  qty: number; rate: number; amount: number;
+  taxRate: number; taxAmount: number; lineTotal: number;
+};
+
+export type DbInvoice = {
+  id: string; invoiceNo: string; partyId: string; partyName: string;
+  bookingType: string; bookingRef: string; invoiceDate: string; dueDate: string;
+  subtotal: number; gstTotal: number; grandTotal: number;
+  paidTotal: number; outstandingTotal: number; status: string;
+  notes?: string | null; createdAt: string; lines: DbInvoiceLine[];
+};
+
+export type DbPaymentReceipt = {
+  id: string; receiptNo: string; partyId: string; partyName: string;
+  invoiceId: string; invoiceNo: string; paymentDate: string;
+  paymentAmount: number; freightComponent: number; gstComponent: number;
+  paymentMode?: string | null; referenceNo?: string | null;
+  bankName?: string | null; remarks?: string | null;
+  status: string; createdAt: string;
+};
+
+export type DbOutstandingEntry = {
+  id: string; partyId: string; partyName: string;
+  invoiceId: string; invoiceNo: string; bookingRef: string;
+  originalAmount: number; paidAmount: number; outstandingAmount: number;
+  invoiceDate: string; dueDate: string; agingBucket: string;
+  creditLimit: number; createdAt: string;
+};
 
 interface SharedData {
   parties: DbParty[];
   awbBookings: DbAwbBooking[];
   docketBookings: DbDocketBooking[];
   invoices: DbInvoice[];
-  paymentReceipts: DbPayment[];
-  outstanding: DbOutstanding[];
+  paymentReceipts: DbPaymentReceipt[];
+  outstanding: DbOutstandingEntry[];
   loading: boolean;
   refresh: () => void;
 }
@@ -42,14 +93,11 @@ export function useSharedData(): SharedData {
         parties: json.parties ?? [],
         awbBookings: json.awbBookings ?? [],
         docketBookings: json.docketBookings ?? [],
-        invoices: (json.invoices ?? []).map((inv: Record<string, unknown>) => ({
-          ...inv,
-          lines: inv.lines ?? [],
-        })),
+        invoices: (json.invoices ?? []).map((inv: DbInvoice) => ({ ...inv, lines: inv.lines ?? [] })),
         paymentReceipts: json.paymentReceipts ?? [],
         outstanding: json.outstanding ?? [],
       });
-    } catch { /* network error, keep current data */ }
+    } catch { /* keep current data */ }
     finally { setLoading(false); }
   }, []);
 

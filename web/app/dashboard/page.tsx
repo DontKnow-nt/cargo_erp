@@ -45,9 +45,9 @@ function KpiCard({ title, value, sub, hint, color, icon, href }: {
 export default function DashboardPage() {
   const { invoices, awbBookings: awb, docketBookings: dockets, outstanding, parties, paymentReceipts: payments } = useSharedData();
   const importJobs  = useStore(s => s.importJobs);
-  const totalOut    = outstanding.reduce((s, o) => s + ((o as Record<string,unknown>).outstandingAmount as number || (o as Record<string,unknown>).outstanding_amount as number || 0), 0);
+  const totalOut    = outstanding.reduce((s, o) => s + o.outstandingAmount, 0);
   const now = new Date();
-  const totalOvd    = outstanding.filter(o => { const d = new Date((o as Record<string,unknown>).dueDate as string || (o as Record<string,unknown>).due_date as string || ''); return d < now && ((o as Record<string,unknown>).outstandingAmount as number || (o as Record<string,unknown>).outstanding_amount as number || 0) > 0; }).reduce((s, o) => s + ((o as Record<string,unknown>).outstandingAmount as number || (o as Record<string,unknown>).outstanding_amount as number || 0), 0);
+  const totalOvd    = outstanding.filter(o => new Date(o.dueDate) < now && o.outstandingAmount > 0).reduce((s, o) => s + o.outstandingAmount, 0);
 
   const todayStr = new Date().toISOString().split('T')[0];
   const awbToday = awb.filter(b => b.bookingDate === todayStr).length;
