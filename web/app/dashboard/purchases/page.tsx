@@ -9,7 +9,7 @@ type PurchaseInvoice = {
   id: string; vendorName: string; vendorGstin?: string | null; invoiceNo: string;
   invoiceDate: string; dueDate?: string | null; subtotal: number; gstAmount: number;
   totalAmount: number; description?: string | null; category?: string | null;
-  status: string; createdAt: string;
+  status: string; createdAt: Date | string;
 };
 
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
@@ -38,11 +38,11 @@ export default function PurchasesPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    getPurchaseInvoices().then(data => setInvoices(data as PurchaseInvoice[])).catch(() => {});
+    getPurchaseInvoices().then(data => setInvoices(data as unknown as PurchaseInvoice[])).catch(() => {});
   }, []);
 
   function refresh() {
-    getPurchaseInvoices().then(data => setInvoices(data as PurchaseInvoice[])).catch(() => {});
+    getPurchaseInvoices().then(data => setInvoices(data as unknown as PurchaseInvoice[])).catch(() => {});
   }
 
   // ── PDF/text extraction ───────────────────────────────────────────────────
