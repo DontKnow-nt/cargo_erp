@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache';
 import prisma from '@/lib/prisma';
 import { requireRole } from '@/lib/auth';
 import { FreightRateVersionSchema, FreightRateSchema } from '@/lib/validations';
-import { serverLog } from '@/lib/logger';
+import { recordAuditLog, serverLog } from '@/lib/logger';
 import { z } from 'zod';
 
 export async function createRateVersion(versionData: unknown, rates: unknown[]) {
@@ -30,6 +30,14 @@ export async function createRateVersion(versionData: unknown, rates: unknown[]) 
   });
 
   serverLog('info', 'rates.version_created', { userId: session.user.id, versionId: version.id, carrier: parsedV.data.carrierName });
+  await recordAuditLog({
+    userId: session.user.id,
+    userEmail: session.user.email ?? null,
+    action: 'RATE_VERSION_CREATED',
+    resource: 'FREIGHT_RATE_VERSION',
+    resourceId: version.id,
+    details: `${parsedV.data.carrierName} rate version published`,
+  });
   revalidatePath('/dashboard/rates');
   return { versionId: version.id };
 }

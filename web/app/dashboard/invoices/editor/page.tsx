@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { useStore } from '@/lib/store';
+import { useSharedData } from '@/lib/useSharedData';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type CellStyle = { bold?: boolean; italic?: boolean; underline?: boolean; fontSize?: number; align?: 'left' | 'center' | 'right'; color?: string; bg?: string };
@@ -227,8 +227,7 @@ function Toolbar({ sel, onStyle, onAddRow, onAddCol, onDelRow, onDelCol, onPrint
 function EditorInner() {
   const searchParams = useSearchParams();
   const invId = searchParams.get('id');
-  const invoices = useStore(s => s.invoices);
-  const parties  = useStore(s => s.parties);
+  const { invoices, parties } = useSharedData();
 
   const inv    = invoices.find(i => i.id === invId);
   const party  = inv ? parties.find(p => p.id === inv.partyId) : undefined;

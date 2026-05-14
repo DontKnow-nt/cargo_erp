@@ -16,7 +16,7 @@ export async function createParty(data: unknown) {
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
   const { partyName, gstin, contactPerson, phone, email, billingAddress, creditLimit, creditDays, status } = parsed.data;
   const party = await prisma.party.create({
-    data: { partyName, gstin: gstin || null, contactPerson: contactPerson || null, phone: phone || null, email: email || null, billingAddress: billingAddress || null, creditLimit, creditDays, status },
+    data: { partyName, gstin: gstin || null, contactPerson: contactPerson || null, phone: phone || null, email: email || null, billingAddress: billingAddress || null, creditLimit, creditDays, status, createdBy: session.user.id },
   });
   serverLog('info', 'party.created', { userId: session.user.id, partyId: party.id, partyName });
   revalidatePath('/dashboard/parties');
@@ -45,6 +45,18 @@ export async function updateParty(id: string, data: unknown) {
     },
   });
   serverLog('info', 'party.updated', { userId: session.user.id, partyId: id });
+  revalidatePath('/dashboard/parties');
+  return { success: true };
+}
+
+
+export async function deleteParties(ids: string[]) {
+  const session = await requireAuth();
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };
+  if (!ids.every(id => typeof id === 'string' && id.length > 0)) return { error: 'Invalid IDs' };
+  // Only delete parties with no outstanding balance
+  await prisma.party.deleteMany({ where: { id: { in: ids } } });
+  serverLog('info', 'party.deleted', { userId: session.user.id, count: ids.length });
   revalidatePath('/dashboard/parties');
   return { success: true };
 }

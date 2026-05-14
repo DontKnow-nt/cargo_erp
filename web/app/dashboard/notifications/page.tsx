@@ -1,11 +1,9 @@
 'use client';
 import { Bell, CheckCheck, AlertTriangle, FileText, CreditCard, TrendingUp } from 'lucide-react';
-import { useStore } from '@/lib/store';
+import { useSharedData } from '@/lib/useSharedData';
 
 export default function NotificationsPage() {
-  const invoices    = useStore(s => s.invoices);
-  const parties     = useStore(s => s.parties);
-  const outstanding = useStore(s => s.outstanding);
+  const { invoices, parties, outstanding } = useSharedData();
 
   const notifications = [
     ...invoices.filter(i=>i.status==='OVERDUE').map(i=>({ id:'n-'+i.id, type:'danger', icon:<AlertTriangle size={14}/>, title:`Invoice ${i.invoiceNo} is overdue`, body:`${i.partyName} – ₹${i.outstandingTotal.toLocaleString('en-IN')} unpaid since ${i.dueDate}`, time:i.dueDate })),

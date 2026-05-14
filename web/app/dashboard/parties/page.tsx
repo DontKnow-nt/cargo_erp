@@ -1,9 +1,9 @@
 'use client';
 import { useState, useTransition } from 'react';
-import { Users, Plus, Search, Download, X, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Users, Plus, Search, Download, X, CheckCircle, AlertTriangle, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import toast from 'react-hot-toast';
-import { createParty, updateParty } from '@/lib/actions/parties';
+import { createParty, updateParty, deleteParties } from '@/lib/actions/parties';
 import type { Party } from '@/lib/mockData';
 import { shortName } from '@/lib/utils';
 import { useSharedData } from '@/lib/useSharedData';
@@ -20,6 +20,18 @@ export default function PartiesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId]   = useState<string|null>(null);
   const [isPending, startTransition] = useTransition();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  function toggleSelect(id: string) { setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
+  function confirmDelete() {
+    startTransition(async () => {
+      const res = await deleteParties([...selected]);
+      if (res && 'error' in res) { toast.error(res.error as string); return; }
+      toast.success(`${selected.size} part${selected.size > 1 ? 'ies' : 'y'} deleted`);
+      setSelected(new Set()); setShowDeleteConfirm(false); refresh();
+    });
+  }
 
   const init: PartyForm = { partyName:'', gstin:'', contactPerson:'', phone:'', email:'', billingAddress:'', creditLimit:0, creditDays:30, status:'ACTIVE' };
   const [form, setForm] = useState(init);
@@ -64,6 +76,9 @@ export default function PartiesPage() {
         </div>
         <div style={{display:'flex',gap:9,alignItems:'center'}}>
           <LiveIndicator onRefresh={refresh} />
+          {selected.size > 0 && (
+            <button className="btn btn-danger btn-sm" onClick={()=>setShowDeleteConfirm(true)}><Trash2 size={12}/> Delete ({selected.size})</button>
+          )}
           <button className="btn btn-secondary btn-sm"><Download size={12}/> Export</button>
           <button className="btn btn-primary btn-sm" onClick={openAdd}><Plus size={12}/> Add Party</button>
         </div>
@@ -79,7 +94,7 @@ export default function PartiesPage() {
           <table>
             <thead>
               <tr>
-                <th>Party Name</th><th>GSTIN</th><th>Contact</th><th>Email</th>
+                <th style={{width:36}}></th><th>Party Name</th><th>GSTIN</th><th>Contact</th><th>Email</th>
                 <th style={{textAlign:'right'}}>Credit Limit</th><th style={{textAlign:'right'}}>Used</th>
                 <th style={{textAlign:'right'}}>Available</th><th>Status</th><th>Action</th>
               </tr>
@@ -93,7 +108,11 @@ export default function PartiesPage() {
                 const warn = pct >= 1;
                 const caution = pct >= 0.8 && pct < 1;
                 return (
-                  <tr key={p.id}>
+                  <tr key={p.id} style={{background: selected.has(p.id) ? 'rgba(239,68,68,0.05)' : undefined}}>
+                    <td style={{padding:'0 10px',width:36}}>
+                      <input type="checkbox" checked={selected.has(p.id)} onChange={()=>toggleSelect(p.id)}
+                        style={{width:15,height:15,cursor:'pointer',accentColor:'var(--accent)'}}/>
+                    </td>
                     <td>
                       <div style={{fontWeight:600,display:'flex',alignItems:'center',gap:6}}>
                         {(warn||caution) && <AlertTriangle size={12} color={warn?'#dc2626':'#d97706'}/>}
@@ -183,6 +202,19 @@ export default function PartiesPage() {
                 <button type="submit" className="btn btn-primary" disabled={isPending}><CheckCircle size={13}/> {editId?'Update Party':'Add Party'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showDeleteConfirm && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{maxWidth:380}}>
+            <h2 style={{fontSize:16,fontWeight:800,marginBottom:12}}>Delete {selected.size} Part{selected.size>1?'ies':'y'}?</h2>
+            <p style={{fontSize:13,color:'var(--text-secondary)',marginBottom:20}}>This cannot be undone. Parties with outstanding balances may cause errors.</p>
+            <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+              <button className="btn btn-secondary" onClick={()=>setShowDeleteConfirm(false)}>Cancel</button>
+              <button className="btn btn-danger" disabled={isPending} onClick={confirmDelete}><Trash2 size={13}/> Delete</button>
+            </div>
           </div>
         </div>
       )}

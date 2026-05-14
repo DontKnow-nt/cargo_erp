@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { finalizeInvoice, cancelInvoice, deleteInvoices, updateInvoiceLine, addInvoiceLine, generateInvoiceFromAwb, generateInvoiceFromDocket } from '@/lib/actions/invoices';
 import { shortName, fmtDate } from '@/lib/utils';
 import BankDetailsPanel from '@/components/BankDetailsPanel';
+import { CreatorAvatar } from '@/components/CreatorAvatar';
 import { useSharedData, type DbInvoice } from '@/lib/useSharedData';
 import { LiveIndicator } from '@/components/LiveIndicator';
 
@@ -448,7 +449,7 @@ export default function InvoicesPage() {
                 <th>Date</th><th>Due Date</th>
                 <th style={{textAlign:'right'}}>Subtotal</th><th style={{textAlign:'right'}}>GST</th>
                 <th style={{textAlign:'right'}}>Total</th><th style={{textAlign:'right'}}>Paid</th>
-                <th style={{textAlign:'right'}}>Outstanding</th><th>Status</th><th>Actions</th>
+                <th style={{textAlign:'right'}}>Outstanding</th><th>Status</th><th style={{textAlign:'center'}}>By</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -479,6 +480,7 @@ export default function InvoicesPage() {
                   <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:'#059669'}}>{fmt(inv.paidTotal)}</td>
                   <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:700,color:inv.outstandingTotal>0?'#dc2626':'#059669'}}>{fmt(inv.outstandingTotal)}</td>
                   <td><InvBadge status={inv.status}/></td>
+                  <td style={{textAlign:'center'}}><CreatorAvatar userId={(inv as {createdBy?:string|null}).createdBy} createdAt={inv.createdAt} /></td>
                   <td style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
                     {!selectMode && <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={e=>{e.stopPropagation();setViewInvoice(inv);}}>View</button>}
                     {!selectMode && <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px',color:'#7c3aed'}} title="Open full editor in new tab" onClick={e=>{e.stopPropagation();window.open(`/dashboard/invoices/editor?id=${inv.id}`,'_blank');}}>✏️ Edit</button>}

@@ -1,11 +1,8 @@
 'use client';
 import { AlertTriangle, FileText, Plane, ClipboardList, Upload, CreditCard, Users, TrendingUp, ArrowRight, CheckCircle2, Circle, Info, Activity } from 'lucide-react';
-import { useStore } from '@/lib/store';
 import { useSharedData } from '@/lib/useSharedData';
 import Link from 'next/link';
 
-const agingChartData: unknown[] = [];
-const revenueData: unknown[] = [];
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar, Legend,
@@ -43,8 +40,7 @@ function KpiCard({ title, value, sub, hint, color, icon, href }: {
 }
 
 export default function DashboardPage() {
-  const { invoices, awbBookings: awb, docketBookings: dockets, outstanding, parties, paymentReceipts: payments } = useSharedData();
-  const importJobs  = useStore(s => s.importJobs);
+  const { invoices, awbBookings: awb, docketBookings: dockets, outstanding, parties, paymentReceipts: payments, importJobs } = useSharedData();
   const totalOut    = outstanding.reduce((s, o) => s + o.outstandingAmount, 0);
   const now = new Date();
   const totalOvd    = outstanding.filter(o => new Date(o.dueDate) < now && o.outstandingAmount > 0).reduce((s, o) => s + o.outstandingAmount, 0);
@@ -53,6 +49,40 @@ export default function DashboardPage() {
   const awbToday = awb.filter(b => b.bookingDate === todayStr).length;
   const unpaid   = invoices.filter(i => !['PAID','CANCELLED'].includes(i.status)).length;
   const activeParties = parties.filter(p => p.status === 'ACTIVE').length;
+  const revenueMap = new Map<string, { month: string; revenue: number; expenses: number }>();
+  invoices.forEach(invoice => {
+    const key = invoice.invoiceDate.slice(0, 7);
+    const month = new Date(`${key}-01`).toLocaleDateString('en-IN', { month: 'short' });
+    const current = revenueMap.get(key) ?? { month, revenue: 0, expenses: 0 };
+    current.revenue += invoice.grandTotal;
+    revenueMap.set(key, current);
+  });
+  const paymentExpenseMap = new Map<string, number>();
+  payments.forEach(payment => {
+    const key = payment.paymentDate.slice(0, 7);
+    paymentExpenseMap.set(key, (paymentExpenseMap.get(key) ?? 0) + payment.gstComponent);
+  });
+  const revenueData = Array.from(revenueMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-7)
+    .map(([key, value]) => ({
+      month: value.month,
+      revenue: value.revenue,
+      expenses: paymentExpenseMap.get(key) ?? 0,
+    }));
+  const agingBucketOrder = ['CURRENT', 'DAYS_1_15', 'DAYS_16_30', 'DAYS_31_60', 'DAYS_61_90', 'DAYS_90_PLUS'];
+  const agingBucketLabels: Record<string, string> = {
+    CURRENT: 'Current',
+    DAYS_1_15: '1-15d',
+    DAYS_16_30: '16-30d',
+    DAYS_31_60: '31-60d',
+    DAYS_61_90: '61-90d',
+    DAYS_90_PLUS: '90+d',
+  };
+  const agingChartData = agingBucketOrder.map(bucket => ({
+    bucket: agingBucketLabels[bucket],
+    amount: outstanding.filter(item => item.agingBucket === bucket).reduce((sum, item) => sum + item.outstandingAmount, 0),
+  }));
 
   // Credit alerts
   const creditAlerts = parties.filter(p => {

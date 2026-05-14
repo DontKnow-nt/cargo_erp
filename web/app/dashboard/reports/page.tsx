@@ -1,6 +1,5 @@
 'use client';
 import { BarChart2, Download, FileText } from 'lucide-react';
-import { useStore } from '@/lib/store';
 import { useState } from 'react';
 import { DateRangeFilter, filterByDateRange, exportToCSV, exportToXLSX, exportToPDF, BulkDownloadModal, type DateRange, type ExportFormat, type ExportModule } from '@/lib/exportUtils';
 import { useSharedData } from '@/lib/useSharedData';
@@ -8,10 +7,7 @@ import { useSharedData } from '@/lib/useSharedData';
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function ReportsPage() {
-  const { invoices, outstanding, paymentReceipts: payments, awbBookings: awb, docketBookings: dockets } = useSharedData();
-  const parties     = useStore(s => s.parties);
-  const freightRates = useStore(s => s.freightRates);
-  const rateVersions = useStore(s => s.rateVersions);
+  const { invoices, outstanding, paymentReceipts: payments, awbBookings: awb, docketBookings: dockets, parties, freightRates, rateVersions } = useSharedData();
 
   const [range, setRange] = useState<DateRange>('1m');
   const [activeReport, setActiveReport] = useState('ar_aging');

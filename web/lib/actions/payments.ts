@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache';
 import prisma from '@/lib/prisma';
 import { requireRole } from '@/lib/auth';
 import { PaymentReceiptSchema } from '@/lib/validations';
-import { serverLog } from '@/lib/logger';
+import { recordAuditLog, serverLog } from '@/lib/logger';
 
 export async function getPayments() {
   await requireRole('ACCOUNTS_EXECUTIVE');
@@ -33,7 +33,9 @@ export async function addPaymentReceipt(data: unknown) {
         paymentDate: parsed.data.paymentDate, paymentAmount: parsed.data.paymentAmount,
         freightComponent: parsed.data.freightComponent, gstComponent: parsed.data.gstComponent,
         paymentMode: parsed.data.paymentMode ?? null, referenceNo: parsed.data.referenceNo ?? null,
-        status: 'CONFIRMED',
+        bankName: parsed.data.bankName ?? null,
+        remarks: parsed.data.notes ?? null,
+        status: 'CONFIRMED', createdBy: session.user.id,
       },
     }),
     prisma.invoice.update({ where: { id: parsed.data.invoiceId }, data: { paidTotal: newPaid, outstandingTotal: newOut, status: newStatus } }),
@@ -41,8 +43,27 @@ export async function addPaymentReceipt(data: unknown) {
   ]);
 
   serverLog('info', 'payment.created', { userId: session.user.id, receiptId: receipt.id, receiptNo, invoiceId: parsed.data.invoiceId, amount: parsed.data.paymentAmount });
+  await recordAuditLog({
+    userId: session.user.id,
+    userEmail: session.user.email ?? null,
+    action: 'PAYMENT_RECEIVED',
+    resource: 'PAYMENT_RECEIPT',
+    resourceId: receipt.id,
+    details: `${receiptNo} received against ${parsed.data.invoiceNo} for ${parsed.data.partyName}`,
+  });
+  await recordAuditLog({
+    userId: session.user.id,
+    userEmail: session.user.email ?? null,
+    action: 'INVOICE_PAYMENT_UPDATED',
+    resource: 'INVOICE',
+    resourceId: parsed.data.invoiceId,
+    details: `${parsed.data.invoiceNo} payment updated by ${parsed.data.paymentAmount}`,
+  });
   revalidatePath('/dashboard/payments');
   revalidatePath('/dashboard/invoices');
   revalidatePath('/dashboard/outstanding');
+  revalidatePath('/dashboard/reports');
+  revalidatePath('/dashboard/notifications');
+  revalidatePath('/dashboard');
   return { receiptId: receipt.id, receiptNo };
 }

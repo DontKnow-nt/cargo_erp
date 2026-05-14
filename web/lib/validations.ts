@@ -112,8 +112,9 @@ export const PaymentReceiptSchema = z.object({
   paymentAmount: positiveNum.max(100_000_000),
   freightComponent: nonNegNum,
   gstComponent: nonNegNum,
-  paymentMode: z.enum(['CASH', 'CHEQUE', 'NEFT', 'RTGS', 'UPI', 'OTHER']).optional(),
+  paymentMode: z.enum(['CASH', 'CHEQUE', 'BANK_TRANSFER', 'NEFT', 'RTGS', 'UPI', 'OTHER']).optional(),
   referenceNo: z.string().max(100).trim().optional(),
+  bankName: z.string().max(200).trim().optional(),
   notes: z.string().max(500).optional(),
 });
 

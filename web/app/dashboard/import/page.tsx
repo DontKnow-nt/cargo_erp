@@ -1,10 +1,11 @@
 'use client';
 import { useState, useRef, useTransition } from 'react';
 import { Upload, CheckCircle, Download, X, ArrowRight, FileText, Edit2 } from 'lucide-react';
-import { useStore } from '@/lib/store';
 import toast from 'react-hot-toast';
 import type { AwbBooking, DocketBooking } from '@/lib/mockData';
+import { createAwbBooking, createDocketBooking } from '@/lib/actions/bookings';
 import { importCsvBookings } from '@/lib/actions/import';
+import { useSharedData } from '@/lib/useSharedData';
 
 type JobModule = 'RATE_SHEET'|'AWB_BOOKINGS'|'DOCKET_BOOKINGS'|'CUSTOMERS'|'PAYMENTS';
 type ImportMode = 'CSV' | 'DOCUMENT';
@@ -346,11 +347,7 @@ function emptyAwb(): ParsedAwbFull {
 }
 
 export default function ImportPage() {
-  const addAwbBooking = useStore(s => s.addAwbBooking);
-  const addDocketBooking = useStore(s => s.addDocketBooking);
-  const addParty = useStore(s => s.addParty);
-  const addRateVersion = useStore(s => s.addRateVersion);
-  const importJobs = useStore(s => s.importJobs);
+  const { importJobs, refresh } = useSharedData();
   const [isPending, startTransition] = useTransition();
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -535,7 +532,8 @@ export default function ImportPage() {
       const markup = 0; // AWB docs don't have markup — user can add after import
       const gst = e.gstRate || 18;
       const gstAmt = (w * rate + markup) * gst / 100;
-      addAwbBooking({
+      startTransition(async () => {
+      const res = await createAwbBooking({
         awbNo: e.awbNo || '', partyId: 'p-imported',
         partyName: e.shipperName || 'Imported Party',
         origin: e.origin || '', destination: e.destination || '',
@@ -554,12 +552,16 @@ export default function ImportPage() {
           e.issuingAgent ? `Agent: ${e.issuingAgent}` : '',
         ].filter(Boolean).join(' | '),
       });
+      if (res && 'error' in res) { toast.error('Could not import AWB document'); return; }
       toast.success(`AWB ${e.awbNo} imported successfully`);
       setDocStep(3);
+      refresh();
+      });
     } else if (docType === 'INVOICE' && parsedInvoice) {
-      parsedInvoice.rows.forEach(row => {
+      startTransition(async () => {
+      for (const row of parsedInvoice.rows) {
         const dateStr = row.date.split('.').reverse().join('-');
-        addDocketBooking({
+        const res = await createDocketBooking({
           docketNo: row.awbNo, partyId: 'p-imported',
           partyName: parsedInvoice.partyName || 'Imported Party',
           bookingDate: dateStr, origin: row.origin, destination: row.destination,
@@ -569,9 +571,12 @@ export default function ImportPage() {
           gstAmount: (row.freight + row.tsp) * parsedInvoice.igstRate / 100,
           totalAmount: row.amount, dueDatePolicy: 30, status: 'BOOKED',
         });
-      });
+        if (res && 'error' in res) { toast.error('Could not import one or more invoice rows'); return; }
+      }
       toast.success(`Invoice imported: ${parsedInvoice.rows.length} bookings created`);
       setDocStep(3);
+      refresh();
+      });
     }
   }
 
@@ -579,11 +584,9 @@ export default function ImportPage() {
 
   function commitImport() {
     // Use the secure server action for CSV imports (AWB_BOOKINGS, DOCKET_BOOKINGS, CUSTOMERS)
-    const csvModule = module === 'AWB_BOOKINGS' || module === 'DOCKET_BOOKINGS' || module === 'CUSTOMERS'
-      ? module as 'AWB_BOOKINGS' | 'DOCKET_BOOKINGS' | 'CUSTOMERS'
-      : null;
+    const csvModule = module as 'AWB_BOOKINGS' | 'DOCKET_BOOKINGS' | 'CUSTOMERS';
 
-    if (csvModule && fileRef.current?.files?.[0]) {
+    if (fileRef.current?.files?.[0]) {
       const fd = new FormData();
       fd.append('file', fileRef.current.files[0]);
       startTransition(async () => {
@@ -592,20 +595,10 @@ export default function ImportPage() {
         toast.success(`Import done: ${res.importedRows} of ${res.totalRows} rows imported`);
         if (res.errors.length > 0) toast(`${res.errorRows} rows had errors`, { icon: '⚠️' });
         setStep(3);
+        refresh();
       });
       return;
     }
-
-    // Fallback for RATE_SHEET / PAYMENTS (still client-side, no sensitive server data)
-    const today = new Date().toISOString().split('T')[0];
-    let successRows = 0;
-    if (module === 'RATE_SHEET') {
-      const byCarrier: Record<string,{origin:string;destination:string;baseRate:number;uom:string}[]> = {};
-      goodRows.forEach(row => { const c = row.carrier||'IndiGo Cargo'; if (!byCarrier[c]) byCarrier[c]=[]; byCarrier[c].push({ origin:row.origin, destination:row.destination, baseRate:parseFloat(row.baseRate)||0, uom:row.uom||'KG' }); successRows++; });
-      Object.entries(byCarrier).forEach(([carrier, rates]) => { addRateVersion({ carrierName:carrier, validFrom:today, status:'ACTIVE', notes:`Imported from ${fileName}` }, rates.map(r=>({...r,activeFlag:true}))); });
-    } else { successRows = goodRows.length; }
-    toast.success(`Import done: ${successRows} of ${rawRows.length} rows imported`);
-    setStep(3);
   }
 
   function reset() { setStep(1); setRawRows([]); setErrors([]); setGoodRows([]); setFileName(''); }

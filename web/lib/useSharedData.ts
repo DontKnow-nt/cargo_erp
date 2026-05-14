@@ -5,7 +5,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 export type DbParty = {
   id: string; partyName: string; gstin?: string | null; contactPerson?: string | null;
   phone?: string | null; email?: string | null; billingAddress?: string | null;
-  creditLimit: number; creditDays: number; status: string; createdAt: string;
+  creditLimit: number; creditDays: number; status: string;
+  createdBy?: string | null; createdAt: string;
 };
 
 export type DbAwbBooking = {
@@ -14,7 +15,7 @@ export type DbAwbBooking = {
   bookingDate: string; shipmentDate?: string | null;
   weight: number; pieces: number; baseRate: number; markupAmount: number;
   gstRate: number; gstAmount: number; totalAmount: number;
-  status: string; notes?: string | null; createdAt: string;
+  status: string; notes?: string | null; createdBy?: string | null; createdAt: string;
 };
 
 export type DbDocketBooking = {
@@ -25,7 +26,7 @@ export type DbDocketBooking = {
   dueDatePolicy: number; status: string; notes?: string | null;
   linkedAwbId?: string | null; wayBillNo?: string | null;
   consignee?: string | null; value?: number | null;
-  methodOfPacking?: string | null; createdAt: string;
+  methodOfPacking?: string | null; createdBy?: string | null; createdAt: string;
 };
 
 export type DbInvoiceLine = {
@@ -39,7 +40,7 @@ export type DbInvoice = {
   bookingType: string; bookingRef: string; invoiceDate: string; dueDate: string;
   subtotal: number; gstTotal: number; grandTotal: number;
   paidTotal: number; outstandingTotal: number; status: string;
-  notes?: string | null; createdAt: string; lines: DbInvoiceLine[];
+  notes?: string | null; createdBy?: string | null; createdAt: string; lines: DbInvoiceLine[];
 };
 
 export type DbPaymentReceipt = {
@@ -59,6 +60,32 @@ export type DbOutstandingEntry = {
   creditLimit: number; createdAt: string;
 };
 
+export type DbFreightRateVersion = {
+  id: string; carrierName: string; validFrom: string; validTo?: string | null;
+  status: string; notes?: string | null; createdAt: string;
+};
+
+export type DbFreightRate = {
+  id: string; versionId: string; origin: string; destination: string;
+  baseRate: number; uom: string; activeFlag: boolean;
+};
+
+export type DbImportJob = {
+  id: string; fileName: string; fileType: string; sourceModule: string;
+  status: string; totalRows: number; successRows: number; errorRows: number;
+  errors?: string | null; createdAt: string;
+};
+
+export type DbAuditLog = {
+  id: string; userId?: string | null; userEmail?: string | null;
+  action: string; resource: string; resourceId?: string | null;
+  details?: string | null; ipAddress?: string | null; createdAt: string;
+};
+
+export type DbUserSummary = {
+  id: string; name: string; email: string; status: string;
+};
+
 interface SharedData {
   parties: DbParty[];
   awbBookings: DbAwbBooking[];
@@ -66,6 +93,11 @@ interface SharedData {
   invoices: DbInvoice[];
   paymentReceipts: DbPaymentReceipt[];
   outstanding: DbOutstandingEntry[];
+  rateVersions: DbFreightRateVersion[];
+  freightRates: DbFreightRate[];
+  importJobs: DbImportJob[];
+  auditLogs: DbAuditLog[];
+  users: DbUserSummary[];
   loading: boolean;
   refresh: () => void;
 }
@@ -75,6 +107,7 @@ const POLL_INTERVAL = 5_000;
 const EMPTY: Omit<SharedData, 'loading' | 'refresh'> = {
   parties: [], awbBookings: [], docketBookings: [],
   invoices: [], paymentReceipts: [], outstanding: [],
+  rateVersions: [], freightRates: [], importJobs: [], auditLogs: [], users: [],
 };
 
 export function useSharedData(): SharedData {
@@ -96,6 +129,25 @@ export function useSharedData(): SharedData {
         invoices: (json.invoices ?? []).map((inv: DbInvoice) => ({ ...inv, lines: inv.lines ?? [] })),
         paymentReceipts: json.paymentReceipts ?? [],
         outstanding: json.outstanding ?? [],
+        rateVersions: json.rateVersions ?? [],
+        freightRates: json.freightRates ?? [],
+        importJobs: (json.importJobs ?? []).map((job: { id: string; fileName: string; fileType: string; sourceModule: string; status: string; totalRows: number; importedRows: number; errorRows: number; errors?: string | null; createdAt: string }) => ({
+          id: job.id,
+          fileName: job.fileName,
+          fileType: job.fileType,
+          sourceModule: job.sourceModule,
+          status: job.status,
+          totalRows: job.totalRows,
+          successRows: job.importedRows,
+          errorRows: job.errorRows,
+          errors: job.errors ?? null,
+          createdAt: typeof job.createdAt === 'string' ? job.createdAt : new Date(job.createdAt).toISOString(),
+        })),
+        auditLogs: (json.auditLogs ?? []).map((log: DbAuditLog) => ({
+          ...log,
+          createdAt: typeof log.createdAt === 'string' ? log.createdAt : new Date(log.createdAt).toISOString(),
+        })),
+        users: json.users ?? [],
       });
     } catch { /* keep current data */ }
     finally { setLoading(false); }

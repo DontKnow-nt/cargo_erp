@@ -47,6 +47,7 @@ model Party {
   creditLimit    Float    @default(0) @map("credit_limit")
   creditDays     Int      @default(30) @map("credit_days")
   status         String   @default("ACTIVE")
+  createdBy      String?  @map("created_by")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
@@ -108,6 +109,7 @@ model AwbBooking {
   totalAmount  Float    @map("total_amount")
   status       String   @default("BOOKED")
   notes        String?
+  createdBy    String?  @map("created_by")
   createdAt    DateTime @default(now()) @map("created_at")
 
   party   Party    @relation(fields: [partyId], references: [id])
@@ -137,6 +139,7 @@ model DocketBooking {
   consignee        String?
   value            Float?   @default(0)
   methodOfPacking  String?  @map("method_of_packing")
+  createdBy        String?  @map("created_by")
   createdAt        DateTime @default(now()) @map("created_at")
 
   party Party @relation(fields: [partyId], references: [id])
@@ -161,6 +164,7 @@ model Invoice {
   outstandingTotal Float    @map("outstanding_total")
   status           String   @default("DRAFT")
   notes            String?
+  createdBy        String?  @map("created_by")
   createdAt        DateTime @default(now()) @map("created_at")
 
   party            Party              @relation(fields: [partyId], references: [id])
@@ -204,6 +208,7 @@ model PaymentReceipt {
   bankName         String?  @map("bank_name")
   remarks          String?
   status           String   @default("CONFIRMED")
+  createdBy        String?  @map("created_by")
   createdAt        DateTime @default(now()) @map("created_at")
 
   party   Party   @relation(fields: [partyId], references: [id])
@@ -252,6 +257,27 @@ model ImportJob {
 }
 
 // ── Audit & Bank ──────────────────────────────────────────────────────────────
+model PurchaseInvoice {
+  id            String   @id @default(uuid())
+  vendorName    String   @map("vendor_name")
+  vendorGstin   String?  @map("vendor_gstin")
+  invoiceNo     String   @map("invoice_no")
+  invoiceDate   String   @map("invoice_date")
+  dueDate       String?  @map("due_date")
+  subtotal      Float    @default(0)
+  gstAmount     Float    @default(0) @map("gst_amount")
+  totalAmount   Float    @map("total_amount")
+  description   String?
+  category      String?
+  status        String   @default("PENDING")
+  fileUrl       String?  @map("file_url")
+  rawText       String?  @map("raw_text")
+  createdBy     String?  @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("purchase_invoices")
+}
+
 model AuditLog {
   id         String   @id @default(uuid())
   userId     String?  @map("user_id")

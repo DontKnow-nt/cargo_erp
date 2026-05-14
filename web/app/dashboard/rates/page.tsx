@@ -1,9 +1,9 @@
 'use client';
 import { useState, useTransition } from 'react';
 import { TrendingUp, Plus, X, CheckCircle, Download, Search } from 'lucide-react';
-import { useStore } from '@/lib/store';
 import toast from 'react-hot-toast';
 import { createRateVersion } from '@/lib/actions/rates';
+import { useSharedData } from '@/lib/useSharedData';
 
 const CARRIERS = ['IndiGo Cargo','Air India Cargo','SpiceJet Cargo','GoAir Cargo','Vistara Cargo','Akasa Air Cargo'];
 const CITIES   = ['DEL','BOM','BLR','HYD','MAA','CCU','AMD','COK','JAI','PNQ','SXR','IXR','BHO'];
@@ -13,9 +13,7 @@ const STATUS_COLORS: Record<string,[string,string]> = {
 };
 
 export default function RatesPage() {
-  const rateVersions = useStore(s => s.rateVersions);
-  const freightRates  = useStore(s => s.freightRates);
-  const addRateVersion = useStore(s => s.addRateVersion);
+  const { rateVersions, freightRates, refresh } = useSharedData();
   const [isPending, startTransition] = useTransition();
 
   const [selVersion, setSelVersion] = useState(rateVersions.find(v=>v.status==='ACTIVE')?.id || rateVersions[0]?.id || '');
@@ -44,14 +42,18 @@ export default function RatesPage() {
     if (!rvForm.validFrom) { toast.error('Valid From date required'); return; }
     const validRows = rateRows.filter(r=>r.origin&&r.destination&&r.baseRate>0);
     if (validRows.length===0) { toast.error('Add at least one valid rate row'); return; }
-    addRateVersion(
-      { carrierName:rvForm.carrierName, validFrom:rvForm.validFrom, validTo:rvForm.validTo||undefined, status:'ACTIVE', notes:rvForm.notes },
-      validRows.map(r=>({...r,activeFlag:true}))
-    );
-    toast.success(`Rate sheet for ${rvForm.carrierName} published`);
-    setShowForm(false);
-    setRvForm({ carrierName:CARRIERS[0], validFrom:'', validTo:'', notes:'' });
-    setRateRows([{origin:'DEL',destination:'BOM',baseRate:85,uom:'KG'}]);
+    startTransition(async () => {
+      const res = await createRateVersion(
+        { carrierName:rvForm.carrierName, validFrom:rvForm.validFrom, validTo:rvForm.validTo||undefined, status:'ACTIVE', notes:rvForm.notes },
+        validRows.map(r=>({...r,activeFlag:true}))
+      );
+      if (res && 'error' in res) { toast.error('Could not publish rate sheet'); return; }
+      toast.success(`Rate sheet for ${rvForm.carrierName} published`);
+      setShowForm(false);
+      setRvForm({ carrierName:CARRIERS[0], validFrom:'', validTo:'', notes:'' });
+      setRateRows([{origin:'DEL',destination:'BOM',baseRate:85,uom:'KG'}]);
+      refresh();
+    });
   }
 
   const selV = rateVersions.find(v=>v.id===selVersion);
@@ -213,7 +215,7 @@ export default function RatesPage() {
 
               <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
                 <button type="button" className="btn btn-secondary" onClick={()=>setShowForm(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary"><CheckCircle size={13}/> Publish Rate Sheet</button>
+                <button type="submit" className="btn btn-primary" disabled={isPending}><CheckCircle size={13}/> Publish Rate Sheet</button>
               </div>
             </form>
           </div>

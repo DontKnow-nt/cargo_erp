@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, BarChart2, Bell, Settings,
-  LogOut, FileText, ClipboardList, Plane, TrendingUp, Upload,
+  LogOut, FileText, ClipboardList, Plane, TrendingUp, Upload, ShoppingCart,
   CreditCard, AlertTriangle, BookOpen, ChevronLeft, ChevronRight,
   ChevronDown, ChevronRight as CRight,
 } from 'lucide-react';
@@ -43,13 +43,14 @@ const navSections = [
         ],
       },
       {
-        label: 'Payments', icon: CreditCard, href: '/dashboard/payments',
+        label: 'Payment Receiving', icon: CreditCard, href: '/dashboard/payments',
         children: [
-          { label: 'Receipts',    href: '/dashboard/payments' },
-          { label: 'New Receipt', href: '/dashboard/payments/new' },
+          { label: 'Received Payments', href: '/dashboard/payments' },
+          { label: 'New Receipt',       href: '/dashboard/payments/new' },
         ],
       },
       { label: 'Outstanding & Aging', icon: AlertTriangle, href: '/dashboard/outstanding' },
+      { label: 'Purchase Invoices',   icon: ShoppingCart,  href: '/dashboard/purchases' },
       { label: 'Reports',              icon: BarChart2,     href: '/dashboard/reports' },
     ],
   },

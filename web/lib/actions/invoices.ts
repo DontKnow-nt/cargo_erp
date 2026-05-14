@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache';
 import prisma from '@/lib/prisma';
 import { requireAuth, requireRole } from '@/lib/auth';
 import { InvoiceLineSchema, UpdateInvoiceLineSchema } from '@/lib/validations';
-import { serverLog } from '@/lib/logger';
+import { recordAuditLog, serverLog } from '@/lib/logger';
 
 type PrismaInvoiceLineRecord = Awaited<ReturnType<typeof prisma.invoiceLine.findMany>>[number];
 
@@ -53,13 +53,21 @@ export async function generateInvoiceFromAwb(awbId: string) {
   ];
 
   const [invoice] = await prisma.$transaction([
-    prisma.invoice.create({ data: { invoiceNo, partyId: bk.partyId, partyName: bk.partyName, bookingType: 'AWB', bookingRef: bk.awbNo, invoiceDate, dueDate, subtotal, gstTotal, grandTotal, paidTotal: 0, outstandingTotal: grandTotal, status: 'DRAFT', lines: { create: lines } } }),
+    prisma.invoice.create({ data: { invoiceNo, partyId: bk.partyId, partyName: bk.partyName, bookingType: 'AWB', bookingRef: bk.awbNo, invoiceDate, dueDate, subtotal, gstTotal, grandTotal, paidTotal: 0, outstandingTotal: grandTotal, status: 'DRAFT', createdBy: session.user.id, lines: { create: lines } } }),
     prisma.awbBooking.update({ where: { id: awbId }, data: { status: 'INVOICED' } }),
   ]);
 
   await prisma.outstandingEntry.create({ data: { partyId: bk.partyId, partyName: bk.partyName, invoiceId: invoice.id, invoiceNo, bookingRef: bk.awbNo, originalAmount: grandTotal, paidAmount: 0, outstandingAmount: grandTotal, invoiceDate, dueDate, agingBucket: 'CURRENT', creditLimit: party?.creditLimit ?? 0 } });
 
   serverLog('info', 'invoice.generated_from_awb', { userId: session.user.id, invoiceId: invoice.id, invoiceNo, awbId });
+  await recordAuditLog({
+    userId: session.user.id,
+    userEmail: session.user.email ?? null,
+    action: 'INVOICE_GENERATED',
+    resource: 'INVOICE',
+    resourceId: invoice.id,
+    details: `${invoiceNo} generated from AWB ${bk.awbNo}`,
+  });
   revalidatePath('/dashboard/invoices');
   return { invoiceId: invoice.id, invoiceNo };
 }
@@ -89,13 +97,21 @@ export async function generateInvoiceFromDocket(docketId: string) {
   ];
 
   const [invoice] = await prisma.$transaction([
-    prisma.invoice.create({ data: { invoiceNo, partyId: bk.partyId, partyName: bk.partyName, bookingType: 'DOCKET', bookingRef: bk.docketNo, invoiceDate, dueDate, subtotal, gstTotal, grandTotal, paidTotal: 0, outstandingTotal: grandTotal, status: 'DRAFT', lines: { create: lines } } }),
+    prisma.invoice.create({ data: { invoiceNo, partyId: bk.partyId, partyName: bk.partyName, bookingType: 'DOCKET', bookingRef: bk.docketNo, invoiceDate, dueDate, subtotal, gstTotal, grandTotal, paidTotal: 0, outstandingTotal: grandTotal, status: 'DRAFT', createdBy: session.user.id, lines: { create: lines } } }),
     prisma.docketBooking.update({ where: { id: docketId }, data: { status: 'INVOICED' } }),
   ]);
 
   await prisma.outstandingEntry.create({ data: { partyId: bk.partyId, partyName: bk.partyName, invoiceId: invoice.id, invoiceNo, bookingRef: bk.docketNo, originalAmount: grandTotal, paidAmount: 0, outstandingAmount: grandTotal, invoiceDate, dueDate, agingBucket: 'CURRENT', creditLimit: party?.creditLimit ?? 0 } });
 
   serverLog('info', 'invoice.generated_from_docket', { userId: session.user.id, invoiceId: invoice.id, invoiceNo, docketId });
+  await recordAuditLog({
+    userId: session.user.id,
+    userEmail: session.user.email ?? null,
+    action: 'INVOICE_GENERATED',
+    resource: 'INVOICE',
+    resourceId: invoice.id,
+    details: `${invoiceNo} generated from docket ${bk.docketNo}`,
+  });
   revalidatePath('/dashboard/invoices');
   return { invoiceId: invoice.id, invoiceNo };
 }
@@ -117,6 +133,14 @@ export async function updateInvoiceLine(invoiceId: string, lineId: string, data:
   const { subtotal, gstTotal, grandTotal } = calculateInvoiceTotals(lines);
   await prisma.invoice.update({ where: { id: invoiceId }, data: { subtotal, gstTotal, grandTotal, outstandingTotal: Math.max(0, grandTotal - inv.paidTotal) } });
   serverLog('info', 'invoice.line_updated', { userId: session.user.id, invoiceId, lineId });
+  await recordAuditLog({
+    userId: session.user.id,
+    userEmail: session.user.email ?? null,
+    action: 'INVOICE_UPDATED',
+    resource: 'INVOICE',
+    resourceId: invoiceId,
+    details: `Invoice line ${lineId} updated`,
+  });
   revalidatePath('/dashboard/invoices');
   return { success: true };
 }
@@ -136,6 +160,14 @@ export async function addInvoiceLine(invoiceId: string, data: unknown) {
   const { subtotal, gstTotal, grandTotal } = calculateInvoiceTotals(lines);
   await prisma.invoice.update({ where: { id: invoiceId }, data: { subtotal, gstTotal, grandTotal, outstandingTotal: Math.max(0, grandTotal - inv.paidTotal) } });
   serverLog('info', 'invoice.line_added', { userId: session.user.id, invoiceId, lineId: newLine.id });
+  await recordAuditLog({
+    userId: session.user.id,
+    userEmail: session.user.email ?? null,
+    action: 'INVOICE_UPDATED',
+    resource: 'INVOICE',
+    resourceId: invoiceId,
+    details: `Invoice line ${newLine.id} added`,
+  });
   revalidatePath('/dashboard/invoices');
   return { lineId: newLine.id };
 }
@@ -147,6 +179,14 @@ export async function finalizeInvoice(id: string) {
   if (inv.status === 'CANCELLED') return { error: 'Cannot finalize cancelled invoice' };
   await prisma.invoice.update({ where: { id }, data: { status: 'FINALIZED' } });
   serverLog('info', 'invoice.finalized', { userId: session.user.id, invoiceId: id });
+  await recordAuditLog({
+    userId: session.user.id,
+    userEmail: session.user.email ?? null,
+    action: 'INVOICE_FINALIZED',
+    resource: 'INVOICE',
+    resourceId: id,
+    details: `${inv.invoiceNo} finalized`,
+  });
   revalidatePath('/dashboard/invoices');
   return { success: true };
 }
@@ -158,6 +198,14 @@ export async function cancelInvoice(id: string) {
   if (inv.status === 'PAID') return { error: 'Cannot cancel paid invoice' };
   await prisma.invoice.update({ where: { id }, data: { status: 'CANCELLED' } });
   serverLog('info', 'invoice.cancelled', { userId: session.user.id, invoiceId: id });
+  await recordAuditLog({
+    userId: session.user.id,
+    userEmail: session.user.email ?? null,
+    action: 'INVOICE_CANCELLED',
+    resource: 'INVOICE',
+    resourceId: id,
+    details: `${inv.invoiceNo} cancelled`,
+  });
   revalidatePath('/dashboard/invoices');
   return { success: true };
 }

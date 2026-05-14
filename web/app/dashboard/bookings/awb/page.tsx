@@ -1,14 +1,15 @@
 'use client';
 import React, { useState, useRef, useCallback, useTransition } from 'react';
 import { Plane, Plus, Search, Download, X, CheckCircle, Edit2, Save, Trash2 } from 'lucide-react';
-import { useStore } from '@/lib/store';
 import toast from 'react-hot-toast';
 import { DateRangeFilter, filterByDateRange, exportToCSV, exportToXLSX, exportToPDF, BulkDownloadModal, type DateRange, type ExportFormat, type ExportModule } from '@/lib/exportUtils';
-import { createAwbBooking, updateAwbBooking, deleteAwbBookings } from '@/lib/actions/bookings';
+import { createAwbBooking, createDocketBooking, deleteAwbBookings, deleteDocketBookings, linkAwbToDocket, unlinkAwbFromDocket, updateAwbBooking } from '@/lib/actions/bookings';
 import { generateInvoiceFromAwb } from '@/lib/actions/invoices';
 import { shortName, fmtDate } from '@/lib/utils';
+import { CreatorAvatar } from '@/components/CreatorAvatar';
 import { useSharedData } from '@/lib/useSharedData';
 import { LiveIndicator } from '@/components/LiveIndicator';
+import RecordActivityAvatars from '@/components/RecordActivityAvatars';
 
 const AIRLINES = ['IndiGo','Air India','SpiceJet','GoAir','Vistara','Akasa Air'];
 const CITIES   = ['DEL','BOM','BLR','HYD','MAA','CCU','AMD','COK','JAI','PNQ','BHO','IXR'];
@@ -24,12 +25,7 @@ function Badge({ status }: { status: string }) {
 }
 
 export default function AwbBookingsPage() {
-  const { awbBookings, parties, docketBookings, refresh } = useSharedData();
-  const getRateForRoute        = useStore(s => s.getRateForRoute);
-  const checkCreditLimit       = useStore(s => s.checkCreditLimit);
-  const addDocketBooking       = useStore(s => s.addDocketBooking);
-  const deleteDocketBookings   = useStore(s => s.deleteDocketBookings);
-  const updateDocketBooking    = useStore(s => s.updateDocketBooking);
+  const { awbBookings, parties, docketBookings, rateVersions, freightRates, outstanding, auditLogs, users, refresh } = useSharedData();
   const [isPending, startTransition] = useTransition();
 
   const [showForm, setShowForm]     = useState(false);
@@ -42,6 +38,7 @@ export default function AwbBookingsPage() {
   const [search, setSearch]         = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [partyFilter, setPartyFilter] = useState('ALL');
+  const [linkFilter, setLinkFilter] = useState<'ALL' | 'LINKED' | 'UNLINKED'>('ALL');
   const [dateRange, setDateRange]   = useState<DateRange>('all');
 
   // ── Multi-select / delete state ──────────────────────────────────────────
@@ -86,6 +83,23 @@ export default function AwbBookingsPage() {
 
   const activeParties = parties.filter(p => p.status === 'ACTIVE');
   const selParty      = parties.find(p => p.id === form.partyId);
+
+  const getRateForRoute = useCallback((carrier: string, origin: string, dest: string) => {
+    const activeIds = rateVersions
+      .filter(v => v.status === 'ACTIVE' && (!carrier || v.carrierName === carrier || v.carrierName === `${carrier} Cargo`))
+      .map(v => v.id);
+    return freightRates.find(r => activeIds.includes(r.versionId) && r.origin === origin && r.destination === dest && r.activeFlag);
+  }, [freightRates, rateVersions]);
+
+  const checkCreditLimit = useCallback((partyId: string, newAmount: number) => {
+    const party = parties.find(p => p.id === partyId);
+    if (!party || party.creditLimit === 0) return { allowed: true, warning: false, message: '' };
+    const used = outstanding.filter(o => o.partyId === partyId && o.outstandingAmount > 0).reduce((sum, item) => sum + item.outstandingAmount, 0);
+    const projected = used + newAmount;
+    if (projected > party.creditLimit) return { allowed: false, warning: true, message: `Credit limit ₹${party.creditLimit.toLocaleString('en-IN')} exceeded! Currently used: ₹${used.toLocaleString('en-IN')}` };
+    if (projected > party.creditLimit * 0.8) return { allowed: true, warning: true, message: `Warning: 80%+ of credit limit used. ₹${used.toLocaleString('en-IN')} / ₹${party.creditLimit.toLocaleString('en-IN')}` };
+    return { allowed: true, warning: false, message: '' };
+  }, [outstanding, parties]);
 
   function onRouteChange(origin: string, dest: string) {
     const rate = getRateForRoute(form.airlineName, origin, dest);
@@ -146,7 +160,8 @@ export default function AwbBookingsPage() {
   const filtered = rangeFiltered.filter(b =>
     (b.awbNo.toLowerCase().includes(search.toLowerCase()) || b.partyName.toLowerCase().includes(search.toLowerCase())) &&
     (statusFilter === 'ALL' || b.status === statusFilter) &&
-    (partyFilter === 'ALL' || b.partyId === partyFilter || b.partyName === partyFilter)
+    (partyFilter === 'ALL' || b.partyId === partyFilter || b.partyName === partyFilter) &&
+    (linkFilter === 'ALL' || (linkFilter === 'LINKED' ? docketBookings.some(d => d.linkedAwbId === b.id) : !docketBookings.some(d => d.linkedAwbId === b.id)))
   );
 
   function handleExport(fmt: 'csv'|'xlsx'|'pdf') {
@@ -211,6 +226,11 @@ export default function AwbBookingsPage() {
             <option key={b.partyName} value={b.partyName}>{b.partyName}</option>
           ))}
         </select>
+        <select className="input" style={{ width:150, height:36, fontSize:12 }} value={linkFilter} onChange={e=>setLinkFilter(e.target.value as 'ALL' | 'LINKED' | 'UNLINKED')}>
+          <option value="ALL">All Link States</option>
+          <option value="LINKED">Linked</option>
+          <option value="UNLINKED">Unlinked</option>
+        </select>
       </div>
 
       {/* Stats */}
@@ -243,7 +263,7 @@ export default function AwbBookingsPage() {
                 <th>Date</th><th style={{textAlign:'right'}}>Wt (kg)</th>
                 <th style={{textAlign:'right'}}>Base Rate</th><th style={{textAlign:'right'}}>Markup</th>
                 <th style={{textAlign:'right'}}>Total</th>
-                <th>Status</th><th>Action</th>
+                <th>Status</th><th style={{textAlign:'center'}}>By</th><th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -266,7 +286,10 @@ export default function AwbBookingsPage() {
                     </td>
                   )}
                   <>
-                      <td><span style={{fontFamily:'var(--font-mono)',fontSize:12,fontWeight:700}}>{b.awbNo}</span></td>
+                      <td>
+                        <span style={{fontFamily:'var(--font-mono)',fontSize:12,fontWeight:700}}>{b.awbNo}</span>
+                        <RecordActivityAvatars resource="AWB_BOOKING" resourceId={b.id} auditLogs={auditLogs} users={users} />
+                      </td>
                       <td style={{fontWeight:500}} title={b.partyName}>{shortName(b.partyName)}</td>
                       <td><span style={{fontFamily:'var(--font-mono)',fontSize:11,background:'var(--surface-sunken)',padding:'2px 7px',borderRadius:5}}>{b.origin}→{b.destination}</span></td>
                       <td style={{fontSize:12,color:'var(--text-secondary)'}}>{b.airlineName}</td>
@@ -276,6 +299,7 @@ export default function AwbBookingsPage() {
                       <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:'var(--text-secondary)'}}>₹{b.markupAmount}</td>
                       <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:800}}>{fmt(b.totalAmount)}</td>
                       <td><Badge status={b.status}/></td>
+                      <td style={{textAlign:'center'}}><CreatorAvatar userId={(b as {createdBy?:string|null}).createdBy} createdAt={b.createdAt} /></td>
                       <td style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
                         {!selectMode && b.status==='BOOKED' && (
                           <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={e=>{e.stopPropagation();startEdit(b);}}><Edit2 size={11}/> Edit</button>
@@ -315,11 +339,11 @@ export default function AwbBookingsPage() {
                       &nbsp;·&nbsp;<Badge status={linkedDocket.status}/>
                       &nbsp;&nbsp;
                       <button className="btn btn-ghost btn-sm" style={{fontSize:10,padding:'2px 8px',color:'#d97706',marginLeft:8}} title="Remove link (keep docket)"
-                        onClick={e=>{e.stopPropagation();updateDocketBooking(linkedDocket.id,{linkedAwbId:undefined});toast('Docket unlinked',{icon:'🔓'});}}>
+                        onClick={e=>{e.stopPropagation();startTransition(async()=>{const res = await unlinkAwbFromDocket(linkedDocket.id); if (res && 'error' in res) toast.error(res.error as string); else { toast('Docket unlinked',{icon:'🔓'}); refresh(); }});}}>
                         Unlink
                       </button>
                       <button className="btn btn-ghost btn-sm" style={{fontSize:10,padding:'2px 8px',color:'#dc2626',marginLeft:4}} title="Delete docket permanently"
-                        onClick={e=>{e.stopPropagation();if(confirm(`Delete docket ${linkedDocket.docketNo} permanently?`)){deleteDocketBookings([linkedDocket.id]);toast.success('Docket deleted');}}}>
+                        onClick={e=>{e.stopPropagation();if(confirm(`Delete docket ${linkedDocket.docketNo} permanently?`)){startTransition(async()=>{await deleteDocketBookings([linkedDocket.id]);toast.success('Docket deleted');refresh();});}}}>
                         Delete Docket
                       </button>
                     </td>
@@ -464,7 +488,7 @@ export default function AwbBookingsPage() {
         <AddDocketFromAwbModal
           awb={docketAwb}
           parties={activeParties}
-          onSave={(d)=>{ addDocketBooking(d); toast.success(`Docket ${d.docketNo} linked to AWB ${docketAwb.awbNo}`); setDocketAwb(null); }}
+          onSave={(d)=>{ startTransition(async()=>{ const res = await createDocketBooking(d); if (res && 'error' in res) { toast.error('Could not create docket'); return; } toast.success(`Docket ${d.docketNo} linked to AWB ${docketAwb.awbNo}`); setDocketAwb(null); refresh(); }); }}
           onClose={()=>setDocketAwb(null)}
         />
       )}
@@ -473,7 +497,7 @@ export default function AwbBookingsPage() {
         <ConnectDocketModal
           awb={connectDocketAwb}
           docketBookings={docketBookings}
-          onConnect={(docketId)=>{ updateDocketBooking(docketId,{linkedAwbId:connectDocketAwb.id}); toast.success('Docket linked'); setConnectDocketAwb(null); }}
+          onConnect={(docketId)=>{ startTransition(async()=>{ const res = await linkAwbToDocket(docketId, connectDocketAwb.id); if (res && 'error' in res) { toast.error(res.error as string); return; } toast.success('Docket linked'); setConnectDocketAwb(null); refresh(); }); }}
           onClose={()=>setConnectDocketAwb(null)}
         />
       )}

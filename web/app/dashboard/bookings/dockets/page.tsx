@@ -1,14 +1,15 @@
 'use client';
 import React, { useState, useRef, useCallback, useTransition } from 'react';
 import { ClipboardList, Plus, Search, Download, X, CheckCircle, Edit2, Save, Trash2, FileText } from 'lucide-react';
-import { useStore } from '@/lib/store';
 import toast from 'react-hot-toast';
 import { exportToCSV, exportToXLSX, exportToPDF, filterByDateRange, DateRangeFilter, type DateRange, type ExportFormat } from '@/lib/exportUtils';
-import { createDocketBooking, updateDocketBooking, deleteDocketBookings } from '@/lib/actions/bookings';
+import { createAwbBooking, createDocketBooking, deleteAwbBookings, deleteDocketBookings, linkAwbToDocket, unlinkAwbFromDocket, updateDocketBooking } from '@/lib/actions/bookings';
 import { generateInvoiceFromDocket } from '@/lib/actions/invoices';
 import { shortName, fmtDate } from '@/lib/utils';
+import { CreatorAvatar } from '@/components/CreatorAvatar';
 import { useSharedData } from '@/lib/useSharedData';
 import { LiveIndicator } from '@/components/LiveIndicator';
+import RecordActivityAvatars from '@/components/RecordActivityAvatars';
 
 const CITIES = ['DEL','BOM','BLR','HYD','MAA','CCU','AMD','COK','JAI','PNQ','PNE','SXR'];
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -22,10 +23,7 @@ function Badge({ status }: { status: string }) {
 }
 
 export default function DocketBookingsPage() {
-  const { docketBookings, parties, awbBookings, refresh } = useSharedData();
-  const checkCreditLimit          = useStore(s => s.checkCreditLimit);
-  const addAwbBooking             = useStore(s => s.addAwbBooking);
-  const deleteAwbBookings         = useStore(s => s.deleteAwbBookings);
+  const { docketBookings, parties, awbBookings, outstanding, auditLogs, users, refresh } = useSharedData();
   const [isPending, startTransition] = useTransition();
 
   const [showForm, setShowForm]   = useState(false);
@@ -37,6 +35,7 @@ export default function DocketBookingsPage() {
   const [search, setSearch]       = useState('');
   const [statusFilter, setStatus] = useState('ALL');
   const [partyFilter, setPartyFilter] = useState('ALL');
+  const [linkFilter, setLinkFilter] = useState<'ALL' | 'LINKED' | 'UNLINKED'>('ALL');
   const [dateRange, setDateRange] = useState<DateRange>('all');
 
   // ── Multi-select / delete state ──────────────────────────────────────────
@@ -75,6 +74,16 @@ export default function DocketBookingsPage() {
   const selParty      = parties.find(p => p.id===form.partyId);
   const gstAmount     = (form.rateFittedAmount + form.markupAmount) * form.gstRate / 100;
   const totalAmount   = form.rateFittedAmount + form.markupAmount + gstAmount;
+
+  const checkCreditLimit = useCallback((partyId: string, newAmount: number) => {
+    const party = parties.find(p => p.id === partyId);
+    if (!party || party.creditLimit === 0) return { allowed: true, warning: false, message: '' };
+    const used = outstanding.filter(o => o.partyId === partyId && o.outstandingAmount > 0).reduce((sum, item) => sum + item.outstandingAmount, 0);
+    const projected = used + newAmount;
+    if (projected > party.creditLimit) return { allowed: false, warning: true, message: `Credit limit ₹${party.creditLimit.toLocaleString('en-IN')} exceeded! Currently used: ₹${used.toLocaleString('en-IN')}` };
+    if (projected > party.creditLimit * 0.8) return { allowed: true, warning: true, message: `Warning: 80%+ of credit limit used. ₹${used.toLocaleString('en-IN')} / ₹${party.creditLimit.toLocaleString('en-IN')}` };
+    return { allowed: true, warning: false, message: '' };
+  }, [outstanding, parties]);
 
   function startEdit(b: typeof docketBookings[0]) {
     setEditingId(b.id);
@@ -126,7 +135,8 @@ export default function DocketBookingsPage() {
   const filtered = rangeFiltered.filter(b =>
     (b.docketNo.toLowerCase().includes(search.toLowerCase()) || b.partyName.toLowerCase().includes(search.toLowerCase())) &&
     (statusFilter==='ALL' || b.status===statusFilter) &&
-    (partyFilter==='ALL' || b.partyName===partyFilter)
+    (partyFilter==='ALL' || b.partyName===partyFilter) &&
+    (linkFilter === 'ALL' || (linkFilter === 'LINKED' ? Boolean(b.linkedAwbId) : !b.linkedAwbId))
   );
 
   return (
@@ -180,6 +190,11 @@ export default function DocketBookingsPage() {
             <option key={n} value={n}>{n}</option>
           ))}
         </select>
+        <select className="input" style={{width:150,height:36,fontSize:12}} value={linkFilter} onChange={e=>setLinkFilter(e.target.value as 'ALL' | 'LINKED' | 'UNLINKED')}>
+          <option value="ALL">All Link States</option>
+          <option value="LINKED">Linked</option>
+          <option value="UNLINKED">Unlinked</option>
+        </select>
       </div>
 
       <div className="card" style={{overflow:'hidden'}}>
@@ -196,7 +211,7 @@ export default function DocketBookingsPage() {
                 <th>Docket No.</th><th>Party</th><th>Consignee</th><th>Way Bill No.</th><th>Route</th><th>Description</th>
                 <th>Date</th><th style={{textAlign:'right'}}>Value</th><th style={{textAlign:'right'}}>Rate (₹)</th>
                 <th style={{textAlign:'right'}}>Markup</th><th style={{textAlign:'right'}}>GST</th>
-                <th style={{textAlign:'right'}}>Total</th><th>Packing</th><th>Status</th><th>Action</th>
+                <th style={{textAlign:'right'}}>Total</th><th>Packing</th><th>Status</th><th style={{textAlign:'center'}}>By</th><th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -217,7 +232,10 @@ export default function DocketBookingsPage() {
                     </td>
                   )}
                   <>
-                      <td><span style={{fontFamily:'var(--font-mono)',fontSize:12,fontWeight:700}}>{b.docketNo}</span></td>
+                      <td>
+                        <span style={{fontFamily:'var(--font-mono)',fontSize:12,fontWeight:700}}>{b.docketNo}</span>
+                        <RecordActivityAvatars resource="DOCKET_BOOKING" resourceId={b.id} auditLogs={auditLogs} users={users} />
+                      </td>
                       <td style={{fontWeight:500}} title={b.partyName}>{shortName(b.partyName)}</td>
                       <td style={{fontSize:12,color:'var(--text-secondary)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={(b as any).consignee||''}>{(b as any).consignee||'—'}</td>
                       <td><span style={{fontFamily:'var(--font-mono)',fontSize:11}}>{(b as any).way_bill_no||'—'}</span></td>
@@ -231,6 +249,7 @@ export default function DocketBookingsPage() {
                       <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:800}}>{fmt(b.totalAmount)}</td>
                       <td style={{fontSize:11,color:'var(--text-muted)',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={(b as any).method_of_packing||''}>{(b as any).method_of_packing||'—'}</td>
                       <td><Badge status={b.status}/></td>
+                      <td style={{textAlign:'center'}}><CreatorAvatar userId={(b as {createdBy?:string|null}).createdBy} createdAt={b.createdAt} /></td>
                       <td style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
                         {!selectMode && b.status==='BOOKED' && (
                           <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={e=>{e.stopPropagation();startEdit(b);}}><Edit2 size={11}/> Edit</button>
@@ -273,11 +292,11 @@ export default function DocketBookingsPage() {
                         &nbsp;·&nbsp;<Badge status={linked.status}/>
                         &nbsp;&nbsp;
                         <button className="btn btn-ghost btn-sm" style={{fontSize:10,padding:'2px 8px',color:'#d97706',marginLeft:8}} title="Remove link only"
-                          onClick={e=>{e.stopPropagation();startTransition(async()=>{await updateDocketBooking(b.id,{linkedAwbId:undefined});toast('AWB unlinked',{icon:'🔓'});});}}>
+                          onClick={e=>{e.stopPropagation();startTransition(async()=>{const res = await unlinkAwbFromDocket(b.id); if (res && 'error' in res) toast.error(res.error as string); else { toast('AWB unlinked',{icon:'🔓'}); refresh(); }});}}>
                           Unlink
                         </button>
                         <button className="btn btn-ghost btn-sm" style={{fontSize:10,padding:'2px 8px',color:'#dc2626',marginLeft:4}} title="Delete AWB permanently"
-                          onClick={e=>{e.stopPropagation();if(confirm(`Delete AWB ${linked.awbNo} permanently?`)){startTransition(async()=>{await deleteAwbBookings([linked.id]);await updateDocketBooking(b.id,{linkedAwbId:undefined});toast.success('AWB deleted');});}}}>
+                          onClick={e=>{e.stopPropagation();if(confirm(`Delete AWB ${linked.awbNo} permanently?`)){startTransition(async()=>{await deleteAwbBookings([linked.id]);await unlinkAwbFromDocket(b.id);toast.success('AWB deleted');refresh();});}}}>
                           Delete AWB
                         </button>
                       </td>
@@ -428,8 +447,8 @@ export default function DocketBookingsPage() {
           docket={connectAwbDocket}
           awbBookings={awbBookings}
           parties={activeParties}
-          onConnectExisting={(awbId)=>{ updateDocketBooking(connectAwbDocket.id,{linkedAwbId:awbId}); toast.success('AWB linked'); setConnectAwbDocket(null); }}
-          onAddNew={(awbData)=>{ const nb = addAwbBooking(awbData); updateDocketBooking(connectAwbDocket.id,{linkedAwbId:nb.id}); toast.success('New AWB created & linked'); setConnectAwbDocket(null); }}
+          onConnectExisting={(awbId)=>{ startTransition(async()=>{ const res = await linkAwbToDocket(connectAwbDocket.id, awbId); if (res && 'error' in res) { toast.error(res.error as string); return; } toast.success('AWB linked'); setConnectAwbDocket(null); refresh(); }); }}
+          onAddNew={(awbData)=>{ startTransition(async()=>{ const created = await createAwbBooking(awbData); if (created && 'error' in created) { toast.error('Could not create AWB'); return; } const res = await linkAwbToDocket(connectAwbDocket.id, created.id); if (res && 'error' in res) { toast.error(res.error as string); return; } toast.success('New AWB created & linked'); setConnectAwbDocket(null); refresh(); }); }}
           onClose={()=>setConnectAwbDocket(null)}
         />
       )}

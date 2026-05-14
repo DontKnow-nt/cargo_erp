@@ -39,8 +39,10 @@ export default function PaymentsPage() {
         invoiceId:form.invoiceId, invoiceNo:selInvoice?.invoiceNo||'',
         paymentDate:form.paymentDate, paymentAmount:form.paymentAmount,
         freightComponent:freightComp, gstComponent:gstComp,
-        paymentMode:form.paymentMode as 'CASH'|'CHEQUE'|'NEFT'|'RTGS'|'UPI'|'OTHER',
+        paymentMode:form.paymentMode as 'CASH'|'CHEQUE'|'BANK_TRANSFER'|'NEFT'|'RTGS'|'UPI'|'OTHER',
         referenceNo:form.referenceNo,
+        bankName:form.bankName,
+        notes:form.remarks,
       });
       if (res && 'error' in res) { toast.error('Validation error'); return; }
       toast.success('Payment receipt recorded');
