@@ -128,7 +128,7 @@ function NavRow({ item, collapsed, path }: { item: NavItem; collapsed: boolean; 
   );
 }
 
-export default function Sidebar() {
+export default function Sidebar({ onClose, mobileOpen }: { onClose?: () => void; mobileOpen?: boolean }) {
   const [collapsed, setCollapsed] = useState(false);
   const [hoverExpanded, setHoverExpanded] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -179,7 +179,7 @@ export default function Sidebar() {
   }, [collapsed, hoverExpanded]);
 
   return (
-    <aside className="sidebar"
+    <aside className={`sidebar${mobileOpen ? ' mobile-open' : ''}`}
       style={{ width: expanded ? 'var(--sidebar-width)' : 'var(--sidebar-collapsed)' }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}

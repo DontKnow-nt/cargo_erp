@@ -12,10 +12,10 @@ type Props = {
 type ActivityEntry = {
   key: string;
   label: string;
-  timestamp: string;
+  timestamp: string | Date;
 };
 
-function formatTimestamp(timestamp: string) {
+function formatTimestamp(timestamp: string | Date) {
   const date = new Date(timestamp);
   return `${date.toLocaleDateString('en-IN')} ${date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`;
 }

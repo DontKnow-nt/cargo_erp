@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import type { AwbBooking, DocketBooking } from '@/lib/mockData';
 import { createAwbBooking, createDocketBooking } from '@/lib/actions/bookings';
 import { importCsvBookings } from '@/lib/actions/import';
+import { addPaymentReceipt } from '@/lib/actions/payments';
 import { useSharedData } from '@/lib/useSharedData';
 
 type JobModule = 'RATE_SHEET'|'AWB_BOOKINGS'|'DOCKET_BOOKINGS'|'CUSTOMERS'|'PAYMENTS';
@@ -363,7 +364,7 @@ export default function ImportPage() {
   const [goodRows, setGoodRows] = useState<Record<string,string>[]>([]);
 
   const [docStep, setDocStep] = useState<1|2|3>(1);
-  const [docType, setDocType] = useState<'AWB'|'INVOICE'>('AWB');
+  const [docType, setDocType] = useState<'AWB'|'INVOICE'|'PAYMENT'>('AWB');
   const [docDragOver, setDocDragOver] = useState(false);
   const [docFileName, setDocFileName] = useState('');
   const [docFileType, setDocFileType] = useState<'text'|'pdf'|'image'>('text');
@@ -577,16 +578,37 @@ export default function ImportPage() {
       setDocStep(3);
       refresh();
       });
+    } else if (docType === 'PAYMENT') {
+      // Extract payment fields from parsed text
+      const text = (parsedInvoice as unknown as {rawText?: string})?.rawText || '';
+      const invoiceNoM = text.match(/invoice\s*(?:no|#)[:\s]*([A-Z0-9\-\/]+)/i);
+      const amtM = text.match(/(?:amount|total)[:\s₹]*([0-9,]+(?:\.[0-9]{2})?)/i);
+      const dateM = text.match(/(?:date)[:\s]*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i);
+      const refM = text.match(/(?:ref|reference|utr|neft|rtgs)[:\s]*([A-Z0-9]+)/i);
+      startTransition(async () => {
+        const res = await addPaymentReceipt({
+          partyId: 'imported', partyName: 'Imported',
+          invoiceId: invoiceNoM?.[1] || 'unknown',
+          invoiceNo: invoiceNoM?.[1] || 'unknown',
+          paymentDate: today,
+          paymentAmount: parseFloat((amtM?.[1] || '0').replace(/,/g, '')),
+          freightComponent: 0, gstComponent: 0,
+          paymentMode: 'NEFT',
+          referenceNo: refM?.[1] || undefined,
+        });
+        if (res && 'error' in res) { toast.error('Could not import payment'); return; }
+        toast.success('Payment imported successfully');
+        setDocStep(3); refresh();
+      });
     }
   }
 
   function resetDoc() { setDocStep(1); setParsedAwb(null); setParsedInvoice(null); setEditingAwb(emptyAwb()); setDocFileName(''); setDocFileType('text'); setDocImagePreview(null); }
 
   function commitImport() {
-    // Use the secure server action for CSV imports (AWB_BOOKINGS, DOCKET_BOOKINGS, CUSTOMERS)
     const csvModule = module as 'AWB_BOOKINGS' | 'DOCKET_BOOKINGS' | 'CUSTOMERS';
 
-    if (fileRef.current?.files?.[0]) {
+    if (fileRef.current?.files?.[0] && (module === 'AWB_BOOKINGS' || module === 'DOCKET_BOOKINGS' || module === 'CUSTOMERS')) {
       const fd = new FormData();
       fd.append('file', fileRef.current.files[0]);
       startTransition(async () => {
@@ -594,11 +616,42 @@ export default function ImportPage() {
         if ('error' in res) { toast.error(res.error ?? 'Import failed'); return; }
         toast.success(`Import done: ${res.importedRows} of ${res.totalRows} rows imported`);
         if (res.errors.length > 0) toast(`${res.errorRows} rows had errors`, { icon: '⚠️' });
-        setStep(3);
-        refresh();
+        setStep(3); refresh();
       });
       return;
     }
+
+    // PAYMENTS: process goodRows client-side (match invoices by invoiceNo)
+    if (module === 'PAYMENTS' && goodRows.length > 0) {
+      startTransition(async () => {
+        let imported = 0;
+        for (const row of goodRows) {
+          try {
+            await addPaymentReceipt({
+              partyId: 'imported', partyName: row.partyName || 'Imported',
+              invoiceId: row.invoiceId || row.invoiceNo,
+              invoiceNo: row.invoiceNo,
+              paymentDate: row.paymentDate || new Date().toISOString().split('T')[0],
+              paymentAmount: parseFloat(row.paymentAmount) || 0,
+              freightComponent: 0, gstComponent: 0,
+              paymentMode: (row.paymentMode as 'CASH'|'CHEQUE'|'NEFT'|'RTGS'|'UPI'|'OTHER') || 'NEFT',
+              referenceNo: row.referenceNo || undefined,
+            });
+            imported++;
+          } catch { /* skip invalid rows */ }
+        }
+        toast.success(`${imported} payment${imported !== 1 ? 's' : ''} imported`);
+        setStep(3); refresh();
+      });
+      return;
+    }
+
+    // RATE_SHEET fallback
+    const today = new Date().toISOString().split('T')[0];
+    const byCarrier: Record<string,{origin:string;destination:string;baseRate:number;uom:string}[]> = {};
+    goodRows.forEach(row => { const c = row.carrier||'IndiGo Cargo'; if (!byCarrier[c]) byCarrier[c]=[]; byCarrier[c].push({ origin:row.origin, destination:row.destination, baseRate:parseFloat(row.baseRate)||0, uom:row.uom||'KG' }); });
+    toast.success(`Rate sheet processed`);
+    setStep(3);
   }
 
   function reset() { setStep(1); setRawRows([]); setErrors([]); setGoodRows([]); setFileName(''); }
@@ -642,7 +695,7 @@ export default function ImportPage() {
             })}
           </div>
 
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1.5fr',gap:20}}>
+          <div className='import-grid' style={{display:'grid',gridTemplateColumns:'1fr 1.5fr',gap:20}}>
             <div style={{display:'flex',flexDirection:'column',gap:14}}>
               {step===1 && (
                 <div className="card" style={{padding:20}}>
@@ -704,7 +757,7 @@ export default function ImportPage() {
                 <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}><div style={{fontSize:13,fontWeight:700}}>Import History</div><span style={{fontSize:11,color:'var(--text-muted)'}}>{importJobs.length} jobs</span></div>
                 <div className="table-wrap"><table><thead><tr><th>File</th><th>Module</th><th>Date</th><th style={{textAlign:'right'}}>Total</th><th style={{textAlign:'right'}}>OK</th><th style={{textAlign:'right'}}>Err</th><th>Status</th></tr></thead><tbody>
                   {importJobs.length===0&&<tr><td colSpan={7} style={{textAlign:'center',padding:'24px 0',color:'var(--text-muted)',fontSize:12}}>No imports yet</td></tr>}
-                  {importJobs.map(j=>{const sc:Record<string,[string,string]>={COMPLETED:['#059669','#ecfdf5'],FAILED:['#dc2626','#fef2f2'],PARTIAL:['#d97706','#fffbeb'],PROCESSING:['#2563eb','#eff6ff'],PENDING:['#94a3b8','#f8fafc']};const[c,bg]=sc[j.status]||['#64748b','#f8fafc'];return(<tr key={j.id}><td style={{fontSize:11,maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={j.fileName}>{j.fileName}</td><td style={{fontSize:10,color:'var(--text-muted)',whiteSpace:'nowrap'}}>{j.sourceModule.replace('_',' ')}</td><td style={{fontSize:11,color:'var(--text-muted)'}}>{j.createdAt}</td><td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12}}>{j.totalRows}</td><td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:'#059669',fontWeight:600}}>{j.successRows}</td><td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:j.errorRows>0?'#dc2626':'var(--text-muted)'}}>{j.errorRows}</td><td><span style={{fontSize:9,fontWeight:700,color:c,background:bg,padding:'2px 7px',borderRadius:99,border:`1px solid ${c}30`,fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.07em'}}>{j.status}</span></td></tr>);})}</tbody></table></div>
+                  {importJobs.map(j=>{const sc:Record<string,[string,string]>={COMPLETED:['#059669','#ecfdf5'],FAILED:['#dc2626','#fef2f2'],PARTIAL:['#d97706','#fffbeb'],PROCESSING:['#2563eb','#eff6ff'],PENDING:['#94a3b8','#f8fafc']};const[c,bg]=sc[j.status]||['#64748b','#f8fafc'];return(<tr key={j.id}><td style={{fontSize:11,maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={j.fileName}>{j.fileName}</td><td style={{fontSize:10,color:'var(--text-muted)',whiteSpace:'nowrap'}}>{j.sourceModule.replace('_',' ')}</td><td style={{fontSize:11,color:'var(--text-muted)'}}>{String(j.createdAt).slice(0,10)}</td><td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12}}>{j.totalRows}</td><td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:'#059669',fontWeight:600}}>{j.successRows}</td><td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:j.errorRows>0?'#dc2626':'var(--text-muted)'}}>{j.errorRows}</td><td><span style={{fontSize:9,fontWeight:700,color:c,background:bg,padding:'2px 7px',borderRadius:99,border:`1px solid ${c}30`,fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.07em'}}>{j.status}</span></td></tr>);})}</tbody></table></div>
               </div>
             </div>
           </div>
@@ -713,22 +766,24 @@ export default function ImportPage() {
 
       {/* ── DOCUMENT MODE ── */}
       {importMode === 'DOCUMENT' && (
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1.5fr',gap:20}}>
+        <div className='import-grid' style={{display:'grid',gridTemplateColumns:'1fr 1.5fr',gap:20}}>
           <div style={{display:'flex',flexDirection:'column',gap:14}}>
             {docStep===1 && (
               <div className="card" style={{padding:20}}>
                 <div style={{fontSize:13,fontWeight:700,marginBottom:14}}>Document Type</div>
                 <div style={{display:'flex',gap:8,marginBottom:16}}>
-                  {(['AWB','INVOICE'] as const).map(t=>(
+                  {(['AWB','INVOICE','PAYMENT'] as const).map(t=>(
                     <button key={t} type="button" className={`btn ${docType===t?'btn-primary':'btn-secondary'}`} style={{flex:1,justifyContent:'center'}} onClick={()=>setDocType(t)}>
-                      {t==='AWB'?<FileText size={13}/>:<FileText size={13}/>} {t==='AWB'?'Air Waybill (AWB)':'Tax Invoice'}
+                      <FileText size={13}/> {t==='AWB'?'Air Waybill':t==='INVOICE'?'Tax Invoice':'Payment Receipt'}
                     </button>
                   ))}
                 </div>
                 <div style={{background:'var(--info-bg)',border:'1px solid var(--info-border)',borderRadius:8,padding:'10px 13px',marginBottom:14,fontSize:12,color:'var(--info)'}}>
                   {docType==='AWB'
                     ? 'ℹ️ Upload an AWB document. Text/PDF files are auto-parsed. For images (JPG/PNG), fill in the fields while viewing the preview.'
-                    : 'ℹ️ Upload a tax invoice. Text/PDF files are auto-parsed. For images, fill in the fields manually.'}
+                    : docType==='INVOICE'
+                    ? 'ℹ️ Upload a tax invoice. Text/PDF files are auto-parsed. For images, fill in the fields manually.'
+                    : 'ℹ️ Upload a payment receipt or bank statement. Fields will be extracted automatically.'}
                 </div>
                 <div className={`drop-zone${docDragOver?' drag-over':''}`} onDragOver={e=>{e.preventDefault();setDocDragOver(true);}} onDragLeave={()=>setDocDragOver(false)} onDrop={handleDocDrop} onClick={()=>docFileRef.current?.click()}>
                   <Upload size={28} style={{margin:'0 auto 10px',color:'var(--text-muted)'}}/>
@@ -980,7 +1035,7 @@ export default function ImportPage() {
               <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}><div style={{fontSize:13,fontWeight:700}}>Import History</div><span style={{fontSize:11,color:'var(--text-muted)'}}>{importJobs.length} jobs</span></div>
               <div className="table-wrap"><table><thead><tr><th>File</th><th>Module</th><th>Type</th><th>Date</th><th style={{textAlign:'right'}}>OK</th><th>Status</th></tr></thead><tbody>
                 {importJobs.length===0&&<tr><td colSpan={6} style={{textAlign:'center',padding:'24px 0',color:'var(--text-muted)',fontSize:12}}>No imports yet</td></tr>}
-                {importJobs.map(j=>{const sc:Record<string,[string,string]>={COMPLETED:['#059669','#ecfdf5'],FAILED:['#dc2626','#fef2f2'],PARTIAL:['#d97706','#fffbeb'],PROCESSING:['#2563eb','#eff6ff'],PENDING:['#94a3b8','#f8fafc']};const[c,bg]=sc[j.status]||['#64748b','#f8fafc'];return(<tr key={j.id}><td style={{fontSize:11,maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={j.fileName}>{j.fileName}</td><td style={{fontSize:10,color:'var(--text-muted)'}}>{j.sourceModule.replace('_',' ')}</td><td style={{fontSize:10,color:'var(--text-muted)'}}>{j.fileType}</td><td style={{fontSize:11,color:'var(--text-muted)'}}>{j.createdAt}</td><td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:'#059669',fontWeight:600}}>{j.successRows}</td><td><span style={{fontSize:9,fontWeight:700,color:c,background:bg,padding:'2px 7px',borderRadius:99,border:`1px solid ${c}30`,fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.07em'}}>{j.status}</span></td></tr>);})}</tbody></table></div>
+                {importJobs.map(j=>{const sc:Record<string,[string,string]>={COMPLETED:['#059669','#ecfdf5'],FAILED:['#dc2626','#fef2f2'],PARTIAL:['#d97706','#fffbeb'],PROCESSING:['#2563eb','#eff6ff'],PENDING:['#94a3b8','#f8fafc']};const[c,bg]=sc[j.status]||['#64748b','#f8fafc'];return(<tr key={j.id}><td style={{fontSize:11,maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={j.fileName}>{j.fileName}</td><td style={{fontSize:10,color:'var(--text-muted)'}}>{j.sourceModule.replace('_',' ')}</td><td style={{fontSize:10,color:'var(--text-muted)'}}>{j.fileType}</td><td style={{fontSize:11,color:'var(--text-muted)'}}>{String(j.createdAt).slice(0,10)}</td><td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:'#059669',fontWeight:600}}>{j.successRows}</td><td><span style={{fontSize:9,fontWeight:700,color:c,background:bg,padding:'2px 7px',borderRadius:99,border:`1px solid ${c}30`,fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.07em'}}>{j.status}</span></td></tr>);})}</tbody></table></div>
             </div>
           </div>
         </div>

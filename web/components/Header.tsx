@@ -1,5 +1,5 @@
 'use client';
-import { Bell, Search, HelpCircle } from 'lucide-react';
+import { Bell, Search, HelpCircle, Menu } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 
@@ -21,7 +21,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/admin': 'Admin & RBAC',
 };
 
-export default function Header() {
+export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const path = usePathname();
   const title = PAGE_TITLES[path] || 'Cargo ERP';
   const { data: session } = useSession();
@@ -43,6 +43,9 @@ export default function Header() {
       padding: '0 24px', gap: 16, zIndex: 40,
       transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1)',
     }}>
+      <button className="mobile-menu-btn" onClick={onMenuClick} aria-label="Open menu">
+        <Menu size={18} />
+      </button>
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.03em' }}>{title}</div>
       </div>

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
 import AuthProvider from "@/components/AuthProvider";
@@ -7,6 +7,12 @@ export const metadata: Metadata = {
   title: "Cargo Domestic ERP",
   description: "Domestic cargo billing and receivables management system",
   icons: { icon: '/logo.png', apple: '/logo.png' },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
 };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

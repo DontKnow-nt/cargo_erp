@@ -83,7 +83,7 @@ export default function AuditPage() {
                 const color = ACTION_COLORS[log.action] || '#64748b';
                 return (
                   <tr key={log.id}>
-                    <td style={{fontFamily:'var(--font-mono)',fontSize:11,color:'var(--text-muted)',whiteSpace:'nowrap'}}>{log.timestamp.replace('T', ' ').slice(0, 19)}</td>
+                    <td style={{fontFamily:'var(--font-mono)',fontSize:11,color:'var(--text-muted)',whiteSpace:'nowrap'}}>{String(log.timestamp).replace('T', ' ').slice(0, 19)}</td>
                     <td style={{fontSize:12,fontWeight:500}}>{log.user}</td>
                     <td><span style={{padding:'2px 8px',borderRadius:99,fontSize:10,fontWeight:600,color,background:color+'15',border:`1px solid ${color}30`,fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.07em'}}>{log.module}</span></td>
                     <td style={{fontSize:11,color:'var(--text-secondary)',fontFamily:'var(--font-mono)'}}>{log.action.replace(/_/g, ' ')}</td>

@@ -6,7 +6,7 @@ export type DbParty = {
   id: string; partyName: string; gstin?: string | null; contactPerson?: string | null;
   phone?: string | null; email?: string | null; billingAddress?: string | null;
   creditLimit: number; creditDays: number; status: string;
-  createdBy?: string | null; createdAt: string;
+  createdBy?: string | null; createdAt: string | Date;
 };
 
 export type DbAwbBooking = {
@@ -15,7 +15,7 @@ export type DbAwbBooking = {
   bookingDate: string; shipmentDate?: string | null;
   weight: number; pieces: number; baseRate: number; markupAmount: number;
   gstRate: number; gstAmount: number; totalAmount: number;
-  status: string; notes?: string | null; createdBy?: string | null; createdAt: string;
+  status: string; notes?: string | null; createdBy?: string | null; createdAt: string | Date;
 };
 
 export type DbDocketBooking = {
@@ -26,7 +26,7 @@ export type DbDocketBooking = {
   dueDatePolicy: number; status: string; notes?: string | null;
   linkedAwbId?: string | null; wayBillNo?: string | null;
   consignee?: string | null; value?: number | null;
-  methodOfPacking?: string | null; createdBy?: string | null; createdAt: string;
+  methodOfPacking?: string | null; createdBy?: string | null; createdAt: string | Date;
 };
 
 export type DbInvoiceLine = {
@@ -40,7 +40,7 @@ export type DbInvoice = {
   bookingType: string; bookingRef: string; invoiceDate: string; dueDate: string;
   subtotal: number; gstTotal: number; grandTotal: number;
   paidTotal: number; outstandingTotal: number; status: string;
-  notes?: string | null; createdBy?: string | null; createdAt: string; lines: DbInvoiceLine[];
+  notes?: string | null; createdBy?: string | null; createdAt: string | Date; lines: DbInvoiceLine[];
 };
 
 export type DbPaymentReceipt = {
@@ -49,7 +49,7 @@ export type DbPaymentReceipt = {
   paymentAmount: number; freightComponent: number; gstComponent: number;
   paymentMode?: string | null; referenceNo?: string | null;
   bankName?: string | null; remarks?: string | null;
-  status: string; createdAt: string;
+  status: string; createdAt: string | Date;
 };
 
 export type DbOutstandingEntry = {
@@ -57,12 +57,12 @@ export type DbOutstandingEntry = {
   invoiceId: string; invoiceNo: string; bookingRef: string;
   originalAmount: number; paidAmount: number; outstandingAmount: number;
   invoiceDate: string; dueDate: string; agingBucket: string;
-  creditLimit: number; createdAt: string;
+  creditLimit: number; createdAt: string | Date;
 };
 
 export type DbFreightRateVersion = {
   id: string; carrierName: string; validFrom: string; validTo?: string | null;
-  status: string; notes?: string | null; createdAt: string;
+  status: string; notes?: string | null; createdAt: string | Date;
 };
 
 export type DbFreightRate = {
@@ -73,13 +73,13 @@ export type DbFreightRate = {
 export type DbImportJob = {
   id: string; fileName: string; fileType: string; sourceModule: string;
   status: string; totalRows: number; successRows: number; errorRows: number;
-  errors?: string | null; createdAt: string;
+  errors?: string | null; createdAt: string | Date;
 };
 
 export type DbAuditLog = {
   id: string; userId?: string | null; userEmail?: string | null;
   action: string; resource: string; resourceId?: string | null;
-  details?: string | null; ipAddress?: string | null; createdAt: string;
+  details?: string | null; ipAddress?: string | null; createdAt: string | Date;
 };
 
 export type DbUserSummary = {
