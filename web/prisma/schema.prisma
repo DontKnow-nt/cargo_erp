@@ -1,0 +1,280 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Users & Auth ──────────────────────────────────────────────────────────────
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         String   @default("VIEWER")
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  permissions UserPermission[]
+
+  @@map("users")
+}
+
+model UserPermission {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  page      String
+  grantedBy String   @map("granted_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, page])
+  @@map("user_permissions")
+}
+
+// ── Master Data ───────────────────────────────────────────────────────────────
+model Party {
+  id             String   @id @default(uuid())
+  partyName      String   @map("party_name")
+  gstin          String?
+  contactPerson  String?  @map("contact_person")
+  phone          String?
+  email          String?
+  billingAddress String?  @map("billing_address")
+  creditLimit    Float    @default(0) @map("credit_limit")
+  creditDays     Int      @default(30) @map("credit_days")
+  status         String   @default("ACTIVE")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  awbBookings      AwbBooking[]
+  docketBookings   DocketBooking[]
+  invoices         Invoice[]
+  paymentReceipts  PaymentReceipt[]
+  outstandingEntries OutstandingEntry[]
+
+  @@map("parties")
+}
+
+// ── Freight Rates ─────────────────────────────────────────────────────────────
+model FreightRateVersion {
+  id          String   @id @default(uuid())
+  carrierName String   @map("carrier_name")
+  validFrom   String   @map("valid_from")
+  validTo     String?  @map("valid_to")
+  status      String   @default("DRAFT")
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  rates FreightRate[]
+
+  @@map("freight_rate_versions")
+}
+
+model FreightRate {
+  id          String @id @default(uuid())
+  versionId   String @map("version_id")
+  origin      String
+  destination String
+  baseRate    Float  @map("base_rate")
+  uom         String @default("KG")
+  activeFlag  Boolean @default(true) @map("active_flag")
+
+  version FreightRateVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@map("freight_rates")
+}
+
+// ── Bookings ──────────────────────────────────────────────────────────────────
+model AwbBooking {
+  id           String   @id @default(uuid())
+  awbNo        String   @map("awb_no")
+  partyId      String   @map("party_id")
+  partyName    String   @map("party_name")
+  origin       String
+  destination  String
+  airlineName  String   @map("airline_name")
+  bookingDate  String   @map("booking_date")
+  shipmentDate String?  @map("shipment_date")
+  weight       Float
+  pieces       Int
+  baseRate     Float    @map("base_rate")
+  markupAmount Float    @default(0) @map("markup_amount")
+  gstRate      Float    @default(18) @map("gst_rate")
+  gstAmount    Float    @map("gst_amount")
+  totalAmount  Float    @map("total_amount")
+  status       String   @default("BOOKED")
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  party   Party    @relation(fields: [partyId], references: [id])
+
+  @@map("awb_bookings")
+}
+
+model DocketBooking {
+  id               String   @id @default(uuid())
+  docketNo         String   @map("docket_no")
+  partyId          String   @map("party_id")
+  partyName        String   @map("party_name")
+  bookingDate      String   @map("booking_date")
+  origin           String?
+  destination      String?
+  description      String?
+  rateFittedAmount Float    @map("rate_fitted_amount")
+  markupAmount     Float    @default(0) @map("markup_amount")
+  gstRate          Float    @default(18) @map("gst_rate")
+  gstAmount        Float    @map("gst_amount")
+  totalAmount      Float    @map("total_amount")
+  dueDatePolicy    Int      @default(30) @map("due_date_policy")
+  status           String   @default("BOOKED")
+  notes            String?
+  linkedAwbId      String?  @map("linked_awb_id")
+  wayBillNo        String?  @map("way_bill_no")
+  consignee        String?
+  value            Float?   @default(0)
+  methodOfPacking  String?  @map("method_of_packing")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  party Party @relation(fields: [partyId], references: [id])
+
+  @@map("docket_bookings")
+}
+
+// ── Invoices ──────────────────────────────────────────────────────────────────
+model Invoice {
+  id               String   @id @default(uuid())
+  invoiceNo        String   @unique @map("invoice_no")
+  partyId          String   @map("party_id")
+  partyName        String   @map("party_name")
+  bookingType      String   @map("booking_type")
+  bookingRef       String   @map("booking_ref")
+  invoiceDate      String   @map("invoice_date")
+  dueDate          String   @map("due_date")
+  subtotal         Float
+  gstTotal         Float    @map("gst_total")
+  grandTotal       Float    @map("grand_total")
+  paidTotal        Float    @default(0) @map("paid_total")
+  outstandingTotal Float    @map("outstanding_total")
+  status           String   @default("DRAFT")
+  notes            String?
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  party            Party              @relation(fields: [partyId], references: [id])
+  lines            InvoiceLine[]
+  paymentReceipts  PaymentReceipt[]
+  outstandingEntry OutstandingEntry[]
+
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id          String  @id @default(uuid())
+  invoiceId   String  @map("invoice_id")
+  description String
+  qty         Float
+  rate        Float
+  amount      Float
+  taxRate     Float   @map("tax_rate")
+  taxAmount   Float   @map("tax_amount")
+  lineTotal   Float   @map("line_total")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("invoice_lines")
+}
+
+// ── Payments ──────────────────────────────────────────────────────────────────
+model PaymentReceipt {
+  id               String   @id @default(uuid())
+  receiptNo        String   @unique @map("receipt_no")
+  partyId          String   @map("party_id")
+  partyName        String   @map("party_name")
+  invoiceId        String   @map("invoice_id")
+  invoiceNo        String   @map("invoice_no")
+  paymentDate      String   @map("payment_date")
+  paymentAmount    Float    @map("payment_amount")
+  freightComponent Float    @default(0) @map("freight_component")
+  gstComponent     Float    @default(0) @map("gst_component")
+  paymentMode      String?  @map("payment_mode")
+  referenceNo      String?  @map("reference_no")
+  bankName         String?  @map("bank_name")
+  remarks          String?
+  status           String   @default("CONFIRMED")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  party   Party   @relation(fields: [partyId], references: [id])
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@map("payment_receipts")
+}
+
+// ── Outstanding ───────────────────────────────────────────────────────────────
+model OutstandingEntry {
+  id                String   @id @default(uuid())
+  partyId           String   @map("party_id")
+  partyName         String   @map("party_name")
+  invoiceId         String   @map("invoice_id")
+  invoiceNo         String   @map("invoice_no")
+  bookingRef        String   @map("booking_ref")
+  originalAmount    Float    @map("original_amount")
+  paidAmount        Float    @default(0) @map("paid_amount")
+  outstandingAmount Float    @map("outstanding_amount")
+  invoiceDate       String   @map("invoice_date")
+  dueDate           String   @map("due_date")
+  agingBucket       String   @default("CURRENT") @map("aging_bucket")
+  creditLimit       Float    @default(0) @map("credit_limit")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  party   Party   @relation(fields: [partyId], references: [id])
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@map("outstanding_entries")
+}
+
+// ── Import Jobs ───────────────────────────────────────────────────────────────
+model ImportJob {
+  id           String   @id @default(uuid())
+  fileName     String   @map("file_name")
+  fileType     String   @map("file_type")
+  sourceModule String   @map("source_module")
+  status       String   @default("PENDING")
+  totalRows    Int      @default(0) @map("total_rows")
+  importedRows Int      @default(0) @map("imported_rows")
+  errorRows    Int      @default(0) @map("error_rows")
+  errors       String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("import_jobs")
+}
+
+// ── Audit & Bank ──────────────────────────────────────────────────────────────
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  userEmail  String?  @map("user_email")
+  action     String
+  resource   String
+  resourceId String?  @map("resource_id")
+  details    String?
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}
+
+model BankDetail {
+  id            String   @id @default(uuid())
+  accountName   String   @map("account_name")
+  bankName      String   @map("bank_name")
+  branch        String
+  accountNumber String   @map("account_number")
+  ifsc          String
+  isDefault     Boolean  @default(false) @map("is_default")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("bank_details")
+}

@@ -1,0 +1,159 @@
+
+> web@0.1.0 dev
+> cross-env NODE_OPTIONS=--max-old-space-size=1536 next dev --webpack
+
+[1m[38;2;173;127;168m▲ Next.js 16.2.6[39m[22m (webpack)
+- Local:         http://localhost:3000
+- Network:       http://100.126.224.25:3000
+- Environments: .env
+[32m[1m✓[22m[39m Ready in 887ms
+[33m[1m⚠[22m[39m The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+
+[36m[browser][39m [31m"⨯ unhandledRejection:"[39m [object Event] 
+[31m[39m
+[36m[browser][39m [31m"⨯ unhandledRejection:"[39m [object Event] 
+[31m[39m
+[36m[browser][39m [31m"⨯ unhandledRejection:"[39m [object Event] 
+[31m[39m
+[36m[browser][39m [31m"⨯ unhandledRejection:"[39m [object Event] 
+[31m[39m
+[37m[1m○[22m[39m Compiling /dashboard/bookings/awb ...
+ GET /dashboard/bookings/awb [32m200[39m in 8.2s[2m (next.js: 6.7s, proxy.ts: 385ms, application-code: 1055ms)[22m
+[36m[browser][39m [31mUncaught ChunkLoadError: Loading chunk app/layout failed.
+(timeout: http://localhost:3000/_next/static/chunks/app/layout.js)[39m
+[31m    at RootLayout (app\layout.tsx:15:9)[39m
+  13 |     <html lang="en">
+  14 |       <body>
+> 15 |         <AuthProvider>
+     |         ^
+  16 |           {children}
+  17 |           <Toaster
+  18 |             position="top-right"
+[33m[1m⚠[22m[39m Fast Refresh had to perform a full reload due to a runtime error.
+ GET /dashboard/bookings/awb [32m200[39m in 459ms[2m (next.js: 54ms, proxy.ts: 46ms, application-code: 360ms)[22m
+ GET /api/data [32m200[39m in 2.6s[2m (next.js: 2.5s, application-code: 145ms)[22m
+ GET /api/user-permissions [32m200[39m in 2.6s[2m (next.js: 2.5s, application-code: 112ms)[22m
+ GET /dashboard/bookings/awb [32m200[39m in 370ms[2m (next.js: 194ms, proxy.ts: 44ms, application-code: 132ms)[22m
+[36m[browser][39m [31m"⨯ unhandledRejection:"[39m [object Event] 
+[31m[39m
+ GET /api/auth/session [32m200[39m in 3.6s[2m (next.js: 3.5s, application-code: 34ms)[22m
+ GET /api/data [32m200[39m in 28ms[2m (next.js: 4ms, application-code: 24ms)[22m
+[37m[1m○[22m[39m Compiling /dashboard ...
+ GET /api/data [32m200[39m in 8.1s[2m (next.js: 7.9s, application-code: 128ms)[22m
+ GET /dashboard [32m200[39m in 8.3s[2m (next.js: 8.2s, proxy.ts: 13ms, application-code: 141ms)[22m
+ GET /api/data [32m200[39m in 53ms[2m (next.js: 3ms, application-code: 50ms)[22m
+ GET /dashboard [32m200[39m in 95ms[2m (next.js: 7ms, proxy.ts: 40ms, application-code: 48ms)[22m
+ GET /dashboard [32m200[39m in 74ms[2m (next.js: 6ms, proxy.ts: 17ms, application-code: 50ms)[22m
+ GET /dashboard [32m200[39m in 78ms[2m (next.js: 7ms, proxy.ts: 25ms, application-code: 46ms)[22m
+ GET /dashboard [32m200[39m in 77ms[2m (next.js: 8ms, proxy.ts: 15ms, application-code: 55ms)[22m
+ GET /dashboard [32m200[39m in 60ms[2m (next.js: 6ms, proxy.ts: 21ms, application-code: 33ms)[22m
+[36m[browser][39m [33mDetected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior[39m
+ GET /api/data [32m200[39m in 290ms[2m (next.js: 4ms, application-code: 286ms)[22m
+ GET /api/data [32m200[39m in 16ms[2m (next.js: 3ms, application-code: 13ms)[22m
+ GET /api/data [32m200[39m in 21ms[2m (next.js: 3ms, application-code: 17ms)[22m
+ GET /api/data [32m200[39m in 33ms[2m (next.js: 3ms, application-code: 31ms)[22m
+ GET /api/data [32m200[39m in 47ms[2m (next.js: 4ms, application-code: 43ms)[22m
+ GET /api/data [32m200[39m in 25ms[2m (next.js: 3ms, application-code: 22ms)[22m
+ GET /api/data [32m200[39m in 20ms[2m (next.js: 3ms, application-code: 17ms)[22m
+ GET /api/data [32m200[39m in 22ms[2m (next.js: 3ms, application-code: 19ms)[22m
+ GET /api/data [32m200[39m in 34ms[2m (next.js: 5ms, application-code: 29ms)[22m
+ GET /api/data [32m200[39m in 21ms[2m (next.js: 3ms, application-code: 18ms)[22m
+ GET /api/data [32m200[39m in 19ms[2m (next.js: 3ms, application-code: 16ms)[22m
+ GET /api/data [32m200[39m in 18ms[2m (next.js: 3ms, application-code: 15ms)[22m
+ GET /api/data [32m200[39m in 21ms[2m (next.js: 3ms, application-code: 18ms)[22m
+ GET /api/data [32m200[39m in 22ms[2m (next.js: 4ms, application-code: 18ms)[22m
+ GET /api/data [32m200[39m in 26ms[2m (next.js: 4ms, application-code: 23ms)[22m
+ GET /api/data [32m200[39m in 25ms[2m (next.js: 4ms, application-code: 22ms)[22m
+ GET /api/data [32m200[39m in 18ms[2m (next.js: 3ms, application-code: 15ms)[22m
+ GET /api/data [32m200[39m in 65ms[2m (next.js: 3ms, application-code: 62ms)[22m
+ GET /api/auth/session [32m200[39m in 60ms[2m (next.js: 34ms, application-code: 25ms)[22m
+ GET /api/data [32m200[39m in 33ms[2m (next.js: 2ms, application-code: 31ms)[22m
+ GET /dashboard/bookings/dockets/way-bill [32m200[39m in 2.9s[2m (next.js: 2.6s, proxy.ts: 43ms, application-code: 278ms)[22m
+[36m[browser][39m In HTML, <td> cannot be a child of <td>.
+This will cause a hydration error.
+
+  ...
+    <HTTPAccessFallbackBoundary notFound={undefined} forbidden={undefined} unauthorized={undefined}>
+      <RedirectBoundary>
+        <RedirectErrorBoundary router={{...}}>
+          <InnerLayoutRouter url="/dashboard..." tree={[...]} params={{}} cacheNode={{rsc:<Fragment>, ...}} ...>
+            <SegmentViewNode type="page" pagePath="dashboard/...">
+              <SegmentTrieNode>
+              <ClientPageRoot Component={function CargoWayBillPage} serverProvidedParams={{...}}>
+                <CargoWayBillPage params={Promise} searchParams={Promise}>
+                  <div className="animate-fa...">
+                    <div>
+                    <div ref={{current:null}} style={{...}}>
+                      <table style={{...}}>
+                        <tbody>
+                          <tr>
+                          <tr>
+                            <td>
+                            <LabelCell style={{width:"11%"}}>
+>                             <td
+>                               style={{border:"1px solid ...",padding:"3px 5px",fontSize:9,verticalAlign:"top",color:"#333",width:"11%"}}
+>                             >
+                                <EditCell style={{border:"none", ...}}>
+>                                 <td style={{border:"none",padding:0,fontSize:10,verticalAlign:"top"}}>
+                            ...
+                          ...
+            ...
+          ...
+ 
+[36m[browser][39m <td> cannot contain a nested <td>.
+See this log for the ancestor stack trace. 
+ GET /dashboard/bookings/dockets/way-bill [32m200[39m in 656ms[2m (next.js: 334ms, proxy.ts: 28ms, application-code: 294ms)[22m
+[36m[browser][39m [31m"⨯ unhandledRejection:"[39m [object Event] 
+[31m[39m
+ GET /api/auth/session [32m200[39m in 1130ms[2m (next.js: 1068ms, application-code: 62ms)[22m
+ GET /api/auth/session [32m200[39m in 55ms[2m (next.js: 23ms, application-code: 32ms)[22m
+ GET /dashboard/bookings/dockets/way-bill [32m200[39m in 502ms[2m (next.js: 242ms, proxy.ts: 21ms, application-code: 239ms)[22m
+[36m[browser][39m [31m"⨯ unhandledRejection:"[39m [object Event] 
+[31m[39m
+ GET /dashboard/bookings/awb [32m200[39m in 104ms[2m (next.js: 38ms, proxy.ts: 12ms, application-code: 53ms)[22m
+ GET /api/data [32m200[39m in 1080ms[2m (next.js: 1028ms, application-code: 52ms)[22m
+ GET /api/data [32m200[39m in 26ms[2m (next.js: 2ms, application-code: 24ms)[22m
+ GET /api/data [32m200[39m in 27ms[2m (next.js: 3ms, application-code: 23ms)[22m
+ GET /api/data [32m200[39m in 17ms[2m (next.js: 2ms, application-code: 15ms)[22m
+[37m[1m○[22m[39m Compiling /dashboard/bookings/dockets ...
+ GET /api/data [32m200[39m in 2.8s[2m (next.js: 2.7s, application-code: 151ms)[22m
+ GET /dashboard/bookings/dockets [32m200[39m in 3.8s[2m (next.js: 3.6s, proxy.ts: 15ms, application-code: 171ms)[22m
+ GET /dashboard/bookings/dockets [32m200[39m in 88ms[2m (next.js: 9ms, proxy.ts: 34ms, application-code: 45ms)[22m
+ GET /api/data [32m200[39m in 19ms[2m (next.js: 3ms, application-code: 16ms)[22m
+ GET /api/data [32m200[39m in 19ms[2m (next.js: 3ms, application-code: 16ms)[22m
+[37m[1m○[22m[39m Compiling /dashboard/import ...
+ GET /api/data [32m200[39m in 2.7s[2m (next.js: 2.5s, application-code: 171ms)[22m
+ GET /dashboard/import [32m200[39m in 4.2s[2m (next.js: 3.9s, proxy.ts: 16ms, application-code: 220ms)[22m
+ GET /dashboard/invoices [32m200[39m in 1956ms[2m (next.js: 1744ms, proxy.ts: 12ms, application-code: 200ms)[22m
+ GET /api/banks [32m200[39m in 2.7s[2m (next.js: 2.6s, application-code: 67ms)[22m
+ GET /api/data [32m200[39m in 2.7s[2m (next.js: 2.6s, application-code: 71ms)[22m
+ GET /api/banks [32m200[39m in 32ms[2m (next.js: 3ms, application-code: 29ms)[22m
+ GET /api/data [32m200[39m in 26ms[2m (next.js: 3ms, application-code: 23ms)[22m
+ GET /api/banks [32m200[39m in 21ms[2m (next.js: 3ms, application-code: 18ms)[22m
+ GET /api/banks [32m200[39m in 17ms[2m (next.js: 3ms, application-code: 15ms)[22m
+ GET /api/data [32m200[39m in 22ms[2m (next.js: 3ms, application-code: 18ms)[22m
+ GET /api/data [32m200[39m in 28ms[2m (next.js: 6ms, application-code: 22ms)[22m
+ GET /api/data [32m200[39m in 19ms[2m (next.js: 3ms, application-code: 17ms)[22m
+ GET /dashboard/payments [32m200[39m in 2.3s[2m (next.js: 2.1s, proxy.ts: 15ms, application-code: 195ms)[22m
+ GET /api/data [32m200[39m in 48ms[2m (next.js: 18ms, application-code: 30ms)[22m
+ GET /api/data [32m200[39m in 29ms[2m (next.js: 3ms, application-code: 25ms)[22m
+ GET /api/data [32m200[39m in 41ms[2m (next.js: 10ms, application-code: 31ms)[22m
+ GET /dashboard/outstanding [32m200[39m in 1942ms[2m (next.js: 1740ms, proxy.ts: 14ms, application-code: 188ms)[22m
+ GET /api/data [32m200[39m in 17ms[2m (next.js: 3ms, application-code: 14ms)[22m
+ GET /api/data [32m200[39m in 22ms[2m (next.js: 3ms, application-code: 20ms)[22m
+[37m[1m○[22m[39m Compiling /dashboard/reports ...
+ GET /api/data [32m200[39m in 2.3s[2m (next.js: 2.2s, application-code: 146ms)[22m
+ GET /dashboard/reports [32m200[39m in 4.5s[2m (next.js: 4.3s, proxy.ts: 17ms, application-code: 158ms)[22m
+ GET /api/data [32m200[39m in 18ms[2m (next.js: 3ms, application-code: 15ms)[22m
+ GET /api/data [32m200[39m in 26ms[2m (next.js: 3ms, application-code: 23ms)[22m
+ GET /api/data [32m200[39m in 15ms[2m (next.js: 2ms, application-code: 13ms)[22m
+ GET /dashboard/parties [32m200[39m in 2.2s[2m (next.js: 1945ms, proxy.ts: 14ms, application-code: 207ms)[22m
+ GET /api/data [32m200[39m in 52ms[2m (next.js: 25ms, application-code: 27ms)[22m
+ GET /api/data [32m200[39m in 17ms[2m (next.js: 4ms, application-code: 14ms)[22m
+ GET /api/data [32m200[39m in 2.8s[2m (next.js: 2.6s, application-code: 115ms)[22m
+ GET /dashboard/notifications [32m200[39m in 3.2s[2m (next.js: 3.0s, proxy.ts: 13ms, application-code: 124ms)[22m
+[37m[1m○[22m[39m Compiling /dashboard/settings ...
+ GET /dashboard/settings [32m200[39m in 4.2s[2m (next.js: 4.0s, proxy.ts: 18ms, application-code: 165ms)[22m
+ GET /dashboard/settings [32m200[39m in 312ms[2m (next.js: 8ms, proxy.ts: 14ms, application-code: 290ms)[22m
+ GET /api/user-permissions [32m200[39m in 2.3s[2m (next.js: 2.2s, application-code: 93ms)[22m
+ GET /api/auth/session [32m200[39m in 2.3s[2m (next.js: 2.2s, application-code: 98ms)[22m

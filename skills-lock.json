@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "security-review": {
+      "source": "getsentry/skills",
+      "sourceType": "github",
+      "skillPath": "skills/security-review/SKILL.md",
+      "computedHash": "1eee1e41aa0a0e75dbbe0cac387e3d61bedf51af1888f184301a173731e6973e"
+    },
+    "vulnerability-scanner": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "skillPath": "skills/vulnerability-scanner/SKILL.md",
+      "computedHash": "192f61014de6d81808e10f7af15971aa50a59a380c76c823db34a6644254f753"
+    }
+  }
+}
