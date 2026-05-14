@@ -62,5 +62,3 @@ export async function DELETE() {
   res.cookies.delete(COOKIE_NAME);
   return res;
 }
-
-export { OC_TOKEN, COOKIE_NAME };
