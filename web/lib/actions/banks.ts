@@ -4,6 +4,8 @@ import prisma from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { z } from 'zod';
 
+type PrismaBankRecord = Awaited<ReturnType<typeof prisma.bankDetail.findMany>>[number];
+
 export type BankDetail = {
   id: string; account_name: string; bank_name: string; branch: string;
   account_number: string; ifsc: string; is_default: number;
@@ -21,7 +23,7 @@ export async function getBanks() {
   await requireAuth();
   const banks = await prisma.bankDetail.findMany({ orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }] });
   // Map to snake_case for UI compatibility
-  return banks.map(b => ({ id: b.id, account_name: b.accountName, bank_name: b.bankName, branch: b.branch, account_number: b.accountNumber, ifsc: b.ifsc, is_default: b.isDefault ? 1 : 0 }));
+  return banks.map((b: PrismaBankRecord) => ({ id: b.id, account_name: b.accountName, bank_name: b.bankName, branch: b.branch, account_number: b.accountNumber, ifsc: b.ifsc, is_default: b.isDefault ? 1 : 0 }));
 }
 
 export async function addBank(data: unknown) {

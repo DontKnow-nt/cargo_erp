@@ -4,6 +4,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 
+type BankRecord = Awaited<ReturnType<typeof prisma.bankDetail.findMany>>[number];
+
 interface InvoiceLine {
   id: string;
   description: string;
@@ -109,7 +111,7 @@ export default async function InvoicePrintPage({ params, searchParams }: { param
   // Fetch banks for print
   const banks = await prisma.bankDetail.findMany({ orderBy: [{ isDefault: 'desc' }] });
   const defaultBank = banks[0] ? { account_name: banks[0].accountName, bank_name: banks[0].bankName, branch: banks[0].branch, account_number: banks[0].accountNumber, ifsc: banks[0].ifsc } : undefined;
-  const allBanks = banks.map(b => ({ account_name: b.accountName, bank_name: b.bankName, branch: b.branch, account_number: b.accountNumber, ifsc: b.ifsc }));
+  const allBanks = banks.map((b: BankRecord) => ({ account_name: b.accountName, bank_name: b.bankName, branch: b.branch, account_number: b.accountNumber, ifsc: b.ifsc }));
 
   const billDate = inv.invoice_date.split('-').reverse().join('.');
   const amtWords = numberToWords(Math.round(inv.grand_total));
