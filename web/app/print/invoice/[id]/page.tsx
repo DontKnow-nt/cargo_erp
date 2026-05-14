@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { AutoPrint } from '@/components/AutoPrint';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 
 interface InvoiceLine {
