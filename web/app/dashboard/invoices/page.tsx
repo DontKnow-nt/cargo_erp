@@ -3,11 +3,10 @@ import { useState, useRef, useCallback, useTransition, useEffect } from 'react';
 import { FileText, Download, Search, X, Plus, CheckCircle, Edit2, Printer, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import toast from 'react-hot-toast';
-import type { Invoice } from '@/lib/mockData';
 import { finalizeInvoice, cancelInvoice, deleteInvoices, updateInvoiceLine, addInvoiceLine, generateInvoiceFromAwb, generateInvoiceFromDocket } from '@/lib/actions/invoices';
 import { shortName, fmtDate } from '@/lib/utils';
 import BankDetailsPanel from '@/components/BankDetailsPanel';
-import { useSharedData } from '@/lib/useSharedData';
+import { useSharedData, type DbInvoice } from '@/lib/useSharedData';
 import { LiveIndicator } from '@/components/LiveIndicator';
 
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -37,7 +36,7 @@ function numberToWords(num: number): string {
 type CompanyInfo = { name:string; address:string; gstin:string; pan:string; tan:string; stax:string; cin:string; phone:string; email:string; regdOffice:string };
 type PartyInfo = { gstin:string; address:string; pos:string; billingPeriod:string };
 
-function printTriveniInvoice(inv: Invoice, companyInfo: CompanyInfo, partyInfo?: PartyInfo, bank?: {bank_name:string;account_name:string;account_number:string;ifsc:string;branch:string}) {
+function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo?: PartyInfo, bank?: {bank_name:string;account_name:string;account_number:string;ifsc:string;branch:string}) {
   const igstRate = inv.lines[0]?.taxRate || 18;
   const taxableAmt = inv.subtotal;
   const igstAmt = inv.gstTotal;
@@ -358,7 +357,7 @@ export default function InvoicesPage() {
   const unbilledAwb = awb.filter(b => b.status==='BOOKED');
   const unbilledDkt = dockets.filter(b => b.status==='BOOKED');
 
-  function startEditLine(line: Invoice['lines'][0]) {
+  function startEditLine(line: DbInvoice['lines'][0]) {
     setEditingLine(line.id);
     setEditVals({ description:line.description, qty:line.qty, rate:line.rate, taxRate:line.taxRate });
   }
@@ -681,7 +680,7 @@ export default function InvoicesPage() {
 // ── Invoice-only Bulk Download Modal ──────────────────────────────────────────
 import { exportToCSV, exportToXLSX, exportToPDF, filterByDateRange, type DateRange, type ExportFormat } from '@/lib/exportUtils';
 
-function InvoiceBulkDownloadModal({ invoices, companyInfo, onClose }: { invoices: Invoice[]; companyInfo: any; onClose: ()=>void }) {
+function InvoiceBulkDownloadModal({ invoices, companyInfo, onClose }: { invoices: DbInvoice[]; companyInfo: any; onClose: ()=>void }) {
   const [range, setRange] = useState<DateRange>('1m');
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');

@@ -448,7 +448,7 @@ export default function DocketBookingsPage() {
 }
 
 // ── Docket-only Bulk Download Modal ──────────────────────────────────────────
-function DocketBulkDownloadModal({ docketBookings, onClose }: { docketBookings: {id:string;docketNo:string;partyName:string;origin?:string;destination?:string;description?:string;bookingDate:string;rateFittedAmount:number;markupAmount:number;gstAmount:number;totalAmount:number;status:string}[]; onClose: ()=>void }) {
+function DocketBulkDownloadModal({ docketBookings, onClose }: { docketBookings: {id:string;docketNo:string;partyName:string;origin?:string | null;destination?:string | null;description?:string | null;bookingDate:string;rateFittedAmount:number;markupAmount:number;gstAmount:number;totalAmount:number;status:string}[]; onClose: ()=>void }) {
   const [range, setRange] = useState<DateRange>('1m');
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');

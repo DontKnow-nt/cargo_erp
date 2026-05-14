@@ -11,6 +11,7 @@ import { LiveIndicator } from '@/components/LiveIndicator';
 
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 type PartyForm = Omit<Party, 'id' | 'createdAt'>;
+const normalizePartyStatus = (status: string): PartyForm['status'] => status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
 
 export default function PartiesPage() {
   const { parties, outstanding, refresh } = useSharedData();
@@ -35,7 +36,7 @@ export default function PartiesPage() {
 
   function openAdd() { setForm(init); setEditId(null); setShowForm(true); }
   function openEdit(p: typeof parties[0]) {
-    setForm({ partyName:p.partyName, gstin:p.gstin||'', contactPerson:p.contactPerson||'', phone:p.phone||'', email:p.email||'', billingAddress:p.billingAddress||'', creditLimit:p.creditLimit, creditDays:p.creditDays, status:p.status });
+    setForm({ partyName:p.partyName, gstin:p.gstin||'', contactPerson:p.contactPerson||'', phone:p.phone||'', email:p.email||'', billingAddress:p.billingAddress||'', creditLimit:p.creditLimit, creditDays:p.creditDays, status:normalizePartyStatus(p.status) });
     setEditId(p.id); setShowForm(true);
   }
 
