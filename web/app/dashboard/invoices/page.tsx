@@ -342,10 +342,12 @@ export default function InvoicesPage() {
   }
   function exitSelectMode() { setSelectMode(false); setSelected(new Set()); }
   function confirmDelete() {
+    const deletedIds = new Set(selected);
+    exitSelectMode(); setShowDeleteConfirm(false);
+    toast.success(`${deletedIds.size} invoice${deletedIds.size > 1 ? 's' : ''} deleted`);
     startTransition(async () => {
-      await deleteInvoices([...selected]);
-      toast.success(`${selected.size} invoice${selected.size > 1 ? 's' : ''} deleted`);
-      exitSelectMode(); setShowDeleteConfirm(false);
+      await deleteInvoices([...deletedIds]);
+      refresh();
     });
   }
 

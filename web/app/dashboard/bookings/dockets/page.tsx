@@ -60,10 +60,12 @@ export default function DocketBookingsPage() {
   }
   function exitSelectMode() { setSelectMode(false); setSelected(new Set()); }
   function confirmDelete() {
+    const deletedIds = new Set(selected);
+    exitSelectMode(); setShowDeleteConfirm(false);
+    toast.success(`${deletedIds.size} docket${deletedIds.size > 1 ? 's' : ''} deleted`);
     startTransition(async () => {
-      await deleteDocketBookings([...selected]);
-      toast.success(`${selected.size} docket${selected.size > 1 ? 's' : ''} deleted`);
-      exitSelectMode(); setShowDeleteConfirm(false);
+      await deleteDocketBookings([...deletedIds]);
+      refresh();
     });
   }
 

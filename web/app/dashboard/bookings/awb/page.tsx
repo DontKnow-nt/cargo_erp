@@ -71,10 +71,13 @@ export default function AwbBookingsPage() {
   }
   function exitSelectMode() { setSelectMode(false); setSelected(new Set()); }
   function confirmDelete() {
+    const deletedIds = new Set(selected);
+    // Optimistic: close confirm immediately
+    exitSelectMode(); setShowDeleteConfirm(false);
+    toast.success(`${deletedIds.size} AWB booking${deletedIds.size > 1 ? 's' : ''} deleted`);
     startTransition(async () => {
-      await deleteAwbBookings([...selected]);
-      toast.success(`${selected.size} AWB booking${selected.size > 1 ? 's' : ''} deleted`);
-      exitSelectMode(); setShowDeleteConfirm(false);
+      await deleteAwbBookings([...deletedIds]);
+      refresh(); // immediate refresh after server confirms
     });
   }
 
@@ -118,17 +121,23 @@ export default function AwbBookingsPage() {
     const ck = checkCreditLimit(form.partyId, totalAmount);
     if (!ck.allowed) { toast.error(ck.message); return; }
     if (ck.warning) toast(ck.message, { icon:'⚠️' });
+
+    // Combine prefix + awbNo for full AWB number
+    const fullAwbNo = form.awbPrefix ? `${form.awbPrefix}-${form.awbNo}` : form.awbNo;
+
+    // Optimistic: close form immediately
+    setShowForm(false); setForm(initForm);
+    toast.success(`AWB ${fullAwbNo} booked`);
+
     startTransition(async () => {
       const res = await createAwbBooking({
-        awbNo:form.awbNo, partyId:form.partyId, partyName:selParty?.partyName||'',
+        awbNo: fullAwbNo, partyId:form.partyId, partyName:selParty?.partyName||'',
         origin:form.origin, destination:form.destination, airlineName:form.airlineName,
         bookingDate:form.bookingDate, weight:form.weight, pieces:form.pieces,
         baseRate:form.baseRate, markupAmount:form.markupAmount,
         gstRate:0, gstAmount:0, totalAmount, status:'BOOKED', notes:form.notes,
       });
-      if (res && 'error' in res) { toast.error('Validation error'); return; }
-      toast.success(`AWB ${form.awbNo} booked`);
-      setShowForm(false); setForm(initForm);
+      if (res && 'error' in res) { toast.error('Validation error — booking may not have saved'); }
       refresh();
     });
   }
@@ -389,10 +398,11 @@ export default function AwbBookingsPage() {
             <form onSubmit={handleSubmit}>
               <div className="form-row form-row-2" style={{marginBottom:12}}>
                 <div className="form-group">
-                  <label className="label">AWB Number *</label>
+                  <label className="label">AWB Number * <span style={{fontSize:10,color:'var(--text-muted)',fontWeight:400}}>(prefix-number, e.g. 312-31444)</span></label>
                   <div style={{display:'flex',alignItems:'center',border:'1px solid var(--border)',borderRadius:8,overflow:'hidden',background:'var(--surface-base)'}}>
-                    <input className="input" style={{border:'none',borderRadius:0,width:52,textAlign:'center',fontWeight:700,borderRight:'1px solid var(--border)',background:'var(--surface-sunken)',padding:'0 8px'}} value={form.awbPrefix??'312'} onChange={e=>setForm(f=>({...f,awbPrefix:e.target.value}))} maxLength={5} placeholder="312"/>
-                    <input className="input" style={{border:'none',borderRadius:0,flex:1}} placeholder="e.g. 6E-113344" value={form.awbNo} onChange={e=>setForm(f=>({...f,awbNo:e.target.value}))} required/>
+                    <input className="input" style={{border:'none',borderRadius:0,width:60,textAlign:'center',fontWeight:700,borderRight:'1px solid var(--border)',background:'var(--surface-sunken)',padding:'0 8px',fontFamily:'var(--font-mono)'}} value={form.awbPrefix??'312'} onChange={e=>setForm(f=>({...f,awbPrefix:e.target.value}))} maxLength={5} placeholder="312"/>
+                    <span style={{padding:'0 6px',color:'var(--text-muted)',fontWeight:700}}>-</span>
+                    <input className="input" style={{border:'none',borderRadius:0,flex:1,fontFamily:'var(--font-mono)'}} placeholder="31444" value={form.awbNo} onChange={e=>setForm(f=>({...f,awbNo:e.target.value}))} required/>
                   </div>
                 </div>
                 <div className="form-group">
