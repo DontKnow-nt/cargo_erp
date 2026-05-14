@@ -1,14 +1,24 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store';
+import type {
+  AwbBooking,
+  DocketBooking,
+  Invoice,
+  OutstandingEntry,
+  Party,
+  PaymentReceipt,
+} from '@/lib/mockData';
 
 // Types matching DB snake_case → mapped to camelCase for compatibility
-export type DbParty = { id: string; party_name: string; partyName: string; gstin?: string; contactPerson?: string; phone?: string; email?: string; billingAddress?: string; creditLimit: number; creditDays: number; status: string; createdAt: string };
-export type DbAwbBooking = Record<string, unknown>;
-export type DbDocketBooking = Record<string, unknown>;
-export type DbInvoice = Record<string, unknown>;
-export type DbPayment = Record<string, unknown>;
-export type DbOutstanding = Record<string, unknown>;
+type NormalizedRecord<T> = T & Record<string, unknown>;
+
+export type DbParty = NormalizedRecord<Party>;
+export type DbAwbBooking = NormalizedRecord<AwbBooking>;
+export type DbDocketBooking = NormalizedRecord<DocketBooking>;
+export type DbInvoice = NormalizedRecord<Invoice>;
+export type DbPayment = NormalizedRecord<PaymentReceipt>;
+export type DbOutstanding = NormalizedRecord<OutstandingEntry>;
 
 interface SharedData {
   parties: DbParty[];

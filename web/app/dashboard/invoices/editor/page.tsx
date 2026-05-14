@@ -2,6 +2,7 @@
 'use client';
 import { useState, useRef, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import toast from 'react-hot-toast';
 import { useStore } from '@/lib/store';
 
 // ── Types ─────────────────────────────────────────────────────────────────────

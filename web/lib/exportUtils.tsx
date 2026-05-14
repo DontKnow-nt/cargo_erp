@@ -29,14 +29,16 @@ export function getDateRangeStart(range: DateRange): Date | null {
   return d;
 }
 
-export function filterByDateRange<T extends { [key: string]: unknown }>(
-  items: T[], dateField: keyof T, range: DateRange
+export function filterByDateRange<T, K extends keyof T>(
+  items: T[], dateField: K, range: DateRange
 ): T[] {
   const start = getDateRangeStart(range);
   if (!start) return items;
   return items.filter(item => {
-    const d = new Date(item[dateField] as string);
-    return d >= start;
+    const value = item[dateField];
+    if (typeof value !== 'string' && !(value instanceof Date)) return false;
+    const d = new Date(value);
+    return !Number.isNaN(d.getTime()) && d >= start;
   });
 }
 

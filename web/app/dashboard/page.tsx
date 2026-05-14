@@ -181,7 +181,7 @@ export default function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis dataKey="month" fontSize={11} stroke="var(--text-muted)" />
               <YAxis fontSize={11} stroke="var(--text-muted)" tickFormatter={v => `₹${v / 100000}L`} />
-              <Tooltip contentStyle={{ background: 'var(--surface-base)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`]} />
+              <Tooltip contentStyle={{ background: 'var(--surface-base)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} formatter={(v) => [`₹${Number(v ?? 0).toLocaleString('en-IN')}`]} />
               <Line type="monotone" dataKey="revenue" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 3.5 }} name="Revenue" />
               <Line type="monotone" dataKey="expenses" stroke="#94a3b8" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="5 3" name="Expenses" />
               <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
@@ -196,7 +196,7 @@ export default function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis type="number" fontSize={10} tickFormatter={v => `₹${v / 1000}K`} stroke="var(--text-muted)" />
               <YAxis type="category" dataKey="bucket" fontSize={10} width={52} stroke="var(--text-muted)" />
-              <Tooltip contentStyle={{ background: 'var(--surface-base)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'Amount']} />
+              <Tooltip contentStyle={{ background: 'var(--surface-base)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} formatter={(v) => [`₹${Number(v ?? 0).toLocaleString('en-IN')}`, 'Amount']} />
               <Bar dataKey="amount" fill="#f59e0b" radius={[0, 4, 4, 0]} name="Outstanding" />
             </BarChart>
           </ResponsiveContainer>

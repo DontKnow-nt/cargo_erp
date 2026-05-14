@@ -588,7 +588,7 @@ export default function ImportPage() {
       fd.append('file', fileRef.current.files[0]);
       startTransition(async () => {
         const res = await importCsvBookings(fd, csvModule);
-        if ('error' in res) { toast.error(res.error); return; }
+        if ('error' in res) { toast.error(res.error ?? 'Import failed'); return; }
         toast.success(`Import done: ${res.importedRows} of ${res.totalRows} rows imported`);
         if (res.errors.length > 0) toast(`${res.errorRows} rows had errors`, { icon: '⚠️' });
         setStep(3);

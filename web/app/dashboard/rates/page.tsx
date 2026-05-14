@@ -15,6 +15,7 @@ const STATUS_COLORS: Record<string,[string,string]> = {
 export default function RatesPage() {
   const rateVersions = useStore(s => s.rateVersions);
   const freightRates  = useStore(s => s.freightRates);
+  const addRateVersion = useStore(s => s.addRateVersion);
   const [isPending, startTransition] = useTransition();
 
   const [selVersion, setSelVersion] = useState(rateVersions.find(v=>v.status==='ACTIVE')?.id || rateVersions[0]?.id || '');

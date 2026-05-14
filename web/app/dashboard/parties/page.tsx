@@ -4,11 +4,13 @@ import { Users, Plus, Search, Download, X, CheckCircle, AlertTriangle } from 'lu
 import { useStore } from '@/lib/store';
 import toast from 'react-hot-toast';
 import { createParty, updateParty } from '@/lib/actions/parties';
+import type { Party } from '@/lib/mockData';
 import { shortName } from '@/lib/utils';
 import { useSharedData } from '@/lib/useSharedData';
 import { LiveIndicator } from '@/components/LiveIndicator';
 
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+type PartyForm = Omit<Party, 'id' | 'createdAt'>;
 
 export default function PartiesPage() {
   const { parties, outstanding, refresh } = useSharedData();
@@ -18,7 +20,7 @@ export default function PartiesPage() {
   const [editId, setEditId]   = useState<string|null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const init = { partyName:'', gstin:'', contactPerson:'', phone:'', email:'', billingAddress:'', creditLimit:0, creditDays:30, status:'ACTIVE' as const };
+  const init: PartyForm = { partyName:'', gstin:'', contactPerson:'', phone:'', email:'', billingAddress:'', creditLimit:0, creditDays:30, status:'ACTIVE' };
   const [form, setForm] = useState(init);
 
   const filtered = parties.filter(p =>
