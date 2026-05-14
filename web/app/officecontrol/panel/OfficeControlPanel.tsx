@@ -1,8 +1,8 @@
 'use client';
 import { useState, useTransition } from 'react';
-import { Shield, LogOut, CheckCircle, XCircle, Users, UserPlus, X } from 'lucide-react';
+import { Shield, LogOut, CheckCircle, XCircle, Users, UserPlus, X, Key } from 'lucide-react';
 import { grantPermission, revokePermission, type UserWithPermissions } from '@/lib/actions/officecontrol';
-import { createUser } from '@/lib/actions/admin';
+import { createUser, changeUserPassword } from '@/lib/actions/admin';
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 
@@ -36,6 +36,19 @@ export default function OfficeControlPanel({
   const [showAddUser, setShowAddUser] = useState(false);
   const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'VIEWER' as const });
   const [addError, setAddError] = useState('');
+  const [changePwdUserId, setChangePwdUserId] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [pwdError, setPwdError] = useState('');
+
+  function handleChangePassword() {
+    setPwdError('');
+    startTransition(async () => {
+      const res = await changeUserPassword(changePwdUserId!, { newPassword });
+      if (res && 'error' in res) { setPwdError(res.error as string); return; }
+      toast.success('Password changed');
+      setChangePwdUserId(null); setNewPassword('');
+    });
+  }
 
   function handleAddUser() {
     setAddError('');
@@ -131,6 +144,10 @@ export default function OfficeControlPanel({
               <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>{u.name}</div>
               <div style={{ fontSize: 11, color: '#64748b' }}>{u.email}</div>
               <div style={{ fontSize: 10, color: '#b45309', marginTop: 2 }}>{u.permissions.length} pages granted</div>
+              <button onClick={e => { e.stopPropagation(); setChangePwdUserId(u.id); setNewPassword(''); setPwdError(''); }}
+                style={{ marginTop: 4, fontSize: 10, color: '#64748b', background: 'none', border: '1px solid #e2e8f0', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Key size={10} /> Change Password
+              </button>
             </div>
           ))}
         </div>
@@ -240,6 +257,33 @@ export default function OfficeControlPanel({
             <button onClick={() => { setShowAddUser(false); setAddError(''); }} style={{ padding: '8px 16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, color: '#64748b', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
             <button onClick={handleAddUser} disabled={isPending || !newUser.name || !newUser.email || !newUser.password} style={{ padding: '8px 16px', background: isPending ? '#d97706' : '#f59e0b', border: 'none', borderRadius: 8, color: '#fff', cursor: isPending ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700, boxShadow: '0 2px 6px rgba(245,158,11,0.25)' }}>
               {isPending ? 'Creating…' : 'Create User'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Change Password Modal */}
+    {changePwdUserId && (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '28px', width: '100%', maxWidth: 380, boxShadow: '0 8px 40px rgba(0,0,0,0.12)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}><Key size={15} color="#f59e0b" /> Change Password</div>
+            <button onClick={() => setChangePwdUserId(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={18} /></button>
+          </div>
+          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+            For: <strong>{users.find(u => u.id === changePwdUserId)?.email}</strong>
+          </div>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 5 }}>New Password</label>
+          <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password"
+            placeholder="Min 8 chars, uppercase + number"
+            style={{ width: '100%', padding: '9px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, color: '#0f172a', fontSize: 13, boxSizing: 'border-box', marginBottom: 8 }} />
+          {pwdError && <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 8 }}>{pwdError}</div>}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
+            <button onClick={() => setChangePwdUserId(null)} style={{ padding: '8px 16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, color: '#64748b', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+            <button onClick={handleChangePassword} disabled={isPending || !newPassword}
+              style={{ padding: '8px 16px', background: '#f59e0b', border: 'none', borderRadius: 8, color: '#fff', cursor: isPending ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700 }}>
+              {isPending ? 'Saving…' : 'Save Password'}
             </button>
           </div>
         </div>

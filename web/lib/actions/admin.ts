@@ -5,6 +5,7 @@ import prisma from '@/lib/prisma';
 import { requireRole } from '@/lib/auth';
 import { CreateUserSchema, UpdateUserSchema } from '@/lib/validations';
 import { serverLog } from '@/lib/logger';
+import { z } from 'zod';
 
 export async function getUsers() {
   await requireRole('SUPER_ADMIN');
@@ -48,5 +49,26 @@ export async function updateUser(id: string, data: unknown) {
   });
   serverLog('info', 'user.updated', { adminId: session.user.id, targetUserId: id });
   revalidatePath('/dashboard/admin');
+  return { success: true };
+}
+
+const ChangePasswordSchema = z.object({
+  newPassword: z.string()
+    .min(8, 'Min 8 characters')
+    .max(128)
+    .regex(/[A-Z]/, 'Must contain uppercase')
+    .regex(/[a-z]/, 'Must contain lowercase')
+    .regex(/[0-9]/, 'Must contain number'),
+});
+
+export async function changeUserPassword(userId: string, data: unknown) {
+  const session = await requireRole('SUPER_ADMIN');
+  const parsed = ChangePasswordSchema.safeParse(data);
+  if (!parsed.success) return { error: parsed.error.errors[0].message };
+  const existing = await prisma.user.findUnique({ where: { id: userId } });
+  if (!existing) return { error: 'User not found' };
+  const passwordHash = await bcrypt.hash(parsed.data.newPassword, 12);
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+  serverLog('info', 'user.password_changed', { adminId: session.user.id, targetUserId: userId });
   return { success: true };
 }
