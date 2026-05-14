@@ -5,6 +5,13 @@ import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 
 type BankRecord = Awaited<ReturnType<typeof prisma.bankDetail.findMany>>[number];
+type BankView = {
+  account_name: string;
+  bank_name: string;
+  branch: string;
+  account_number: string;
+  ifsc: string;
+};
 
 interface InvoiceLine {
   id: string;
@@ -110,8 +117,8 @@ export default async function InvoicePrintPage({ params, searchParams }: { param
 
   // Fetch banks for print
   const banks = await prisma.bankDetail.findMany({ orderBy: [{ isDefault: 'desc' }] });
-  const defaultBank = banks[0] ? { account_name: banks[0].accountName, bank_name: banks[0].bankName, branch: banks[0].branch, account_number: banks[0].accountNumber, ifsc: banks[0].ifsc } : undefined;
-  const allBanks = banks.map((b: BankRecord) => ({ account_name: b.accountName, bank_name: b.bankName, branch: b.branch, account_number: b.accountNumber, ifsc: b.ifsc }));
+  const defaultBank: BankView | undefined = banks[0] ? { account_name: banks[0].accountName, bank_name: banks[0].bankName, branch: banks[0].branch, account_number: banks[0].accountNumber, ifsc: banks[0].ifsc } : undefined;
+  const allBanks: BankView[] = banks.map((b: BankRecord) => ({ account_name: b.accountName, bank_name: b.bankName, branch: b.branch, account_number: b.accountNumber, ifsc: b.ifsc }));
 
   const billDate = inv.invoice_date.split('-').reverse().join('.');
   const amtWords = numberToWords(Math.round(inv.grand_total));
@@ -229,7 +236,7 @@ export default async function InvoicePrintPage({ params, searchParams }: { param
         <div style={{ marginTop: 16, border: '1px solid #000', padding: '8px 10px' }}>
           <div style={{ fontWeight: 'bold', fontSize: 11, marginBottom: 6 }}>Payment / Bank Details:</div>
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-            {allBanks.map((b, i) => (
+            {allBanks.map((b: BankView, i) => (
               <div key={i} style={{ fontSize: 10, lineHeight: 1.8 }}>
                 <div><strong>{b.bank_name}</strong>{i === 0 && allBanks[0]?.account_name === defaultBank?.account_name ? ' (Default)' : ''}</div>
                 <div>A/c Name: {b.account_name}</div>

@@ -11,7 +11,7 @@ export type GrantablePage = typeof GRANTABLE_PAGES[number];
 
 export async function getUserPermittedPages(userId: string): Promise<string[]> {
   const granted = await prisma.userPermission.findMany({ where: { userId }, select: { page: true } });
-  return [...DEFAULT_PAGES, ...granted.map(p => p.page)];
+  return [...DEFAULT_PAGES, ...granted.map((p: { page: string }) => p.page)];
 }
 
 export function verifyOfficeControlToken(token: string | undefined): boolean {

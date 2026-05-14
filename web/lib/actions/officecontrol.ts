@@ -4,6 +4,11 @@ import prisma from '@/lib/prisma';
 import { serverLog } from '@/lib/logger';
 import { GRANTABLE_PAGES, type GrantablePage } from '@/lib/permissions';
 
+type PrismaPermissionRecord = { page: string };
+type PrismaUserWithPermissions = Awaited<ReturnType<typeof prisma.user.findMany>>[number] & {
+  permissions: PrismaPermissionRecord[];
+};
+
 export type UserWithPermissions = {
   id: string; name: string; email: string; role: string; status: string; permissions: string[];
 };
@@ -14,7 +19,7 @@ export async function getUsersWithPermissions(): Promise<UserWithPermissions[]> 
     orderBy: { name: 'asc' },
     include: { permissions: { select: { page: true } } },
   });
-  return users.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role, status: u.status, permissions: u.permissions.map(p => p.page) }));
+  return users.map((u: PrismaUserWithPermissions) => ({ id: u.id, name: u.name, email: u.email, role: u.role, status: u.status, permissions: u.permissions.map((p: PrismaPermissionRecord) => p.page) }));
 }
 
 export async function grantPermission(userId: string, page: string, grantedBy: string) {

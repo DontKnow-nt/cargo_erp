@@ -5,6 +5,14 @@ import { requireAuth, requireRole } from '@/lib/auth';
 import { InvoiceLineSchema, UpdateInvoiceLineSchema } from '@/lib/validations';
 import { serverLog } from '@/lib/logger';
 
+type PrismaInvoiceLineRecord = Awaited<ReturnType<typeof prisma.invoiceLine.findMany>>[number];
+
+function calculateInvoiceTotals(lines: PrismaInvoiceLineRecord[]) {
+  const subtotal = lines.reduce((sum: number, line: PrismaInvoiceLineRecord) => sum + line.amount, 0);
+  const gstTotal = lines.reduce((sum: number, line: PrismaInvoiceLineRecord) => sum + line.taxAmount, 0);
+  return { subtotal, gstTotal, grandTotal: subtotal + gstTotal };
+}
+
 export async function getInvoices() {
   await requireRole('ACCOUNTS_EXECUTIVE');
   return prisma.invoice.findMany({ include: { lines: true }, orderBy: { createdAt: 'desc' } });
@@ -106,9 +114,7 @@ export async function updateInvoiceLine(invoiceId: string, lineId: string, data:
   const taxAmount = amount * updated.taxRate / 100;
   await prisma.invoiceLine.update({ where: { id: lineId }, data: { description: updated.description, qty: updated.qty, rate: updated.rate, amount, taxRate: updated.taxRate, taxAmount, lineTotal: amount + taxAmount } });
   const lines = await prisma.invoiceLine.findMany({ where: { invoiceId } });
-  const subtotal = lines.reduce((s, l) => s + l.amount, 0);
-  const gstTotal = lines.reduce((s, l) => s + l.taxAmount, 0);
-  const grandTotal = subtotal + gstTotal;
+  const { subtotal, gstTotal, grandTotal } = calculateInvoiceTotals(lines);
   await prisma.invoice.update({ where: { id: invoiceId }, data: { subtotal, gstTotal, grandTotal, outstandingTotal: Math.max(0, grandTotal - inv.paidTotal) } });
   serverLog('info', 'invoice.line_updated', { userId: session.user.id, invoiceId, lineId });
   revalidatePath('/dashboard/invoices');
@@ -127,9 +133,7 @@ export async function addInvoiceLine(invoiceId: string, data: unknown) {
   const taxAmount = amount * taxRate / 100;
   const newLine = await prisma.invoiceLine.create({ data: { invoiceId, description, qty, rate, amount, taxRate, taxAmount, lineTotal: amount + taxAmount } });
   const lines = await prisma.invoiceLine.findMany({ where: { invoiceId } });
-  const subtotal = lines.reduce((s, l) => s + l.amount, 0);
-  const gstTotal = lines.reduce((s, l) => s + l.taxAmount, 0);
-  const grandTotal = subtotal + gstTotal;
+  const { subtotal, gstTotal, grandTotal } = calculateInvoiceTotals(lines);
   await prisma.invoice.update({ where: { id: invoiceId }, data: { subtotal, gstTotal, grandTotal, outstandingTotal: Math.max(0, grandTotal - inv.paidTotal) } });
   serverLog('info', 'invoice.line_added', { userId: session.user.id, invoiceId, lineId: newLine.id });
   revalidatePath('/dashboard/invoices');
