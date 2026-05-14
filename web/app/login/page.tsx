@@ -21,7 +21,9 @@ export default function LoginPage() {
         redirect: false,
       });
       if (result?.error) {
-        setError('Invalid email or password.');
+        setError(`Sign in failed: ${result.error}`);
+      } else if (!result?.ok) {
+        setError('Sign in failed. Check your credentials and try again.');
       } else {
         window.location.href = '/dashboard';
       }
