@@ -10,6 +10,7 @@ import { CreatorAvatar } from '@/components/CreatorAvatar';
 import { useSharedData } from '@/lib/useSharedData';
 import { LiveIndicator } from '@/components/LiveIndicator';
 import RecordActivityAvatars from '@/components/RecordActivityAvatars';
+import { AddPartyModal } from '@/components/AddPartyModal';
 
 const CITIES = ['DEL','BOM','BLR','HYD','MAA','CCU','AMD','COK','JAI','PNQ','PNE','SXR'];
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -28,6 +29,7 @@ export default function DocketBookingsPage() {
 
   const [showForm, setShowForm]   = useState(false);
   const [showBulk, setShowBulk]   = useState(false);
+  const [showAddParty, setShowAddParty] = useState(false);
   const [connectAwbDocket, setConnectAwbDocket] = useState<typeof docketBookings[0]|null>(null);
   const [editingId, setEditingId]   = useState<string|null>(null);
   const [editForm, setEditForm]     = useState<Partial<typeof docketBookings[0]>>({});
@@ -69,7 +71,7 @@ export default function DocketBookingsPage() {
     });
   }
 
-  const init = { docketNo:'', partyId:'', bookingDate:new Date().toISOString().split('T')[0], origin:'', destination:'', description:'', rateFittedAmount:0, markupAmount:0, gstRate:18, dueDatePolicy:30, notes:'', wayBillNo:'', consignee:'', value:0, methodOfPacking:'' };
+  const init = { docketNo:'', partyId:'', bookingDate:new Date().toISOString().split('T')[0], origin:'', destination:'', description:'', weight:0, rateFittedAmount:0, markupAmount:0, gstRate:18, dueDatePolicy:30, notes:'', wayBillNo:'', consignee:'', value:0, methodOfPacking:'' };
   const [form, setForm] = useState(init);
 
   const activeParties = parties.filter(p => p.status==='ACTIVE');
@@ -262,6 +264,12 @@ export default function DocketBookingsPage() {
                             Gen Invoice
                           </button>
                         )}
+                        {!selectMode && (
+                          <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px',color:'#7c3aed',whiteSpace:'nowrap'}} title="Open docket editor"
+                            onClick={e=>{e.stopPropagation();window.open(`/dashboard/bookings/dockets/editor?id=${b.id}`,'_blank');}}>
+                            🖨️ Print
+                          </button>
+                        )}
                         {!selectMode && !b.linkedAwbId && (
                           <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px',color:'#0369a1',whiteSpace:'nowrap'}} onClick={e=>{e.stopPropagation();setConnectAwbDocket(b);}}>
                             + AWB
@@ -348,10 +356,13 @@ export default function DocketBookingsPage() {
                 </div>
                 <div className="form-group">
                   <label className="label">Party *</label>
-                  <select className="input" value={form.partyId} onChange={e=>setForm(f=>({...f,partyId:e.target.value}))} required>
-                    <option value="">Select party…</option>
-                    {activeParties.map(p=><option key={p.id} value={p.id}>{p.partyName}</option>)}
-                  </select>
+                  <div style={{display:'flex',gap:6}}>
+                    <select className="input" style={{flex:1}} value={form.partyId} onChange={e=>setForm(f=>({...f,partyId:e.target.value}))} required>
+                      <option value="">Select party…</option>
+                      {activeParties.map(p=><option key={p.id} value={p.id}>{p.partyName}</option>)}
+                    </select>
+                    <button type="button" className="btn btn-secondary btn-sm" style={{whiteSpace:'nowrap'}} onClick={()=>setShowAddParty(true)}><Plus size={12}/> Party</button>
+                  </div>
                 </div>
               </div>
               <div className="form-row form-row-3" style={{marginBottom:12}}>
@@ -378,6 +389,10 @@ export default function DocketBookingsPage() {
               </div>
               <div className="form-row form-row-3" style={{marginBottom:16}}>
                 <div className="form-group">
+                  <label className="label">Weight (kg)</label>
+                  <input className="input" type="number" min="0" step="0.1" placeholder="0" value={form.weight||''} onChange={e=>setForm(f=>({...f,weight:parseFloat(e.target.value)||0}))}/>
+                </div>
+                <div className="form-group">
                   <label className="label">Freight Rate (₹) *</label>
                   <input className="input" type="number" min="0" step="0.01" value={form.rateFittedAmount||''} onChange={e=>setForm(f=>({...f,rateFittedAmount:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}} required/>
                 </div>
@@ -385,6 +400,8 @@ export default function DocketBookingsPage() {
                   <label className="label">Markup (₹)</label>
                   <input className="input" type="number" min="0" step="0.01" value={form.markupAmount||''} onChange={e=>setForm(f=>({...f,markupAmount:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}}/>
                 </div>
+              </div>
+              <div className="form-row form-row-2" style={{marginBottom:16}}>
                 <div className="form-group">
                   <label className="label">Due Date Policy (days)</label>
                   <input className="input" type="number" min="0" value={form.dueDatePolicy} onChange={e=>setForm(f=>({...f,dueDatePolicy:parseInt(e.target.value)||30}))}/>
@@ -443,6 +460,16 @@ export default function DocketBookingsPage() {
       )}
 
       {showBulk && <DocketBulkDownloadModal docketBookings={docketBookings} onClose={()=>setShowBulk(false)}/>}
+
+      {showAddParty && (
+        <AddPartyModal
+          onCreated={(party) => {
+            setForm(f => ({ ...f, partyId: party.id }));
+            refresh();
+          }}
+          onClose={() => setShowAddParty(false)}
+        />
+      )}
 
       {connectAwbDocket && (
         <ConnectAwbModal

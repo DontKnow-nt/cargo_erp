@@ -7,10 +7,16 @@ export async function middleware(req: NextRequest) {
 
   const isProtected =
     pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/print') ||
     pathname.startsWith('/api/invoices') ||
     pathname.startsWith('/api/parties') ||
     pathname.startsWith('/api/payments') ||
-    pathname.startsWith('/api/admin');
+    pathname.startsWith('/api/admin') ||
+    pathname.startsWith('/api/data') ||
+    pathname.startsWith('/api/banks') ||
+    pathname.startsWith('/api/user-name') ||
+    pathname.startsWith('/api/user-permissions') ||
+    pathname.startsWith('/api/check-permission');
 
   if (!isProtected) return NextResponse.next();
 
@@ -22,17 +28,21 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Per-page permission enforcement is handled server-side in each page/layout
-  // (middleware can't access SQLite — Edge runtime limitation)
   return NextResponse.next();
 }
 
 export const config = {
   matcher: [
     '/dashboard/:path*',
+    '/print/:path*',
     '/api/invoices/:path*',
     '/api/parties/:path*',
     '/api/payments/:path*',
     '/api/admin/:path*',
+    '/api/data/:path*',
+    '/api/banks/:path*',
+    '/api/user-name/:path*',
+    '/api/user-permissions/:path*',
+    '/api/check-permission/:path*',
   ],
 };

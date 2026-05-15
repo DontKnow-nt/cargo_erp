@@ -92,9 +92,18 @@ function LabelCell({ style, children }: { style?: React.CSSProperties; children:
 export default function CargoWayBillPage() {
   const paperRef = useRef<HTMLDivElement>(null);
 
-  const handlePrint = useCallback(() => {
+  const handlePrint = useCallback(async () => {
     const el = paperRef.current;
     if (!el) return;
+    const clone = el.cloneNode(true) as HTMLElement;
+    try {
+      const resp = await fetch('/logo.png');
+      const blob2 = await resp.blob();
+      const b64 = await new Promise<string>(res => {
+        const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(blob2);
+      });
+      clone.querySelectorAll('img').forEach(img => { img.src = b64; });
+    } catch { /* skip */ }
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Cargo Way Bill</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -105,7 +114,7 @@ td{border:1px solid #000;padding:3px 5px;font-size:10px;vertical-align:top}
 img{max-width:100%;object-fit:contain}
 @media print{@page{margin:6mm}body{padding:4px}}
 </style></head>
-<body>${el.innerHTML}
+<body>${clone.innerHTML}
 <script>window.onload=function(){window.print();}<\/script>
 </body></html>`;
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });

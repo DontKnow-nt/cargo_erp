@@ -144,12 +144,13 @@ function buildInitialRows(inv: any, party: any): Row[] {
 
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
-function Toolbar({ sel, onStyle, onAddRow, onAddCol, onDelRow, onDelCol, onPrint, onUndo, onRedo, canUndo, canRedo }: {
+function Toolbar({ sel, onStyle, onAddRow, onAddCol, onDelRow, onDelCol, onPrint, onDownload, onUndo, onRedo, canUndo, canRedo }: {
   sel: { row: number; col: number } | null;
   onStyle: (s: Partial<CellStyle>) => void;
   onAddRow: () => void; onAddCol: () => void;
   onDelRow: () => void; onDelCol: () => void;
   onPrint: () => void;
+  onDownload: () => void;
   onUndo: () => void; onRedo: () => void;
   canUndo: boolean; canRedo: boolean;
 }) {
@@ -210,7 +211,8 @@ function Toolbar({ sel, onStyle, onAddRow, onAddCol, onDelRow, onDelCol, onPrint
       {btn('− Col', 'Delete selected column', onDelCol, '#dc2626')}
       {sep}
 
-      {btn('🖨 Print / Save PDF', 'Print invoice only', onPrint, '#1d4ed8')}
+      {btn('🖨 Print', 'Print invoice', onPrint, '#1d4ed8')}
+      {btn('⬇ Download HTML', 'Download edited invoice as HTML file', onDownload, '#059669')}
 
       {sel && (
         <span style={{ marginLeft: 'auto', fontSize: 11, color: '#6b7280', fontFamily: 'monospace' }}>
@@ -396,6 +398,22 @@ function EditorInner() {
   const handlePrint = () => {
     const el = document.getElementById('invoice-paper');
     if (!el) return;
+    
+    // Clone the element to avoid modifying the original
+    const clone = el.cloneNode(true) as HTMLElement;
+    
+    // Remove selection highlights from clone
+    clone.querySelectorAll('[style*="outline"]').forEach((node) => {
+      const el = node as HTMLElement;
+      el.style.outline = 'none';
+    });
+    clone.querySelectorAll('[style*="background: #eff6ff"], [style*="background:#eff6ff"]').forEach((node) => {
+      const el = node as HTMLElement;
+      if (el.style.background === '#eff6ff' || el.style.background === 'rgb(239, 246, 255)') {
+        el.style.background = 'transparent';
+      }
+    });
+    
     // Capture the exact rendered HTML of the invoice paper
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -410,13 +428,68 @@ function EditorInner() {
   @media print { @page { margin: 8mm; } }
 </style>
 </head>
-<body>${el.innerHTML}</body>
+<body>${clone.innerHTML}</body>
 </html>`;
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const win = window.open(url, '_blank', 'width=1100,height=800');
     if (!win) { toast.error('Popup blocked. Allow popups to print invoice.'); URL.revokeObjectURL(url); return; }
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    
+    // Auto-trigger print dialog after the window loads
+    win.onload = () => {
+      setTimeout(() => {
+        win.print();
+        // Offer download option
+        const downloadLink = win.document.createElement('a');
+        downloadLink.href = url;
+        downloadLink.download = `invoice_${inv?.invoiceNo || 'download'}.html`;
+        win.document.body.appendChild(downloadLink);
+      }, 100);
+    };
+    
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  };
+
+  // ── Download HTML ───────────────────────────────────────────────────────────
+  const handleDownload = () => {
+    const el = document.getElementById('invoice-paper');
+    if (!el || !inv) return;
+    
+    // Clone the element to avoid modifying the original
+    const clone = el.cloneNode(true) as HTMLElement;
+    
+    // Remove selection highlights from clone
+    clone.querySelectorAll('[style*="outline"]').forEach((node) => {
+      const el = node as HTMLElement;
+      el.style.outline = 'none';
+    });
+    
+    // Capture the HTML
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Invoice - ${inv.invoiceNo}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #fff; padding: 20px; }
+  table { width: 100%; border-collapse: collapse; }
+  [contenteditable] { outline: none; }
+</style>
+</head>
+<body>${clone.innerHTML}</body>
+</html>`;
+    
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `invoice_${inv.invoiceNo}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('Invoice downloaded');
   };
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -439,6 +512,7 @@ function EditorInner() {
           onAddRow={addRow} onAddCol={addCol}
           onDelRow={delRow} onDelCol={delCol}
           onPrint={handlePrint}
+          onDownload={handleDownload}
           onUndo={undo} onRedo={redo}
           canUndo={undoStack.current.length > 0}
           canRedo={redoStack.current.length > 0}

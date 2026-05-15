@@ -126,6 +126,7 @@ model DocketBooking {
   origin           String?
   destination      String?
   description      String?
+  weight           Float?   @default(0)
   rateFittedAmount Float    @map("rate_fitted_amount")
   markupAmount     Float    @default(0) @map("markup_amount")
   gstRate          Float    @default(18) @map("gst_rate")

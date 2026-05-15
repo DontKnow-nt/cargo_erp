@@ -10,6 +10,7 @@ import { CreatorAvatar } from '@/components/CreatorAvatar';
 import { useSharedData } from '@/lib/useSharedData';
 import { LiveIndicator } from '@/components/LiveIndicator';
 import RecordActivityAvatars from '@/components/RecordActivityAvatars';
+import { AddPartyModal } from '@/components/AddPartyModal';
 
 const AIRLINES = ['IndiGo','Air India','SpiceJet','GoAir','Vistara','Akasa Air'];
 const CITIES   = ['DEL','BOM','BLR','HYD','MAA','CCU','AMD','COK','JAI','PNQ','BHO','IXR'];
@@ -30,6 +31,7 @@ export default function AwbBookingsPage() {
 
   const [showForm, setShowForm]     = useState(false);
   const [showBulk, setShowBulk]     = useState(false);
+  const [showAddParty, setShowAddParty] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingId, setEditingId]   = useState<string|null>(null);
   const [editForm, setEditForm]     = useState<Partial<typeof awbBookings[0]>>({});
@@ -407,10 +409,13 @@ export default function AwbBookingsPage() {
                 </div>
                 <div className="form-group">
                   <label className="label">Party / Customer *</label>
-                  <select className="input" value={form.partyId} onChange={e=>setForm(f=>({...f,partyId:e.target.value}))} required>
-                    <option value="">Select party…</option>
-                    {activeParties.map(p=><option key={p.id} value={p.id}>{p.partyName}</option>)}
-                  </select>
+                  <div style={{display:'flex',gap:6}}>
+                    <select className="input" style={{flex:1}} value={form.partyId} onChange={e=>setForm(f=>({...f,partyId:e.target.value}))} required>
+                      <option value="">Select party…</option>
+                      {activeParties.map(p=><option key={p.id} value={p.id}>{p.partyName}</option>)}
+                    </select>
+                    <button type="button" className="btn btn-secondary btn-sm" style={{whiteSpace:'nowrap'}} onClick={()=>setShowAddParty(true)}><Plus size={12}/> Party</button>
+                  </div>
                 </div>
               </div>
               <div className="form-row form-row-3" style={{marginBottom:12}}>
@@ -493,6 +498,16 @@ export default function AwbBookingsPage() {
       )}
 
       {showBulk && <AwbBulkDownloadModal awbBookings={awbBookings} onClose={()=>setShowBulk(false)}/>}
+
+      {showAddParty && (
+        <AddPartyModal
+          onCreated={(party) => {
+            setForm(f => ({ ...f, partyId: party.id }));
+            refresh();
+          }}
+          onClose={() => setShowAddParty(false)}
+        />
+      )}
 
       {docketAwb && (
         <AddDocketFromAwbModal
