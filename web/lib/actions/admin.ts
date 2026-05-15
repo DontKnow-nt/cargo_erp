@@ -61,6 +61,17 @@ const ChangePasswordSchema = z.object({
     .regex(/[0-9]/, 'Must contain number'),
 });
 
+export async function deleteUser(userId: string) {
+  const session = await requireRole('SUPER_ADMIN');
+  if (userId === session.user.id) return { error: 'Cannot delete your own account' };
+  const existing = await prisma.user.findUnique({ where: { id: userId } });
+  if (!existing) return { error: 'User not found' };
+  await prisma.user.update({ where: { id: userId }, data: { status: 'DELETED' } });
+  serverLog('info', 'user.deleted', { adminId: session.user.id, targetUserId: userId });
+  revalidatePath('/officecontrol/panel');
+  return { success: true };
+}
+
 export async function changeUserPassword(userId: string, data: unknown) {
   const session = await requireRole('SUPER_ADMIN');
   const parsed = ChangePasswordSchema.safeParse(data);

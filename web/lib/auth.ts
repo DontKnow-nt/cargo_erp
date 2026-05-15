@@ -72,6 +72,9 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as { role?: string; id?: string }).role = token.role as string;
         (session.user as { id?: string }).id = token.id as string;
+        // Instantly invalidate session if user was deleted
+        const dbUser = await prisma.user.findUnique({ where: { id: token.id as string }, select: { status: true } });
+        if (!dbUser || dbUser.status !== 'ACTIVE') return { ...session, user: undefined as any };
       }
       return session;
     },

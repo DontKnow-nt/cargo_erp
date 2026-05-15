@@ -1,8 +1,8 @@
 'use client';
 import { useState, useTransition } from 'react';
-import { Shield, LogOut, CheckCircle, XCircle, Users, UserPlus, X, Key } from 'lucide-react';
+import { Shield, LogOut, CheckCircle, XCircle, Users, UserPlus, X, Key, Trash2 } from 'lucide-react';
 import { grantPermission, revokePermission, type UserWithPermissions } from '@/lib/actions/officecontrol';
-import { createUser, changeUserPassword } from '@/lib/actions/admin';
+import { createUser, changeUserPassword, deleteUser } from '@/lib/actions/admin';
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 
@@ -39,6 +39,19 @@ export default function OfficeControlPanel({
   const [changePwdUserId, setChangePwdUserId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [pwdError, setPwdError] = useState('');
+  const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
+
+  function handleDeleteUser() {
+    const id = deleteUserId!;
+    setDeleteUserId(null);
+    startTransition(async () => {
+      const res = await deleteUser(id);
+      if (res && 'error' in res) { toast.error(res.error as string); return; }
+      toast.success('User deleted');
+      setUsers(prev => prev.filter(u => u.id !== id));
+      if (selectedUser?.id === id) setSelectedUser(null);
+    });
+  }
 
   function handleChangePassword() {
     setPwdError('');
@@ -147,6 +160,10 @@ export default function OfficeControlPanel({
               <button onClick={e => { e.stopPropagation(); setChangePwdUserId(u.id); setNewPassword(''); setPwdError(''); }}
                 style={{ marginTop: 4, fontSize: 10, color: '#64748b', background: 'none', border: '1px solid #e2e8f0', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                 <Key size={10} /> Change Password
+              </button>
+              <button onClick={e => { e.stopPropagation(); setDeleteUserId(u.id); }}
+                style={{ marginTop: 4, fontSize: 10, color: '#dc2626', background: 'none', border: '1px solid #fecaca', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Trash2 size={10} /> Delete User
               </button>
             </div>
           ))}
@@ -285,6 +302,28 @@ export default function OfficeControlPanel({
               style={{ padding: '8px 16px', background: '#f59e0b', border: 'none', borderRadius: 8, color: '#fff', cursor: isPending ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700 }}>
               {isPending ? 'Saving…' : 'Save Password'}
             </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Delete User Confirm Modal */}
+    {deleteUserId && (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '28px', width: '100%', maxWidth: 380, boxShadow: '0 8px 40px rgba(0,0,0,0.12)', textAlign: 'center' }}>
+          <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#fef2f2', border: '2px solid #fca5a5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+            <Trash2 size={20} color="#dc2626" />
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>Delete User?</div>
+          <div style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>
+            <strong>{users.find(u => u.id === deleteUserId)?.name}</strong> ({users.find(u => u.id === deleteUserId)?.email})
+          </div>
+          <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 20 }}>
+            They will be instantly logged out and cannot log in again.
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+            <button onClick={() => setDeleteUserId(null)} style={{ padding: '8px 18px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, color: '#64748b', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+            <button onClick={handleDeleteUser} style={{ padding: '8px 18px', background: '#dc2626', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>Delete</button>
           </div>
         </div>
       </div>
