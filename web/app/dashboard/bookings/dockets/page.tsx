@@ -343,104 +343,102 @@ export default function DocketBookingsPage() {
 
       {showForm && (
         <div className="modal-overlay">
-          <div className="modal-box" style={{maxWidth:640}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-              <h2 style={{fontSize:16,fontWeight:800}}>New Docket Booking</h2>
+          <div className="modal-box" style={{maxWidth:760,padding:20}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+              <h2 style={{fontSize:15,fontWeight:800}}>New Docket Booking</h2>
               <button className="btn btn-ghost btn-icon" onClick={()=>{setShowForm(false);setForm(init);}}><X size={16}/></button>
             </div>
             <form onSubmit={handleSubmit}>
-              <div className="form-row form-row-2" style={{marginBottom:12}}>
-                <div className="form-group">
-                  <label className="label">Docket No. *</label>
-                  <input className="input" placeholder="e.g. DKT-2026-0010" value={form.docketNo} onChange={e=>setForm(f=>({...f,docketNo:e.target.value}))} required/>
+              {/* Row 1: Docket No + Party */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Docket No. *</label>
+                  <input className="input" style={{height:32,fontSize:12}} placeholder="e.g. DKT-2026-0010" value={form.docketNo} onChange={e=>setForm(f=>({...f,docketNo:e.target.value}))} required/>
                 </div>
-                <div className="form-group">
-                  <label className="label">Party *</label>
-                  <div style={{display:'flex',gap:6}}>
-                    <select className="input" style={{flex:1}} value={form.partyId} onChange={e=>setForm(f=>({...f,partyId:e.target.value}))} required>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Party *</label>
+                  <div style={{display:'flex',gap:5}}>
+                    <select className="input" style={{flex:1,height:32,fontSize:12}} value={form.partyId} onChange={e=>setForm(f=>({...f,partyId:e.target.value}))} required>
                       <option value="">Select party…</option>
                       {activeParties.map(p=><option key={p.id} value={p.id}>{p.partyName}</option>)}
                     </select>
-                    <button type="button" className="btn btn-secondary btn-sm" style={{whiteSpace:'nowrap'}} onClick={()=>setShowAddParty(true)}><Plus size={12}/> Party</button>
+                    <button type="button" className="btn btn-secondary btn-sm" style={{whiteSpace:'nowrap',height:32,fontSize:11}} onClick={()=>setShowAddParty(true)}><Plus size={11}/> Party</button>
                   </div>
                 </div>
               </div>
-              <div className="form-row form-row-3" style={{marginBottom:12}}>
-                <div className="form-group">
-                  <label className="label">Origin</label>
-                  <select className="input" value={form.origin} onChange={e=>setForm(f=>({...f,origin:e.target.value}))}>
+              {/* Row 2: Origin + Destination + Date + Description */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 2fr',gap:8,marginBottom:8}}>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Origin</label>
+                  <select className="input" style={{height:32,fontSize:12}} value={form.origin} onChange={e=>setForm(f=>({...f,origin:e.target.value}))}>
                     <option value="">—</option>{CITIES.map(c=><option key={c}>{c}</option>)}
                   </select>
                 </div>
-                <div className="form-group">
-                  <label className="label">Destination</label>
-                  <select className="input" value={form.destination} onChange={e=>setForm(f=>({...f,destination:e.target.value}))}>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Destination</label>
+                  <select className="input" style={{height:32,fontSize:12}} value={form.destination} onChange={e=>setForm(f=>({...f,destination:e.target.value}))}>
                     <option value="">—</option>{CITIES.map(c=><option key={c}>{c}</option>)}
                   </select>
                 </div>
-                <div className="form-group">
-                  <label className="label">Booking Date</label>
-                  <input className="input" type="date" value={form.bookingDate} onChange={e=>setForm(f=>({...f,bookingDate:e.target.value}))}/>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Booking Date</label>
+                  <input className="input" style={{height:32,fontSize:12}} type="date" value={form.bookingDate} onChange={e=>setForm(f=>({...f,bookingDate:e.target.value}))}/>
+                </div>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Description / Goods</label>
+                  <input className="input" style={{height:32,fontSize:12}} placeholder="e.g. Packaging materials…" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))}/>
                 </div>
               </div>
-              <div className="form-group" style={{marginBottom:12}}>
-                <label className="label">Description / Goods</label>
-                <input className="input" placeholder="e.g. Packaging materials, auto parts…" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))}/>
-              </div>
-              <div className="form-row form-row-3" style={{marginBottom:16}}>
-                <div className="form-group">
-                  <label className="label">Weight (kg)</label>
-                  <input className="input" type="number" min="0" step="0.1" placeholder="0" value={form.weight||''} onChange={e=>setForm(f=>({...f,weight:parseFloat(e.target.value)||0}))}/>
+              {/* Row 3: Weight + Freight + Markup + Due Date */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8,marginBottom:8}}>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Weight (kg)</label>
+                  <input className="input" style={{height:32,fontSize:12}} type="number" min="0" step="0.1" placeholder="0" value={form.weight||''} onChange={e=>setForm(f=>({...f,weight:parseFloat(e.target.value)||0}))}/>
                 </div>
-                <div className="form-group">
-                  <label className="label">Freight Rate (₹) *</label>
-                  <input className="input" type="number" min="0" step="0.01" value={form.rateFittedAmount||''} onChange={e=>setForm(f=>({...f,rateFittedAmount:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}} required/>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Freight Rate (₹) *</label>
+                  <input className="input" style={{height:32,fontSize:12,fontFamily:'var(--font-mono)'}} type="number" min="0" step="0.01" value={form.rateFittedAmount||''} onChange={e=>setForm(f=>({...f,rateFittedAmount:parseFloat(e.target.value)||0}))} required/>
                 </div>
-                <div className="form-group">
-                  <label className="label">Markup (₹)</label>
-                  <input className="input" type="number" min="0" step="0.01" value={form.markupAmount||''} onChange={e=>setForm(f=>({...f,markupAmount:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}}/>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Markup (₹)</label>
+                  <input className="input" style={{height:32,fontSize:12,fontFamily:'var(--font-mono)'}} type="number" min="0" step="0.01" value={form.markupAmount||''} onChange={e=>setForm(f=>({...f,markupAmount:parseFloat(e.target.value)||0}))}/>
                 </div>
-              </div>
-              <div className="form-row form-row-2" style={{marginBottom:16}}>
-                <div className="form-group">
-                  <label className="label">Due Date Policy (days)</label>
-                  <input className="input" type="number" min="0" value={form.dueDatePolicy} onChange={e=>setForm(f=>({...f,dueDatePolicy:parseInt(e.target.value)||30}))}/>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Due Date (days)</label>
+                  <input className="input" style={{height:32,fontSize:12}} type="number" min="0" value={form.dueDatePolicy} onChange={e=>setForm(f=>({...f,dueDatePolicy:parseInt(e.target.value)||30}))}/>
                 </div>
               </div>
-
-              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:16}}>
+              {/* Totals summary */}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6,marginBottom:8}}>
                 {[
                   { label:'Freight',val:`₹${form.rateFittedAmount.toFixed(0)}` },
                   { label:'Markup', val:`₹${form.markupAmount.toFixed(0)}` },
                   { label:`GST ${form.gstRate}%`, val:`₹${gstAmount.toFixed(0)}` },
                   { label:'Total',  val:fmt(totalAmount), hi:true },
                 ].map(s=>(
-                  <div key={s.label} style={{padding:'9px 12px',background:s.hi?'var(--accent-subtle)':'var(--surface-sunken)',border:`1px solid ${s.hi?'var(--warning-border)':'var(--border)'}`,borderRadius:8}}>
-                    <div style={{fontSize:10,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.07em'}}>{s.label}</div>
-                    <div style={{fontSize:15,fontWeight:800,fontFamily:'var(--font-mono)',color:s.hi?'var(--accent-dark)':'var(--text-primary)'}}>{s.val}</div>
+                  <div key={s.label} style={{padding:'6px 10px',background:s.hi?'var(--accent-subtle)':'var(--surface-sunken)',border:`1px solid ${s.hi?'var(--warning-border)':'var(--border)'}`,borderRadius:7}}>
+                    <div style={{fontSize:9,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.07em'}}>{s.label}</div>
+                    <div style={{fontSize:13,fontWeight:800,fontFamily:'var(--font-mono)',color:s.hi?'var(--accent-dark)':'var(--text-primary)'}}>{s.val}</div>
                   </div>
                 ))}
               </div>
-
-              {/* New fields */}
-              <div className="form-row form-row-2" style={{marginBottom:12}}>
-                <div className="form-group">
-                  <label className="label">Way Bill No.</label>
-                  <input className="input" placeholder="e.g. WB-2026-001" value={form.wayBillNo} onChange={e=>setForm(f=>({...f,wayBillNo:e.target.value}))}/>
+              {/* Row 4: Way Bill + Consignee + Value + Packing */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8,marginBottom:8}}>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Way Bill No.</label>
+                  <input className="input" style={{height:32,fontSize:12}} placeholder="WB-2026-001" value={form.wayBillNo} onChange={e=>setForm(f=>({...f,wayBillNo:e.target.value}))}/>
                 </div>
-                <div className="form-group">
-                  <label className="label">Consignee</label>
-                  <input className="input" placeholder="Consignee name" value={form.consignee} onChange={e=>setForm(f=>({...f,consignee:e.target.value}))}/>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Consignee</label>
+                  <input className="input" style={{height:32,fontSize:12}} placeholder="Consignee name" value={form.consignee} onChange={e=>setForm(f=>({...f,consignee:e.target.value}))}/>
                 </div>
-              </div>
-              <div className="form-row form-row-2" style={{marginBottom:12}}>
-                <div className="form-group">
-                  <label className="label">Value (₹)</label>
-                  <input className="input" type="number" min="0" step="0.01" value={form.value||''} onChange={e=>setForm(f=>({...f,value:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}}/>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Value (₹)</label>
+                  <input className="input" style={{height:32,fontSize:12,fontFamily:'var(--font-mono)'}} type="number" min="0" step="0.01" value={form.value||''} onChange={e=>setForm(f=>({...f,value:parseFloat(e.target.value)||0}))}/>
                 </div>
-                <div className="form-group">
-                  <label className="label">Method of Packing</label>
-                  <input className="input" placeholder="e.g. Carton, Wooden Box…" value={form.methodOfPacking} onChange={e=>setForm(f=>({...f,methodOfPacking:e.target.value}))}/>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Method of Packing</label>
+                  <input className="input" style={{height:32,fontSize:12}} placeholder="e.g. Carton…" value={form.methodOfPacking} onChange={e=>setForm(f=>({...f,methodOfPacking:e.target.value}))}/>
                 </div>
               </div>
 
