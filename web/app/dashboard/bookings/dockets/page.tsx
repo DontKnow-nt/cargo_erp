@@ -114,8 +114,14 @@ export default function DocketBookingsPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.docketNo || !form.partyId || form.rateFittedAmount <= 0) {
+    if (!form.docketNo || !form.partyId) {
       toast.error('Fill all required fields'); return;
+    }
+    // Save any new custom cities to localStorage
+    if (typeof window !== 'undefined') {
+      const saved: string[] = JSON.parse(localStorage.getItem('customCities') || '[]');
+      const updated = [...new Set([...saved, ...[form.origin, form.destination].filter(c => c && !CITIES.includes(c))])];
+      localStorage.setItem('customCities', JSON.stringify(updated));
     }
     const ck = checkCreditLimit(form.partyId, totalAmount);
     if (!ck.allowed) { toast.error(ck.message); return; }
@@ -370,16 +376,15 @@ export default function DocketBookingsPage() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 2fr',gap:8,marginBottom:8}}>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="label" style={{fontSize:11}}>Origin</label>
-                  <select className="input" style={{height:32,fontSize:12}} value={form.origin} onChange={e=>setForm(f=>({...f,origin:e.target.value}))}>
-                    <option value="">—</option>{CITIES.map(c=><option key={c}>{c}</option>)}
-                  </select>
+                  <input className="input" style={{height:32,fontSize:12}} list="cities-list" placeholder="e.g. DEL" value={form.origin} onChange={e=>setForm(f=>({...f,origin:e.target.value.toUpperCase()}))}/>
                 </div>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="label" style={{fontSize:11}}>Destination</label>
-                  <select className="input" style={{height:32,fontSize:12}} value={form.destination} onChange={e=>setForm(f=>({...f,destination:e.target.value}))}>
-                    <option value="">—</option>{CITIES.map(c=><option key={c}>{c}</option>)}
-                  </select>
+                  <input className="input" style={{height:32,fontSize:12}} list="cities-list" placeholder="e.g. BOM" value={form.destination} onChange={e=>setForm(f=>({...f,destination:e.target.value.toUpperCase()}))}/>
                 </div>
+                <datalist id="cities-list">
+                  {[...new Set([...CITIES,...(typeof window!=='undefined'?JSON.parse(localStorage.getItem('customCities')||'[]'):[])])].map((c:string)=><option key={c} value={c}/>)}
+                </datalist>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="label" style={{fontSize:11}}>Booking Date</label>
                   <input className="input" style={{height:32,fontSize:12}} type="date" value={form.bookingDate} onChange={e=>setForm(f=>({...f,bookingDate:e.target.value}))}/>
@@ -389,15 +394,11 @@ export default function DocketBookingsPage() {
                   <input className="input" style={{height:32,fontSize:12}} placeholder="e.g. Packaging materials…" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))}/>
                 </div>
               </div>
-              {/* Row 3: Weight + Freight + Markup + Due Date */}
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8,marginBottom:8}}>
+              {/* Row 3: Weight + Markup + Due Date */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:8}}>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="label" style={{fontSize:11}}>Weight (kg)</label>
                   <input className="input" style={{height:32,fontSize:12}} type="number" min="0" step="0.1" placeholder="0" value={form.weight||''} onChange={e=>setForm(f=>({...f,weight:parseFloat(e.target.value)||0}))}/>
-                </div>
-                <div className="form-group" style={{marginBottom:0}}>
-                  <label className="label" style={{fontSize:11}}>Freight Rate (₹) *</label>
-                  <input className="input" style={{height:32,fontSize:12,fontFamily:'var(--font-mono)'}} type="number" min="0" step="0.01" value={form.rateFittedAmount||''} onChange={e=>setForm(f=>({...f,rateFittedAmount:parseFloat(e.target.value)||0}))} required/>
                 </div>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="label" style={{fontSize:11}}>Markup (₹)</label>
