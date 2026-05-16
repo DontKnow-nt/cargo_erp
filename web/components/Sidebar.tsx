@@ -43,14 +43,12 @@ const navSections = [
         ],
       },
       {
-        label: 'Payment Receiving', icon: CreditCard, href: '/dashboard/payments',
+        label: 'Purchasing', icon: CreditCard, href: '/dashboard/purchases',
         children: [
-          { label: 'Received Payments', href: '/dashboard/payments' },
-          { label: 'New Receipt',       href: '/dashboard/payments/new' },
+          { label: 'Bills to Pay', href: '/dashboard/purchases' },
         ],
       },
       { label: 'Outstanding & Aging', icon: AlertTriangle, href: '/dashboard/outstanding' },
-      { label: 'Purchase Invoices',   icon: ShoppingCart,  href: '/dashboard/purchases' },
       { label: 'Reports',              icon: BarChart2,     href: '/dashboard/reports' },
     ],
   },
