@@ -120,6 +120,11 @@ export default function AwbBookingsPage() {
     if (!form.awbNo || !form.partyId || !form.origin || !form.destination || !form.airlineName || form.weight <= 0) {
       toast.error('Fill all required fields'); return;
     }
+    if (typeof window !== 'undefined') {
+      const saved: string[] = JSON.parse(localStorage.getItem('customCities') || '[]');
+      const updated = [...new Set([...saved, ...[form.origin, form.destination].filter(c => c && !CITIES.includes(c))])];
+      localStorage.setItem('customCities', JSON.stringify(updated));
+    }
     const ck = checkCreditLimit(form.partyId, totalAmount);
     if (!ck.allowed) { toast.error(ck.message); return; }
     if (ck.warning) toast(ck.message, { icon:'⚠️' });
@@ -421,18 +426,17 @@ export default function AwbBookingsPage() {
               <div className="form-row form-row-3" style={{marginBottom:12}}>
                 <div className="form-group">
                   <label className="label">Origin *</label>
-                  <select className="input" value={form.origin} onChange={e=>onRouteChange(e.target.value,form.destination)} required>
-                    <option value="">Origin…</option>
-                    {CITIES.map(c=><option key={c}>{c}</option>)}
-                  </select>
+                  <input className="input" list="awb-cities-list" placeholder="e.g. DEL" value={form.origin}
+                    onChange={e=>onRouteChange(e.target.value.toUpperCase(),form.destination)} required/>
                 </div>
                 <div className="form-group">
                   <label className="label">Destination *</label>
-                  <select className="input" value={form.destination} onChange={e=>onRouteChange(form.origin,e.target.value)} required>
-                    <option value="">Destination…</option>
-                    {CITIES.map(c=><option key={c}>{c}</option>)}
-                  </select>
+                  <input className="input" list="awb-cities-list" placeholder="e.g. BOM" value={form.destination}
+                    onChange={e=>onRouteChange(form.origin,e.target.value.toUpperCase())} required/>
                 </div>
+                <datalist id="awb-cities-list">
+                  {[...new Set([...CITIES,...(typeof window!=='undefined'?JSON.parse(localStorage.getItem('customCities')||'[]'):[])])].map((c:string)=><option key={c} value={c}/>)}
+                </datalist>
                 <div className="form-group">
                   <label className="label">Airline *</label>
                   <select className="input" value={form.airlineName} onChange={e=>{setForm(f=>({...f,airlineName:e.target.value}));onRouteChange(form.origin,form.destination);}} required>
