@@ -7,7 +7,7 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const [parties, awbBookings, docketBookings, invoices, paymentReceipts, outstanding, rateVersions, freightRates, importJobs, auditLogs, users] = await Promise.all([
+  const [parties, awbBookings, docketBookings, invoices, paymentReceipts, outstanding, rateVersions, freightRates, importJobs, auditLogs, users, purchaseBills] = await Promise.all([
     prisma.party.findMany({ orderBy: { partyName: 'asc' } }),
     prisma.awbBooking.findMany({ orderBy: { createdAt: 'desc' } }),
     prisma.docketBooking.findMany({ orderBy: { createdAt: 'desc' } }),
@@ -19,8 +19,9 @@ export async function GET() {
     prisma.importJob.findMany({ orderBy: { createdAt: 'desc' } }),
     prisma.auditLog.findMany({ orderBy: { createdAt: 'desc' }, take: 500 }),
     prisma.user.findMany({ select: { id: true, name: true, email: true, status: true }, orderBy: { name: 'asc' } }),
+    prisma.purchaseInvoice.findMany({ orderBy: { createdAt: 'desc' } }),
   ]);
 
-  return NextResponse.json({ parties, awbBookings, docketBookings, invoices, paymentReceipts, outstanding, rateVersions, freightRates, importJobs, auditLogs, users, _ts: Date.now() });
+  return NextResponse.json({ parties, awbBookings, docketBookings, invoices, paymentReceipts, outstanding, rateVersions, freightRates, importJobs, auditLogs, users, purchaseBills, _ts: Date.now() });
 }
 

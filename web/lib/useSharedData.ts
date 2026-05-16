@@ -86,6 +86,13 @@ export type DbUserSummary = {
   id: string; name: string; email: string; status: string;
 };
 
+export type DbPurchaseBill = {
+  id: string; vendorName: string; invoiceNo: string;
+  invoiceDate: string; dueDate?: string | null;
+  totalAmount: number; description?: string | null;
+  category?: string | null; status: string; createdAt: string | Date;
+};
+
 interface SharedData {
   parties: DbParty[];
   awbBookings: DbAwbBooking[];
@@ -98,6 +105,7 @@ interface SharedData {
   importJobs: DbImportJob[];
   auditLogs: DbAuditLog[];
   users: DbUserSummary[];
+  purchaseBills: DbPurchaseBill[];
   loading: boolean;
   refresh: () => void;
 }
@@ -107,7 +115,7 @@ const POLL_INTERVAL = 5_000;
 const EMPTY: Omit<SharedData, 'loading' | 'refresh'> = {
   parties: [], awbBookings: [], docketBookings: [],
   invoices: [], paymentReceipts: [], outstanding: [],
-  rateVersions: [], freightRates: [], importJobs: [], auditLogs: [], users: [],
+  rateVersions: [], freightRates: [], importJobs: [], auditLogs: [], users: [], purchaseBills: [],
 };
 
 export function useSharedData(): SharedData {
@@ -148,6 +156,7 @@ export function useSharedData(): SharedData {
           createdAt: typeof log.createdAt === 'string' ? log.createdAt : new Date(log.createdAt).toISOString(),
         })),
         users: json.users ?? [],
+        purchaseBills: json.purchaseBills ?? [],
       });
     } catch { /* keep current data */ }
     finally { setLoading(false); }

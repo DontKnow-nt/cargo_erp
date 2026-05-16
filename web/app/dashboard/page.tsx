@@ -40,7 +40,7 @@ function KpiCard({ title, value, sub, hint, color, icon, href }: {
 }
 
 export default function DashboardPage() {
-  const { invoices, awbBookings: awb, docketBookings: dockets, outstanding, parties, paymentReceipts: payments, importJobs } = useSharedData();
+  const { invoices, awbBookings: awb, docketBookings: dockets, outstanding, parties, paymentReceipts: payments, importJobs, purchaseBills } = useSharedData();
   const totalOut    = outstanding.reduce((s, o) => s + o.outstandingAmount, 0);
   const now = new Date();
   const totalOvd    = outstanding.filter(o => new Date(o.dueDate) < now && o.outstandingAmount > 0).reduce((s, o) => s + o.outstandingAmount, 0);
@@ -234,7 +234,35 @@ export default function DashboardPage() {
       </div>
 
       {/* Bottom row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16 }}>
+
+        {/* Pending Bills to Pay */}
+        <div className="card" style={{ padding: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>Bills to Pay</div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>Pending company expenses</div>
+            </div>
+            <Link href="/dashboard/purchases" style={{ fontSize: 11, color: 'var(--accent-dark)', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}>View All →</Link>
+          </div>
+          {purchaseBills.filter(b => b.status !== 'PAID').length === 0
+            ? <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '24px 0' }}>🎉 No pending bills!</div>
+            : purchaseBills.filter(b => b.status !== 'PAID').slice(0, 5).map((b, i, arr) => (
+              <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>{b.vendorName}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{b.category || b.invoiceNo}</div>
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#dc2626', flexShrink: 0 }}>{fmt(b.totalAmount)}</div>
+              </div>
+            ))
+          }
+          {purchaseBills.filter(b => b.status !== 'PAID').length > 5 && (
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', marginTop: 8 }}>
+              +{purchaseBills.filter(b => b.status !== 'PAID').length - 5} more
+            </div>
+          )}
+        </div>
 
         {/* Top outstanding parties */}
         <div className="card" style={{ padding: 18 }}>
