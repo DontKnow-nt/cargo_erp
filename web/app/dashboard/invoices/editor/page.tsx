@@ -397,7 +397,9 @@ img{max-width:100%;object-fit:contain}
               <tbody>
               <tr style={{ background: '#f0f0f0' }}>
                 {['Sl#','Origin','AWB#/Ref.\nNumber','Date','Dest#','Boxes','Charg.\nWeight','Rate','Freight','AWB &\nDO','Due\nCarrier','Forwrd &\nOthers','TSP &\nOthers','Taxable\nAmount'].map((h, i) => (
-                  <td key={i} style={{ border: '1px solid #000', padding: '4px 5px', fontSize: 9.5, textAlign: 'center', fontWeight: 700, whiteSpace: 'pre-wrap', background: '#f0f0f0' }}>{h}</td>
+                  <td key={i} style={{ border: '1px solid #000', padding: '4px 5px', fontSize: 9.5, textAlign: 'center', fontWeight: 700, whiteSpace: 'pre-wrap', background: '#f0f0f0' }}>
+                    <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 14, fontFamily: 'Arial, sans-serif', fontSize: 9.5, fontWeight: 700, textAlign: 'center', whiteSpace: 'pre-wrap' }}>{h}</div>
+                  </td>
                 ))}
               </tr>
               {lineRows.map((row, i) => (
