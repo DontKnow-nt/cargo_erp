@@ -100,13 +100,10 @@ function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo
     table{width:100%;border-collapse:collapse}
     th{border:1px solid #000;padding:4px 5px;background:#f0f0f0;font-size:9.5px;text-align:center;font-weight:bold}
     td{font-size:10px;vertical-align:middle}
-    .side-text{position:fixed;right:-30px;top:50%;transform:rotate(90deg) translateX(-50%);font-size:8px;white-space:nowrap;color:#555}
-    @media print{body{padding:10px}.side-text{position:fixed;right:-20px}@page{size:A4 landscape;margin:10mm}}
+    @media print{body{padding:10px}@page{size:A4 landscape;margin:10mm}}
   </style>
 </head>
 <body>
-  <div class="side-text">Invoice No. ${inv.invoiceNo} | Page 1/1</div>
-
   <!-- HEADER -->
   <table style="margin-bottom:4px;border:none">
     <tr>
@@ -250,6 +247,7 @@ function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo
           <li>2. PLEASE PAY YOUR BILL AMOUNT WITHIN 15 DAYS OF RECEIPT.</li>
           <li>3. INTEREST AT 24% P.A. WILL BE CHARGED IF THE BILL IS NOT PAID WITHIN THE STIPULATED TIME.</li>
           <li>4. PAYMENT SHOULD BE MADE BY A/C PAYEE CHEQUE OR DD IN FAVOUR OF <strong>TRIVENI CARGO EXPRESS INDIA PVT LTD.</strong></li>
+          <li>5. JURISDICTION: ALL DISPUTES ARISING UNDER THIS BILL SHALL BE SUBJECT TO BE UNDER NEW DELHI JURISDICTION.</li>
         </ul>
       </td>
       <td style="width:40%;border:none;vertical-align:bottom;text-align:right;padding-top:10px">
