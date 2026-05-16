@@ -89,7 +89,7 @@ function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo
   const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>Tax Invoice - ${inv.invoiceNo}</title>
+  <title> </title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,sans-serif;font-size:10.5px;color:#000;padding:18px;position:relative}
@@ -100,27 +100,21 @@ function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo
     table{width:100%;border-collapse:collapse}
     th{border:1px solid #000;padding:4px 5px;background:#f0f0f0;font-size:9.5px;text-align:center;font-weight:bold}
     td{font-size:10px;vertical-align:middle}
-    @media print{body{padding:10px}@page{size:A4 landscape;margin:10mm}}
+    @media print{body{padding:10px}@page{size:A4 landscape;margin:10mm}html{-webkit-print-color-adjust:exact}}
   </style>
 </head>
 <body>
   <!-- HEADER -->
-  <table style="margin-bottom:4px;border:none">
-    <tr>
-      <td style="width:12%;border:none;vertical-align:middle;text-align:center">
-        <img src="${logoUrl}" alt="Triveni" style="width:70px;height:70px;object-fit:contain" />
-      </td>
-      <td style="border:none;vertical-align:middle;text-align:center">
-        <div class="co-name">${companyInfo.name}</div>
-        <div class="co-sub">Domestic Air Cargo &amp; Rail Agent</div>
-        <div class="co-sub">${companyInfo.address}</div>
-        <div class="co-sub">Tel. : ${companyInfo.phone}</div>
-        <div class="co-bold">GSTIN: ${companyInfo.gstin} , CIN: ${companyInfo.cin}</div>
-        <div class="co-sub">${companyInfo.regdOffice}</div>
-        <div class="co-sub">Email : ${companyInfo.email}</div>
-      </td>
-    </tr>
-  </table>
+  <div style="position:relative;text-align:center;margin-bottom:6px;padding:6px 0">
+    <img src="${logoUrl}" alt="Triveni" style="position:absolute;left:0;top:50%;transform:translateY(-50%);width:64px;height:64px;object-fit:contain" />
+    <div class="co-name">${companyInfo.name}</div>
+    <div class="co-sub">Domestic Air Cargo &amp; Rail Agent</div>
+    <div class="co-sub">${companyInfo.address}</div>
+    <div class="co-sub">Tel. : ${companyInfo.phone}</div>
+    <div class="co-bold">GSTIN: ${companyInfo.gstin} , CIN: ${companyInfo.cin}</div>
+    <div class="co-sub">${companyInfo.regdOffice}</div>
+    <div class="co-sub">Email : ${companyInfo.email}</div>
+  </div>
 
   <div class="title">TAX INVOICE</div>
 
