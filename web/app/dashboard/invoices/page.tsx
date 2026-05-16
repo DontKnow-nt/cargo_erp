@@ -100,7 +100,7 @@ function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo
     table{width:100%;border-collapse:collapse}
     th{border:1px solid #000;padding:4px 5px;background:#f0f0f0;font-size:9.5px;text-align:center;font-weight:bold}
     td{font-size:10px;vertical-align:middle}
-    @media print{@page{size:A4 landscape;margin:0}body{padding:8mm}html{-webkit-print-color-adjust:exact}}
+    @media print{@page{size:A4 landscape;margin:8mm 8mm 0 8mm}body{padding:0}html{-webkit-print-color-adjust:exact}}
   </style>
 </head>
 <body>
