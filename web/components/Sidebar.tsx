@@ -28,7 +28,6 @@ const navSections = [
   {
     label: 'Rates & Import',
     items: [
-      { label: 'Freight Rates', icon: TrendingUp, href: '/dashboard/rates' },
       { label: 'Import Wizard', icon: Upload,     href: '/dashboard/import' },
     ],
   },
@@ -42,13 +41,8 @@ const navSections = [
           { label: 'New Invoice',  href: '/dashboard/invoices/new' },
         ],
       },
-      {
-        label: 'Purchasing', icon: CreditCard, href: '/dashboard/purchases',
-        children: [
-          { label: 'Bills to Pay', href: '/dashboard/purchases' },
-        ],
-      },
       { label: 'Outstanding & Aging', icon: AlertTriangle, href: '/dashboard/outstanding' },
+      { label: 'Bills to Pay',        icon: CreditCard,    href: '/dashboard/purchases' },
       { label: 'Reports',              icon: BarChart2,     href: '/dashboard/reports' },
     ],
   },

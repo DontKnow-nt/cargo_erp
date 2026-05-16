@@ -139,7 +139,7 @@ export default async function InvoicePrintPage({ params, searchParams }: { param
           th { border: 1px solid #000; padding: 4px 5px; background: #f0f0f0; font-size: 9.5px; text-align: center; font-weight: bold; }
           td { font-size: 10px; vertical-align: middle; }
           .cell { border: 1px solid #000; padding: 4px 6px; }
-          @media print { body { padding: 10px; } @page { margin: 10mm; } }
+          @media print { body { padding: 10px; } @page { size: A4 landscape; margin: 10mm; } }
         `}</style>
       </head>
       <body>
@@ -150,7 +150,7 @@ export default async function InvoicePrintPage({ params, searchParams }: { param
               <td style={{ width: '15%', border: 'none', textAlign: 'center', verticalAlign: 'middle' }}>
                 <img src="/logo.png" alt="Triveni Logo" style={{ width: 70, height: 70, objectFit: 'contain' }} />
               </td>
-              <td style={{ border: 'none', verticalAlign: 'middle' }}>
+              <td style={{ border: 'none', verticalAlign: 'middle', textAlign: 'center' }}>
                 <div className="co-name">TRIVENI ENTERPRISES</div>
                 <div className="co-sub">Domestic Air Cargo &amp; Rail Agent</div>
                 <div className="co-sub">Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi 110037</div>

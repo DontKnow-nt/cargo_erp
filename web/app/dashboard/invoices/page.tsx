@@ -85,6 +85,7 @@ function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo
   const pInfo = partyInfo || { gstin:'', address:'', pos:'DELHI', billingPeriod:'' };
   const billDate = inv.invoiceDate.split('-').reverse().join('.');
 
+  const logoUrl = `${window.location.origin}/logo.png`;
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -100,7 +101,7 @@ function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo
     th{border:1px solid #000;padding:4px 5px;background:#f0f0f0;font-size:9.5px;text-align:center;font-weight:bold}
     td{font-size:10px;vertical-align:middle}
     .side-text{position:fixed;right:-30px;top:50%;transform:rotate(90deg) translateX(-50%);font-size:8px;white-space:nowrap;color:#555}
-    @media print{body{padding:10px}.side-text{position:fixed;right:-20px}}
+    @media print{body{padding:10px}.side-text{position:fixed;right:-20px}@page{size:A4 landscape;margin:10mm}}
   </style>
 </head>
 <body>
@@ -109,12 +110,10 @@ function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo
   <!-- HEADER -->
   <table style="margin-bottom:4px;border:none">
     <tr>
-      <td style="width:15%;border:none;vertical-align:middle;text-align:center">
-        <div style="width:70px;height:70px;display:inline-flex;align-items:center;justify-content:center">
-          <img src="/logo.png" alt="Triveni" style="width:70px;height:70px;object-fit:contain" />
-        </div>
+      <td style="width:12%;border:none;vertical-align:middle;text-align:center">
+        <img src="${logoUrl}" alt="Triveni" style="width:70px;height:70px;object-fit:contain" />
       </td>
-      <td style="border:none;vertical-align:middle">
+      <td style="border:none;vertical-align:middle;text-align:center">
         <div class="co-name">${companyInfo.name}</div>
         <div class="co-sub">Domestic Air Cargo &amp; Rail Agent</div>
         <div class="co-sub">${companyInfo.address}</div>

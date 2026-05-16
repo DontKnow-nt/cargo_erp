@@ -1,19 +1,173 @@
 'use client';
-'use client';
-import { useState, useRef, useEffect, useCallback, Suspense } from 'react';
+import { Suspense, useRef, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import toast from 'react-hot-toast';
+import { Printer } from 'lucide-react';
 import { useSharedData } from '@/lib/useSharedData';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-type CellStyle = { bold?: boolean; italic?: boolean; underline?: boolean; fontSize?: number; align?: 'left' | 'center' | 'right'; color?: string; bg?: string };
-type Cell = { value: string; style: CellStyle };
-type Row = Cell[];
+// ── Toolbar ───────────────────────────────────────────────────────────────────
+function Toolbar({ paperRef }: { paperRef: React.RefObject<HTMLDivElement | null> }) {
+  const [fontSize, setFontSize] = useState('3');
+  const savedRange = useRef<Range | null>(null);
+  const undoStack = useRef<string[]>([]);
+  const redoStack = useRef<string[]>([]);
 
-const DEFAULT_STYLE: CellStyle = { bold: false, italic: false, underline: false, fontSize: 11, align: 'center' };
+  function saveSelection() {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount) savedRange.current = sel.getRangeAt(0).cloneRange();
+  }
+  function restoreSelection() {
+    const sel = window.getSelection();
+    if (sel && savedRange.current) { try { sel.removeAllRanges(); sel.addRange(savedRange.current); } catch {} }
+  }
+  function exec(cmd: string, value?: string) {
+    restoreSelection();
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
+    document.execCommand(cmd, false, value);
+  }
 
-function makeCell(value = '', style: Partial<CellStyle> = {}): Cell {
-  return { value, style: { ...DEFAULT_STYLE, ...style } };
+  // Snapshot the paper HTML for undo/redo
+  function snapshot() {
+    if (!paperRef.current) return;
+    undoStack.current.push(paperRef.current.innerHTML);
+    if (undoStack.current.length > 50) undoStack.current.shift();
+    redoStack.current = [];
+  }
+  function undo() {
+    if (!paperRef.current || !undoStack.current.length) return;
+    redoStack.current.push(paperRef.current.innerHTML);
+    paperRef.current.innerHTML = undoStack.current.pop()!;
+  }
+  function redo() {
+    if (!paperRef.current || !redoStack.current.length) return;
+    undoStack.current.push(paperRef.current.innerHTML);
+    paperRef.current.innerHTML = redoStack.current.pop()!;
+  }
+
+  // Get the AWB data tbody (id="awb-body") from inside the paper
+  function getAwbTbody(): HTMLTableSectionElement | null {
+    return paperRef.current?.querySelector<HTMLTableSectionElement>('#awb-body') ?? null;
+  }
+
+  function getSelectedTd(): HTMLTableCellElement | null {
+    const sel = window.getSelection();
+    const node = sel?.anchorNode;
+    if (!node) return null;
+    const el = (node.nodeType === 3 ? node.parentElement : node) as Element;
+    return el?.closest?.('td') ?? null;
+  }
+
+  function addRow() {
+    const tbody = getAwbTbody();
+    if (!tbody) return;
+    const td = getSelectedTd();
+    const tr = td?.closest('tr');
+    // Must be inside awb-body
+    if (!tr || !tbody.contains(tr)) { alert('Click inside an AWB data row first.'); return; }
+    snapshot();
+    const newRow = tr.cloneNode(true) as HTMLTableRowElement;
+    newRow.querySelectorAll('[contenteditable]').forEach(el => { (el as HTMLElement).innerText = ''; });
+    tr.after(newRow);
+  }
+
+  function delRow() {
+    const tbody = getAwbTbody();
+    if (!tbody) return;
+    const td = getSelectedTd();
+    const tr = td?.closest('tr');
+    if (!tr || !tbody.contains(tr)) { alert('Click inside an AWB data row first.'); return; }
+    if (tbody.querySelectorAll('tr').length <= 1) return;
+    snapshot();
+    tr.remove();
+  }
+
+  function addCol() {
+    const tbody = getAwbTbody();
+    if (!tbody) return;
+    const td = getSelectedTd();
+    if (!td || !tbody.contains(td)) { alert('Click inside an AWB data cell first.'); return; }
+    const tr = td.closest('tr')!;
+    const colIdx = Array.from(tr.children).indexOf(td);
+    snapshot();
+    tbody.querySelectorAll('tr').forEach(row => {
+      const refCell = row.children[colIdx] as HTMLTableCellElement | undefined;
+      if (!refCell) return;
+      const newCell = refCell.cloneNode(true) as HTMLTableCellElement;
+      newCell.querySelectorAll('[contenteditable]').forEach(el => { (el as HTMLElement).innerText = ''; });
+      refCell.after(newCell);
+    });
+  }
+
+  function delCol() {
+    const tbody = getAwbTbody();
+    if (!tbody) return;
+    const td = getSelectedTd();
+    if (!td || !tbody.contains(td)) { alert('Click inside an AWB data cell first.'); return; }
+    const tr = td.closest('tr')!;
+    const colIdx = Array.from(tr.children).indexOf(td);
+    if (tbody.querySelectorAll('tr')[0]?.children.length <= 1) return;
+    snapshot();
+    tbody.querySelectorAll('tr').forEach(row => {
+      const cell = row.children[colIdx] as HTMLTableCellElement | undefined;
+      if (cell) cell.remove();
+    });
+  }
+
+  const btn = (label: string, title: string, onClick: () => void, color?: string) => (
+    <button key={label} title={title}
+      onMouseDown={e => { e.preventDefault(); saveSelection(); onClick(); }}
+      style={{ padding: '4px 10px', borderRadius: 5, border: '1px solid #d1d5db', cursor: 'pointer', fontSize: 12, fontWeight: 600, background: '#fff', color: color || '#374151', minWidth: 32 }}>
+      {label}
+    </button>
+  );
+
+  const sep = <div style={{ width: 1, background: '#e5e7eb', margin: '0 4px', alignSelf: 'stretch' }} />;
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, padding: '6px 12px', background: '#f0f4ff', borderBottom: '1px solid #e5e7eb' }}>
+      {btn('↩ Undo', 'Undo row/col changes', undo)}
+      {btn('↪ Redo', 'Redo row/col changes', redo)}
+      {sep}
+      {btn('B', 'Bold', () => exec('bold'), '#111')}
+      {btn('I', 'Italic', () => exec('italic'), '#111')}
+      {btn('U̲', 'Underline', () => exec('underline'), '#111')}
+      {sep}
+      <span style={{ fontSize: 11, color: '#6b7280' }}>Size:</span>
+      <select value={fontSize}
+        onMouseDown={() => saveSelection()}
+        onChange={e => { const v = e.target.value; setFontSize(v); restoreSelection(); exec('fontSize', v); }}
+        style={{ padding: '3px 6px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 12, cursor: 'pointer', width: 70 }}>
+        {[['1','8px'],['2','10px'],['3','12px'],['4','14px'],['5','18px'],['6','24px'],['7','32px']].map(([v,l]) =>
+          <option key={v} value={v}>{l}</option>
+        )}
+      </select>
+      {sep}
+      {btn('⬅', 'Align Left', () => exec('justifyLeft'))}
+      {btn('≡', 'Align Center', () => exec('justifyCenter'))}
+      {btn('➡', 'Align Right', () => exec('justifyRight'))}
+      {sep}
+      {btn('+ Row', 'Add AWB row below (click a data row first)', addRow, '#059669')}
+      {btn('− Row', 'Delete AWB row (click a data row first)', delRow, '#dc2626')}
+      {btn('+ Col', 'Add AWB column right (click a data cell first)', addCol, '#059669')}
+      {btn('− Col', 'Delete AWB column (click a data cell first)', delCol, '#dc2626')}
+    </div>
+  );
+}
+
+// ── Editable cell ─────────────────────────────────────────────────────────────
+function EC({ children, style, colSpan, rowSpan }: {
+  children?: string | number;
+  style?: React.CSSProperties;
+  colSpan?: number;
+  rowSpan?: number;
+}) {
+  return (
+    <td colSpan={colSpan} rowSpan={rowSpan} style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 10, verticalAlign: 'top', ...style }}>
+      <div contentEditable suppressContentEditableWarning
+        style={{ outline: 'none', minHeight: 14, fontFamily: 'Arial, sans-serif', fontSize: 10, whiteSpace: 'pre-wrap' }}>
+        {children != null ? String(children) : ''}
+      </div>
+    </td>
+  );
 }
 
 // ── Number to words ───────────────────────────────────────────────────────────
@@ -32,654 +186,308 @@ function numberToWords(num: number): string {
   return convert(Math.floor(num)) + ' Only';
 }
 
-// ── Build initial rows from invoice data ──────────────────────────────────────
-function buildInitialRows(inv: any, party: any): Row[] {
-  const h = (v: string, extra: Partial<CellStyle> = {}) => makeCell(v, { bold: true, fontSize: 10, align: 'center', bg: '#f0f0f0', ...extra });
-  const c = (v: string, extra: Partial<CellStyle> = {}) => makeCell(v, { fontSize: 10, ...extra });
-  const num = (v: number) => v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-  const billDate = inv.invoiceDate.split('-').reverse().join('.');
-
-  // Header rows
-  const rows: Row[] = [
-    // Company name row (merged visually via colspan in render)
-    [makeCell('TRIVENI CARGO EXPRESS INDIA PVT LTD', { bold: true, fontSize: 20, align: 'center' })],
-    [makeCell('Domestic Air Cargo & Rail Agent', { fontSize: 10, align: 'center' })],
-    [makeCell('Plot no-319/2/2, Badam Singh Market, NH-8 Rangpuri, New Delhi-110037', { fontSize: 10, align: 'center' })],
-    [makeCell('Tel. : 011-65809456, 9311389456', { fontSize: 10, align: 'center' })],
-    [makeCell('GSTIN: 07AAGCT2294N2ZR , CIN: U74999DL2017PTC316659', { bold: true, fontSize: 10, align: 'center' })],
-    [makeCell('Regd. Office: Plot no 480, Flat no 301, First Floor, Gali no 15, L Block Mahipalpur Extn. New Delhi 110037', { fontSize: 9, align: 'center' })],
-    [makeCell('Email : info@tceipl.com', { fontSize: 10, align: 'center' })],
-    [makeCell('TAX INVOICE', { bold: true, fontSize: 13, align: 'center', underline: true })],
-
-    // Party info row (two-column layout encoded as 2 cells)
-    [
-      makeCell(`M/s : ${inv.partyName}\nGSTIN : ${party?.gstin || '—'}\nAddress : ${party?.billingAddress || '—'}`, { fontSize: 10 }),
-      makeCell(`Bill No. : ${inv.invoiceNo}\nBill Date : ${billDate}\nPOS : DELHI\nBilling Period From : ${inv.invoiceDate} to ${inv.dueDate}`, { fontSize: 10 }),
-    ],
-    [makeCell(`SAC Code : 996531`, { fontSize: 10, bold: true })],
-
-    // Table header
-    [
-      h('Sl#'), h('Origin'), h('AWB#/Ref.\nNumber'), h('Date'), h('Dest#'),
-      h('Boxes'), h('Charg.\nWeight'), h('Rate'), h('Freight'),
-      h('AWB &\nDO'), h('Due\nCarrier'), h('Forwrd &\nOthers'), h('TSP &\nOthers'), h('Taxable\nAmount'),
-    ],
-  ];
-
-  // Data rows
-  inv.lines.forEach((line: any, i: number) => {
-    const m = line.description.match(/([A-Z]{3})[→\-]([A-Z]{3}).*?(\d+)\s*kg\s*@\s*₹?([\d.]+)/i);
-    const origin = m ? m[1] : 'DEL';
-    const dest   = m ? m[2] : '';
-    const boxes  = m ? m[3] : String(line.qty);
-    const chgWt  = m ? m[3] : String(line.qty);
-    const rate   = m ? m[4] : String(line.rate);
-    const tsp    = i === 0 ? num(inv.lines.slice(1).reduce((s: number, l: any) => s + l.amount, 0)) : '0.00';
-    const taxable = i === 0 ? num(inv.subtotal) : num(line.amount);
-    rows.push([
-      c(String(i+1), { align: 'center' }),
-      c(origin, { align: 'center' }),
-      c(i === 0 ? inv.bookingRef : '', { align: 'center' }),
-      c(i === 0 ? inv.invoiceDate.replace(/\d{4}-/, '').replace('-', '/') : '', { align: 'center' }),
-      c(dest, { align: 'center' }),
-      c(boxes, { align: 'center' }),
-      c(chgWt, { align: 'center' }),
-      c(rate, { align: 'right' }),
-      c(num(line.amount), { align: 'right' }),
-      c('0.00', { align: 'right' }),
-      c('0.00', { align: 'right' }),
-      c('0', { align: 'right' }),
-      c(tsp, { align: 'right' }),
-      c(taxable, { align: 'right' }),
-    ]);
-  });
-
-  // Grand total row
-  const totalBoxes = inv.lines.reduce((s: number, l: any) => s + l.qty, 0);
-  const totalFreight = num(inv.lines[0]?.amount || 0);
-  const totalTSP = num(inv.lines.slice(1).reduce((s: number, l: any) => s + l.amount, 0));
-  rows.push([
-    h('', { bg: '#f8f8f8' }), h('', { bg: '#f8f8f8' }), h('', { bg: '#f8f8f8' }),
-    h('Grand Total', { bg: '#f8f8f8', align: 'right' }),
-    h('', { bg: '#f8f8f8' }),
-    h(String(totalBoxes), { bg: '#f8f8f8', align: 'center' }),
-    h(String(totalBoxes), { bg: '#f8f8f8', align: 'center' }),
-    h('', { bg: '#f8f8f8' }),
-    h(totalFreight, { bg: '#f8f8f8', align: 'right' }),
-    h('0.00', { bg: '#f8f8f8', align: 'right' }),
-    h('0.00', { bg: '#f8f8f8', align: 'right' }),
-    h('0', { bg: '#f8f8f8', align: 'right' }),
-    h(totalTSP, { bg: '#f8f8f8', align: 'right' }),
-    h(num(inv.subtotal), { bg: '#f8f8f8', align: 'right' }),
-  ]);
-
-  const igstRate = inv.lines[0]?.taxRate || 18;
-  const amtWords = numberToWords(Math.round(inv.grandTotal));
-
-  // Bank + tax summary (two-column)
-  const bankInfo = (bank: {bank_name:string;account_name:string;account_number:string;ifsc:string;branch:string}|null) =>
-    bank
-      ? `Amount in Words : Rupees ${amtWords}\n\nBank           : ${bank.bank_name}\nA/c Name     : ${bank.account_name}\nAccount No.  : ${bank.account_number}\nIFSC Code    : ${bank.ifsc}\nBranch         : ${bank.branch}`
-      : `Amount in Words : Rupees ${amtWords}\n\nBank           : YES BANK Ltd.\nA/c Name     : TRIVENI CARGO EXPRESS INDIA PVT LTD\nAccount No.  : 008463700000641\nIFSC Code    : YESB0000283\nBranch         : Vasant Kunj, New Delhi`;
-  rows.push([
-    makeCell(bankInfo(null), { fontSize: 10 }),
-    makeCell(
-      `Total Taxable Amount : ${num(inv.subtotal)}\nSGST @ 9%              : 0.00\nCGST @ 9%              : 0.00\nIGST @ ${igstRate}%             : ${num(inv.gstTotal)}\nNet Payable Amount  : ${num(inv.grandTotal)}`,
-      { fontSize: 10 }
-    ),
-  ]);
-
-  // Bank footer line
-  rows.push([makeCell('YES BANK Ltd., A/c Name: TRIVENI CARGO EXPRESS INDIA PVT LTD, A/C No. - 008463700000641, IFSC Code - YESB0000283, Branch - Vasant Kunj, New Delhi', { fontSize: 9 })]);
-
-  // Notes + signature
-  rows.push([
-    makeCell('NOTES :\n1. DIFFERENCE, IF ANY, MAY BE NOTIFIED WITHIN 3 DAYS OF RECEIPT.\n2. PLEASE PAY YOUR BILL AMOUNT WITHIN 15 DAYS OF RECEIPT.\n3. INTEREST AT 24% P.A. WILL BE CHARGED IF THE BILL IS NOT PAID WITHIN THE STIPULATED TIME.\n4. PAYMENT SHOULD BE MADE BY A/C PAYEE CHEQUE OR DD IN FAVOUR OF TRIVENI CARGO EXPRESS INDIA PVT LTD.', { fontSize: 9 }),
-    makeCell('For TRIVENI CARGO EXPRESS INDIA PVT LTD\n\n\n\nAuthorised Signatory', { fontSize: 10, align: 'right' }),
-  ]);
-
-  return rows;
+function fmt(n: number) {
+  return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-
-// ── Toolbar ───────────────────────────────────────────────────────────────────
-function Toolbar({ sel, onStyle, onAddRow, onAddCol, onDelRow, onDelCol, onPrint, onDownload, onUndo, onRedo, canUndo, canRedo }: {
-  sel: { row: number; col: number } | null;
-  onStyle: (s: Partial<CellStyle>) => void;
-  onAddRow: () => void; onAddCol: () => void;
-  onDelRow: () => void; onDelCol: () => void;
-  onPrint: () => void;
-  onDownload: () => void;
-  onUndo: () => void; onRedo: () => void;
-  canUndo: boolean; canRedo: boolean;
-}) {
-  const [fontSize, setFontSize] = useState(11);
-
-  const btn = (label: string, title: string, onClick: () => void, color = '') =>
-    <button title={title} onClick={onClick} style={{
-      padding: '4px 10px', borderRadius: 5, border: '1px solid #d1d5db', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-      background: '#fff', color: color || '#374151',
-      minWidth: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-    }}>{label}</button>;
-
-  const sep = <div style={{ width: 1, background: '#e5e7eb', margin: '0 4px', alignSelf: 'stretch' }} />;
-
-  const applyFontSize = (v: number) => { setFontSize(v); onStyle({ fontSize: v }); };
-
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4,
-      padding: '8px 12px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
-      position: 'sticky', top: 0, zIndex: 10,
-    }}>
-      {btn('↩ Undo', 'Undo (Ctrl+Z)', onUndo, canUndo ? '#374151' : '#9ca3af')}
-      {btn('↪ Redo', 'Redo (Ctrl+Y)', onRedo, canRedo ? '#374151' : '#9ca3af')}
-      {sep}
-
-      {btn('B', 'Bold', () => onStyle({ bold: true }), '#111')}
-      {btn('I', 'Italic', () => onStyle({ italic: true }), '#111')}
-      {btn('U', 'Underline', () => onStyle({ underline: true }), '#111')}
-      {sep}
-
-      {/* Font size: dropdown + slider */}
-      <span style={{ fontSize: 11, color: '#6b7280' }}>Size:</span>
-      <select
-        value={fontSize}
-        onChange={e => applyFontSize(Number(e.target.value))}
-        style={{ padding: '3px 6px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 12, cursor: 'pointer', width: 60 }}
-      >
-        {[8,9,10,11,12,14,16,18,20,24,28,32].map(s => <option key={s} value={s}>{s}</option>)}
-      </select>
-      <input
-        type="range" min={8} max={32} step={1} value={fontSize}
-        onChange={e => applyFontSize(Number(e.target.value))}
-        style={{ width: 80, cursor: 'pointer', accentColor: '#3b82f6' }}
-        title={`Font size: ${fontSize}`}
-      />
-      <span style={{ fontSize: 11, color: '#3b82f6', fontWeight: 700, minWidth: 20 }}>{fontSize}</span>
-      {sep}
-
-      {btn('⬅', 'Align Left', () => onStyle({ align: 'left' }))}
-      {btn('⬛', 'Align Center', () => onStyle({ align: 'center' }))}
-      {btn('➡', 'Align Right', () => onStyle({ align: 'right' }))}
-      {sep}
-
-      {btn('+ Row', 'Add row below (select table cell first)', onAddRow, '#059669')}
-      {btn('+ Col', 'Add column right (select table cell first)', onAddCol, '#059669')}
-      {btn('− Row', 'Delete selected row', onDelRow, '#dc2626')}
-      {btn('− Col', 'Delete selected column', onDelCol, '#dc2626')}
-      {sep}
-
-      {btn('🖨 Print', 'Print invoice', onPrint, '#1d4ed8')}
-      {btn('⬇ Download HTML', 'Download edited invoice as HTML file', onDownload, '#059669')}
-
-      {sel && (
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#6b7280', fontFamily: 'monospace' }}>
-          Row {sel.row + 1}, Col {sel.col + 1}
-        </span>
-      )}
-    </div>
-  );
-}
-
-
-
-// ── Main Editor (inner — needs useSearchParams) ───────────────────────────────
-function EditorInner() {
+// ── Inner editor ──────────────────────────────────────────────────────────────
+function InvoiceEditorInner() {
   const searchParams = useSearchParams();
   const invId = searchParams.get('id');
   const { invoices, parties } = useSharedData();
+  const paperRef = useRef<HTMLDivElement>(null);
 
-  const inv    = invoices.find(i => i.id === invId);
-  const party  = inv ? parties.find(p => p.id === inv.partyId) : undefined;
+  const [saving, setSaving] = useState(false);
 
-  // rows state + undo stack
-  const [rows, setRows]       = useState<Row[]>(() => inv ? buildInitialRows(inv, party) : []);
-  const [sel, setSel]         = useState<{ row: number; col: number } | null>(null);
-  const [banks, setBanks]     = useState<{id:string;bank_name:string;account_name:string;account_number:string;ifsc:string;branch:string;is_default:number}[]>([]);
+  const [banks, setBanks] = useState<{id:string;bank_name:string;account_name:string;account_number:string;ifsc:string;branch:string;is_default:number}[]>([]);
   const [selectedBankId, setSelectedBankId] = useState('');
 
   useEffect(() => {
-    fetch('/api/banks').then(r=>r.json()).then(data => {
+    fetch('/api/banks').then(r => r.json()).then(data => {
       setBanks(data);
-      const def = data.find((b:{is_default:number}) => b.is_default === 1);
+      const def = data.find((b: {is_default:number}) => b.is_default === 1);
       if (def) setSelectedBankId(def.id);
-    }).catch(()=>{});
+    }).catch(() => {});
   }, []);
 
-  // Update bank rows when selected bank changes
+  const inv = invoices.find(i => i.id === invId);
+  const party = inv ? parties.find(p => p.id === inv.partyId) : undefined;
+  const bank = banks.find(b => b.id === selectedBankId) ?? banks[0];
+
+  // Load saved HTML from DB when inv becomes available
   useEffect(() => {
-    if (!selectedBankId || !banks.length || rows.length < 4) return;
-    const b = banks.find(x => x.id === selectedBankId);
-    if (!b) return;
-    const amtWordsLine = rows[rows.length - 4]?.[0]?.value?.split('\n')[0] ?? '';
-    const bankText = `${amtWordsLine}\n\nBank           : ${b.bank_name}\nA/c Name     : ${b.account_name}\nAccount No.  : ${b.account_number}\nIFSC Code    : ${b.ifsc}\nBranch         : ${b.branch}`;
-    const footerText = `${b.bank_name}, A/c Name: ${b.account_name}, A/C No. - ${b.account_number}, IFSC Code - ${b.ifsc}, Branch - ${b.branch}`;
-    setRows(prev => {
-      const next = [...prev];
-      const bankRowIdx = next.length - 3;
-      const footerIdx  = next.length - 2;
-      if (next[bankRowIdx]?.[0]) next[bankRowIdx] = [{ ...next[bankRowIdx][0], value: bankText }, next[bankRowIdx][1]];
-      if (next[footerIdx]?.[0])  next[footerIdx]  = [{ ...next[footerIdx][0],  value: footerText }];
-      return next;
-    });
+    if (!inv || !paperRef.current) return;
+    fetch(`/api/invoices/${inv.id}/editor-html`)
+      .then(r => r.json())
+      .then(data => { if (data.html && paperRef.current) paperRef.current.innerHTML = data.html; })
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedBankId, rows.length]);
-  const undoStack = useRef<Row[][]>([]);
-  const redoStack = useRef<Row[][]>([]);
+  }, [inv?.id]);
 
-  // Re-init if invoice changes
-  useEffect(() => {
-    if (inv) setRows(buildInitialRows(inv, party));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invId]);
-
-  // ── Undo helpers ────────────────────────────────────────────────────────────
-  const pushUndo = useCallback((prev: Row[]) => {
-    undoStack.current = [...undoStack.current.slice(-30), prev];
-    redoStack.current = [];
-  }, []);
-
-  const mutate = useCallback((fn: (r: Row[]) => Row[]) => {
-    setRows(prev => { pushUndo(prev); return fn(prev); });
-  }, [pushUndo]);
-
-  const undo = () => {
-    if (!undoStack.current.length) return;
-    const prev = undoStack.current.pop()!;
-    redoStack.current.push(rows);
-    setRows(prev);
-  };
-  const redo = () => {
-    if (!redoStack.current.length) return;
-    const next = redoStack.current.pop()!;
-    undoStack.current.push(rows);
-    setRows(next);
-  };
-
-  // Keyboard undo/redo
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) { e.preventDefault(); redo(); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  });
-
-  // ── Cell edit ───────────────────────────────────────────────────────────────
-  const updateCell = (ri: number, ci: number, value: string) => {
-    mutate(prev => prev.map((row, r) =>
-      r !== ri ? row : row.map((cell, c) => c !== ci ? cell : { ...cell, value })
-    ));
-  };
-
-  // ── Style selected cell ─────────────────────────────────────────────────────
-  const applyStyle = (s: Partial<CellStyle>) => {
-    if (!sel) return;
-    mutate(prev => prev.map((row, r) =>
-      r !== sel.row ? row : row.map((cell, c) =>
-        c !== sel.col ? cell : { ...cell, style: { ...cell.style, ...s } }
-      )
-    ));
-  };
-
-  // ── Add / delete row / col ──────────────────────────────────────────────────
-  // Table occupies rows 10 (header) through rows.length-4 (grand total).
-  // Rows after that are bank/axis/notes — never touched by add/del.
-  const TABLE_HEAD = 10;
-  const tableEnd = () => rows.length - 4; // grand total row index
-
-  const addRow = () => {
-    if (!sel) { alert('Click a cell inside the AWB table first, then click + Row.'); return; }
-    const ri = sel.row;
-    if (ri < TABLE_HEAD || ri > tableEnd()) { alert('Select a cell inside the AWB data table to add a row there.'); return; }
-    const cols = rows[TABLE_HEAD].length;
-    mutate(prev => {
-      const next = [...prev];
-      const refRow = prev[ri];
-      next.splice(ri + 1, 0, Array.from({ length: cols }, (_, ci) => {
-        const { bg: _bg, ...style } = (refRow[ci] || refRow[0])?.style || DEFAULT_STYLE;
-        return makeCell('', style);
-      }));
-      return next;
+  async function handleSave() {
+    if (!paperRef.current || !inv) return;
+    setSaving(true);
+    await fetch(`/api/invoices/${inv.id}/editor-html`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: paperRef.current.innerHTML }),
     });
-  };
+    setSaving(false);
+    alert('Saved to database!');
+  }
 
-  const addCol = () => {
-    if (!sel) { alert('Click a cell inside the AWB table first, then click + Col.'); return; }
-    const ri = sel.row;
-    if (ri < TABLE_HEAD || ri > tableEnd()) { alert('Select a cell inside the AWB data table to add a column there.'); return; }
-    const ci = sel.col + 1;
-    mutate(prev => prev.map((row, r) => {
-      if (r < TABLE_HEAD || r > tableEnd()) return row;
-      const next = [...row];
-      // inherit style from the cell to the left so color/font/bg match
-      const refStyle = { ...(row[ci - 1]?.style || row[0]?.style || DEFAULT_STYLE) };
-      next.splice(ci, 0, makeCell('', refStyle));
-      return next;
-    }));
-  };
-
-  const delRow = () => {
-    if (!sel) return;
-    if (sel.row <= TABLE_HEAD || sel.row > tableEnd()) { alert('Can only delete data rows inside the AWB table.'); return; }
-    mutate(prev => prev.filter((_, r) => r !== sel.row));
-    setSel(null);
-  };
-
-  const delCol = () => {
-    if (!sel) return;
-    if (sel.row < TABLE_HEAD || sel.row > tableEnd()) { alert('Select a cell inside the AWB table to delete a column.'); return; }
-    mutate(prev => prev.map((row, r) => {
-      if (r < TABLE_HEAD || r > tableEnd()) return row;
-      return row.filter((_, c) => c !== sel.col);
-    }));
-    setSel(null);
-  };
-
-  // ── Auto-sum: sum numeric cells in selected column, place result in last row ─
-  const autoSum = () => {
-    if (!sel) return;
-    const ci = sel.col;
-    const nums = rows.map(r => parseFloat(r[ci]?.value?.replace(/,/g, '') || '')).filter(n => !isNaN(n));
-    if (!nums.length) return;
-    const total = nums.reduce((a, b) => a + b, 0);
-    mutate(prev => {
-      const next = prev.map(r => [...r]);
-      const lastRow = next[next.length - 1];
-      if (lastRow[ci]) lastRow[ci] = { ...lastRow[ci], value: total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), style: { ...lastRow[ci].style, bold: true } };
-      return next;
-    });
-  };
-
-  // ── Print ───────────────────────────────────────────────────────────────────
-  const handlePrint = () => {
-    const el = document.getElementById('invoice-paper');
+  const handlePrint = useCallback(async () => {
+    const el = paperRef.current;
     if (!el) return;
-    
-    // Clone the element to avoid modifying the original
     const clone = el.cloneNode(true) as HTMLElement;
-    
-    // Remove selection highlights from clone
-    clone.querySelectorAll('[style*="outline"]').forEach((node) => {
-      const el = node as HTMLElement;
-      el.style.outline = 'none';
-    });
-    clone.querySelectorAll('[style*="background: #eff6ff"], [style*="background:#eff6ff"]').forEach((node) => {
-      const el = node as HTMLElement;
-      if (el.style.background === '#eff6ff' || el.style.background === 'rgb(239, 246, 255)') {
-        el.style.background = 'transparent';
-      }
-    });
-    
-    // Capture the exact rendered HTML of the invoice paper
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Invoice</title>
+
+    // Convert logo to base64 so it works in blob URL context
+    try {
+      const resp = await fetch('/logo.png');
+      const blob2 = await resp.blob();
+      const b64 = await new Promise<string>(res => {
+        const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(blob2);
+      });
+      clone.querySelectorAll('img').forEach(img => { (img as HTMLImageElement).src = b64; });
+    } catch { /* logo missing, skip */ }
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Tax Invoice - ${inv?.invoiceNo ?? ''}</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; background: #fff; }
-  table { width: 100%; border-collapse: collapse; }
-  [contenteditable] { outline: none; }
-  @media print { @page { margin: 8mm; } }
-</style>
-</head>
-<body>${clone.innerHTML}</body>
-</html>`;
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;padding:8px}
+table{border-collapse:collapse;width:100%}
+td{border:1px solid #000;padding:3px 5px;font-size:10px;vertical-align:top}
+[contenteditable]{outline:none;min-height:14px;white-space:pre-wrap}
+img{max-width:100%;object-fit:contain}
+@media print{@page{size:A4 landscape;margin:8mm}body{padding:4px}}
+</style></head>
+<body>${clone.innerHTML}
+<script>window.onload=function(){window.print();}<\/script>
+</body></html>`;
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const win = window.open(url, '_blank', 'width=1100,height=800');
-    if (!win) { toast.error('Popup blocked. Allow popups to print invoice.'); URL.revokeObjectURL(url); return; }
-    
-    // Auto-trigger print dialog after the window loads
-    win.onload = () => {
-      setTimeout(() => {
-        win.print();
-        // Offer download option
-        const downloadLink = win.document.createElement('a');
-        downloadLink.href = url;
-        downloadLink.download = `invoice_${inv?.invoiceNo || 'download'}.html`;
-        win.document.body.appendChild(downloadLink);
-      }, 100);
-    };
-    
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
-  };
+    const win = window.open(url, '_blank', 'width=1200,height=800');
+    if (win) setTimeout(() => URL.revokeObjectURL(url), 15000);
+  }, [inv]);
 
-  // ── Download HTML ───────────────────────────────────────────────────────────
-  const handleDownload = () => {
-    const el = document.getElementById('invoice-paper');
-    if (!el || !inv) return;
-    
-    // Clone the element to avoid modifying the original
-    const clone = el.cloneNode(true) as HTMLElement;
-    
-    // Remove selection highlights from clone
-    clone.querySelectorAll('[style*="outline"]').forEach((node) => {
-      const el = node as HTMLElement;
-      el.style.outline = 'none';
-    });
-    
-    // Capture the HTML
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Invoice - ${inv.invoiceNo}</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; background: #fff; padding: 20px; }
-  table { width: 100%; border-collapse: collapse; }
-  [contenteditable] { outline: none; }
-</style>
-</head>
-<body>${clone.innerHTML}</body>
-</html>`;
-    
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `invoice_${inv.invoiceNo}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast.success('Invoice downloaded');
-  };
-
-  // ── Render ──────────────────────────────────────────────────────────────────
   if (!inv) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'Arial', fontSize: 16, color: '#6b7280' }}>
       No invoice found. Open this page from the Invoices list.
     </div>
   );
 
-  // Determine max cols for full-width rows
-  const maxCols = Math.max(...rows.map(r => r.length));
+  const billDate = inv.invoiceDate.split('-').reverse().join('.');
+  const igstRate = inv.lines[0]?.taxRate ?? 18;
+  const amtWords = numberToWords(Math.round(inv.grandTotal));
+
+  // Parse lines for AWB table
+  const lineRows = inv.lines.map((line, i) => {
+    const m = line.description.match(/([A-Z]{3})[→\-]([A-Z]{3}).*?(\d+)\s*kg\s*@\s*₹?([\d.]+)/i);
+    const origin = m ? m[1] : 'DEL';
+    const dest   = m ? m[2] : '';
+    const boxes  = m ? m[3] : String(line.qty);
+    const chgWt  = m ? m[3] : String(line.qty);
+    const rate   = m ? m[4] : String(line.rate);
+    const tsp    = i === 0 ? fmt(inv.lines.slice(1).reduce((s, l) => s + l.amount, 0)) : '0.00';
+    const taxable = i === 0 ? fmt(inv.subtotal) : fmt(line.amount);
+    return { origin, dest, boxes, chgWt, rate, freight: fmt(line.amount), tsp, taxable, awbNo: i === 0 ? inv.bookingRef : '', date: i === 0 ? inv.invoiceDate.replace(/\d{4}-/, '').replace('-', '/') : '' };
+  });
+
+  const totalBoxes = inv.lines.reduce((s, l) => s + l.qty, 0);
+  const totalFreight = fmt(inv.lines[0]?.amount ?? 0);
+  const totalTSP = fmt(inv.lines.slice(1).reduce((s, l) => s + l.amount, 0));
+
+  const bankText = bank
+    ? `Bank           : ${bank.bank_name}\nA/c Name     : ${bank.account_name}\nAccount No.  : ${bank.account_number}\nIFSC Code    : ${bank.ifsc}\nBranch         : ${bank.branch}`
+    : `Bank           : YES BANK Ltd.\nA/c Name     : TRIVENI CARGO EXPRESS INDIA PVT LTD\nAccount No.  : 008463700000641\nIFSC Code    : YESB0000283\nBranch         : Vasant Kunj, New Delhi`;
+
+  const bankFooter = bank
+    ? `${bank.bank_name}, A/c Name: ${bank.account_name}, A/C No. - ${bank.account_number}, IFSC Code - ${bank.ifsc}, Branch - ${bank.branch}`
+    : `YES BANK Ltd., A/c Name: TRIVENI CARGO EXPRESS INDIA PVT LTD, A/C No. - 008463700000641, IFSC Code - YESB0000283, Branch - Vasant Kunj, New Delhi`;
+
+  const taxSummary = `Total Taxable Amount : ${fmt(inv.subtotal)}\nSGST @ 9%              : 0.00\nCGST @ 9%              : 0.00\nIGST @ ${igstRate}%             : ${fmt(inv.gstTotal)}\nNet Payable Amount  : ${fmt(inv.grandTotal)}`;
+
+  const notesText = `NOTES :\n1. DIFFERENCE, IF ANY, MAY BE NOTIFIED WITHIN 3 DAYS OF RECEIPT.\n2. PLEASE PAY YOUR BILL AMOUNT WITHIN 15 DAYS OF RECEIPT.\n3. INTEREST AT 24% P.A. WILL BE CHARGED IF THE BILL IS NOT PAID WITHIN THE STIPULATED TIME.\n4. PAYMENT SHOULD BE MADE BY A/C PAYEE CHEQUE OR DD IN FAVOUR OF TRIVENI CARGO EXPRESS INDIA PVT LTD.\n5. JURISDICTION: ALL DISPUTES ARISING UNDER THIS BILL SHALL BE SUBJECT TO BE UNDER NEW DELHI JURISDICTION.`;
 
   return (
     <div style={{ minHeight: '100vh', background: '#e5e7eb', fontFamily: 'Arial, sans-serif' }}>
-      {/* Toolbar — hidden on print */}
-      <div className="no-print">
-        <Toolbar
-          sel={sel}
-          onStyle={applyStyle}
-          onAddRow={addRow} onAddCol={addCol}
-          onDelRow={delRow} onDelCol={delCol}
-          onPrint={handlePrint}
-          onDownload={handleDownload}
-          onUndo={undo} onRedo={redo}
-          canUndo={undoStack.current.length > 0}
-          canRedo={redoStack.current.length > 0}
-        />
-        {/* Help bar + Bank selector */}
-        <div style={{ background: '#eff6ff', borderBottom: '1px solid #bfdbfe', padding: '5px 14px', fontSize: 11, color: '#1d4ed8', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span>💡 Click any cell to select &amp; edit</span>
-          <span>📐 Select a table cell first before adding/deleting rows or columns</span>
-          <span>Ctrl+Z / Ctrl+Y to undo / redo</span>
+      {/* Toolbar */}
+      <div style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, position: 'sticky', top: 0, zIndex: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: 700, fontSize: 14 }}>Invoice Editor — <span style={{ fontFamily: 'monospace', color: '#2563eb' }}>{inv.invoiceNo}</span></span>
+        <span style={{ fontSize: 12, color: '#6b7280' }}>{inv.partyName}</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {banks.length > 0 && (
-            <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontWeight: 600 }}>🏦 Bank:</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+              <span style={{ fontWeight: 600, color: '#374151' }}>🏦 Bank:</span>
               <select value={selectedBankId} onChange={e => setSelectedBankId(e.target.value)}
-                style={{ fontSize: 11, padding: '2px 6px', borderRadius: 6, border: '1px solid #bfdbfe', background: '#fff', color: '#1e40af', cursor: 'pointer' }}>
+                style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
                 {banks.map(b => (
                   <option key={b.id} value={b.id}>{b.bank_name}{b.is_default ? ' ★' : ''}</option>
                 ))}
               </select>
             </span>
           )}
+          <span style={{ fontSize: 11, color: '#6b7280' }}>💡 Click any field to edit</span>
+          <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: saving ? '#6b7280' : '#059669', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer' }}>
+            {saving ? '⏳ Saving…' : '💾 Save'}
+          </button>
+          <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+            <Printer size={14} /> Print / Download
+          </button>
         </div>
       </div>
 
-      {/* Invoice paper */}
-      <div id="invoice-paper" style={{
-        maxWidth: 1050, margin: '24px auto', background: '#fff',
-        boxShadow: '0 4px 24px rgba(0,0,0,0.12)', padding: '24px 28px',
-      }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      {/* Editing Toolbar */}
+      <Toolbar paperRef={paperRef} />
+
+      {/* Invoice Paper */}
+      <div ref={paperRef} style={{ background: '#fff', maxWidth: 1100, margin: '24px auto', padding: 12, boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <tbody>
-            {rows.map((row, ri) => {
-              const isSingleCell = row.length === 1;
-              const isTwoCol     = row.length === 2;
-              const isHeaderRow  = ri <= 7;   // company header rows
-              const isDataRow    = ri >= 11 && ri < rows.length - 3; // AWB data rows
-              const isTableHead  = ri === 10;
-              const isGrandTotal = isDataRow && ri === rows.length - 4;
-              const isBankRow    = ri === rows.length - 3;
-              const isAxisRow    = ri === rows.length - 2;
-              const isNotesRow   = ri === rows.length - 1;
 
-              if (isSingleCell) {
-                const cell = row[0];
-                return (
-                  <tr key={ri}>
-                    <td
-                      colSpan={maxCols}
-                      onClick={() => setSel({ row: ri, col: 0 })}
-                      style={{
-                        border: (isHeaderRow && ri < 7) ? 'none' : '1px solid #000',
-                        padding: isHeaderRow ? '2px 4px' : '5px 8px',
-                        background: sel?.row === ri && sel?.col === 0 ? '#eff6ff' : (cell.style.bg || 'transparent'),
-                        outline: sel?.row === ri && sel?.col === 0 ? '2px solid #3b82f6' : 'none',
-                        cursor: 'text',
-                        whiteSpace: 'pre-wrap',
-                      }}
-                    >
-                      <div
-                        contentEditable
-                        suppressContentEditableWarning
-                        onBlur={e => updateCell(ri, 0, e.currentTarget.innerText)}
-                        style={{
-                          fontWeight: cell.style.bold ? 'bold' : 'normal',
-                          fontStyle: cell.style.italic ? 'italic' : 'normal',
-                          textDecoration: cell.style.underline ? 'underline' : 'none',
-                          fontSize: cell.style.fontSize || 11,
-                          textAlign: cell.style.align || 'left',
-                          color: cell.style.color || '#000',
-                          background: 'transparent',
-                          outline: 'none',
-                          minHeight: 16,
-                          whiteSpace: 'pre-wrap',
-                        }}
-                      >{cell.value}</div>
-                    </td>
-                  </tr>
-                );
-              }
+            {/* ── HEADER: Logo + Company Info ── */}
+            <tr>
+              <td colSpan={14} style={{ border: '1px solid #000', padding: '6px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <img src="/logo.png" alt="Triveni" style={{ width: 64, height: 64, objectFit: 'contain', flexShrink: 0 }} />
+                  <div style={{ flex: 1, textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: 0.5 }}>TRIVENI CARGO EXPRESS INDIA PVT LTD</div>
+                    <div style={{ fontSize: 10 }}>Domestic Air Cargo &amp; Rail Agent</div>
+                    <div style={{ fontSize: 10 }}>Plot no-319/2/2, Badam Singh Market, NH-8 Rangpuri, New Delhi-110037</div>
+                    <div style={{ fontSize: 10 }}>Tel. : 011-65809456, 9311389456</div>
+                    <div style={{ fontSize: 10, fontWeight: 700 }}>GSTIN: 07AAGCT2294N2ZR , CIN: U74999DL2017PTC316659</div>
+                    <div style={{ fontSize: 9, color: '#c00' }}>Regd. Office: Plot no 480, Flat no 301, First Floor, Gali no 15, L Block Mahipalpur Extn. New Delhi 110037</div>
+                    <div style={{ fontSize: 10 }}>Email : info@tceipl.com</div>
+                  </div>
+                </div>
+              </td>
+            </tr>
 
-              if (isTwoCol && !isTableHead && !isDataRow) {
-                // Two-column layout rows (party info, bank+tax, notes+sig)
-                return (
-                  <tr key={ri}>
-                    {row.map((cell, ci) => (
-                      <td
-                        key={ci}
-                        colSpan={ci === 0 ? Math.ceil(maxCols * 0.58) : Math.floor(maxCols * 0.42)}
-                        onClick={() => setSel({ row: ri, col: ci })}
-                        style={{
-                          border: '1px solid #000', padding: '5px 8px', verticalAlign: 'top',
-                          background: sel?.row === ri && sel?.col === ci ? '#eff6ff' : (cell.style.bg || 'transparent'),
-                          outline: sel?.row === ri && sel?.col === ci ? '2px solid #3b82f6' : 'none',
-                          cursor: 'text',
-                        }}
-                      >
-                        <div
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={e => updateCell(ri, ci, e.currentTarget.innerText)}
-                          style={{
-                            fontWeight: cell.style.bold ? 'bold' : 'normal',
-                            fontStyle: cell.style.italic ? 'italic' : 'normal',
-                            textDecoration: cell.style.underline ? 'underline' : 'none',
-                            fontSize: cell.style.fontSize || 10,
-                            textAlign: cell.style.align || 'left',
-                            outline: 'none', minHeight: 16, whiteSpace: 'pre-wrap',
-                          }}
-                        >{cell.value}</div>
-                      </td>
-                    ))}
-                  </tr>
-                );
-              }
+            {/* ── TAX INVOICE title ── */}
+            <tr>
+              <td colSpan={14} style={{ border: '1px solid #000', padding: '4px', textAlign: 'center', fontWeight: 700, fontSize: 13, textDecoration: 'underline' }}>
+                TAX INVOICE
+              </td>
+            </tr>
 
-              // Normal multi-column rows (table header + data rows)
-              return (
-                <tr key={ri} style={{ background: isGrandTotal ? '#f8f8f8' : undefined }}>
-                  {row.map((cell, ci) => (
-                    <td
-                      key={ci}
-                      onClick={() => setSel({ row: ri, col: ci })}
-                      style={{
-                        border: '1px solid #000', padding: '3px 5px',
-                        background: sel?.row === ri && sel?.col === ci ? '#eff6ff' : (cell.style.bg || 'transparent'),
-                        outline: sel?.row === ri && sel?.col === ci ? '2px solid #3b82f6' : 'none',
-                        cursor: 'text', minWidth: 40,
-                      }}
-                    >
-                      <div
-                        contentEditable
-                        suppressContentEditableWarning
-                        onBlur={e => updateCell(ri, ci, e.currentTarget.innerText)}
-                        style={{
-                          fontWeight: cell.style.bold ? 'bold' : 'normal',
-                          fontStyle: cell.style.italic ? 'italic' : 'normal',
-                          textDecoration: cell.style.underline ? 'underline' : 'none',
-                          fontSize: cell.style.fontSize || 10,
-                          textAlign: cell.style.align || 'left',
-                          outline: 'none', minHeight: 14, whiteSpace: 'pre-wrap',
-                        }}
-                      >{cell.value}</div>
-                    </td>
-                  ))}
+            {/* ── Party Info (left) + Bill Info (right) ── */}
+            <tr>
+              <td colSpan={9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
+                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
+                  {`M/s : ${inv.partyName}\nGSTIN : ${party?.gstin || '—'}\nAddress : ${party?.billingAddress || '—'}`}
+                </div>
+              </td>
+              <td colSpan={5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
+                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
+                  {`Bill No. : ${inv.invoiceNo}\nBill Date : ${billDate}\nPOS : DELHI\nBilling Period From : ${inv.invoiceDate} to ${inv.dueDate}`}
+                </div>
+              </td>
+            </tr>
+
+            {/* ── SAC Code ── */}
+            <tr>
+              <td colSpan={14} style={{ border: '1px solid #000', padding: '3px 7px', fontSize: 10, fontWeight: 700, textAlign: 'center' }}>
+                SAC Code : 996531
+              </td>
+            </tr>
+
+            {/* ── AWB Table (own full-width table so columns always fill width) ── */}
+            </tbody></table>
+            <table id="awb-body" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+              <tbody>
+              <tr style={{ background: '#f0f0f0' }}>
+                {['Sl#','Origin','AWB#/Ref.\nNumber','Date','Dest#','Boxes','Charg.\nWeight','Rate','Freight','AWB &\nDO','Due\nCarrier','Forwrd &\nOthers','TSP &\nOthers','Taxable\nAmount'].map((h, i) => (
+                  <td key={i} style={{ border: '1px solid #000', padding: '4px 5px', fontSize: 9.5, textAlign: 'center', fontWeight: 700, whiteSpace: 'pre-wrap', background: '#f0f0f0' }}>{h}</td>
+                ))}
+              </tr>
+              {lineRows.map((row, i) => (
+                <tr key={i}>
+                  <EC style={{ textAlign: 'center' }}>{i + 1}</EC>
+                  <EC style={{ textAlign: 'center' }}>{row.origin}</EC>
+                  <EC style={{ textAlign: 'center' }}>{row.awbNo}</EC>
+                  <EC style={{ textAlign: 'center' }}>{row.date}</EC>
+                  <EC style={{ textAlign: 'center' }}>{row.dest}</EC>
+                  <EC style={{ textAlign: 'center' }}>{row.boxes}</EC>
+                  <EC style={{ textAlign: 'center' }}>{row.chgWt}</EC>
+                  <EC style={{ textAlign: 'right' }}>{row.rate}</EC>
+                  <EC style={{ textAlign: 'right' }}>{row.freight}</EC>
+                  <EC style={{ textAlign: 'right' }}>0.00</EC>
+                  <EC style={{ textAlign: 'right' }}>0.00</EC>
+                  <EC style={{ textAlign: 'right' }}>0</EC>
+                  <EC style={{ textAlign: 'right' }}>{row.tsp}</EC>
+                  <EC style={{ textAlign: 'right' }}>{row.taxable}</EC>
                 </tr>
-              );
-            })}
+              ))}
+              {/* ── Grand Total Row ── */}
+              <tr style={{ background: '#f8f8f8', fontWeight: 700 }} data-grand-total="1">
+                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
+                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
+                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
+                <td style={{ border: '1px solid #000', padding: '4px 6px', textAlign: 'right', fontWeight: 700, fontSize: 10, background: '#f8f8f8' }}>Grand Total</td>
+                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
+                <EC style={{ textAlign: 'center', background: '#f8f8f8', fontWeight: 700 }}>{totalBoxes}</EC>
+                <EC style={{ textAlign: 'center', background: '#f8f8f8', fontWeight: 700 }}>{totalBoxes}</EC>
+                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
+                <EC style={{ textAlign: 'right', background: '#f8f8f8', fontWeight: 700 }}>{totalFreight}</EC>
+                <EC style={{ textAlign: 'right', background: '#f8f8f8', fontWeight: 700 }}>0.00</EC>
+                <EC style={{ textAlign: 'right', background: '#f8f8f8', fontWeight: 700 }}>0.00</EC>
+                <EC style={{ textAlign: 'right', background: '#f8f8f8', fontWeight: 700 }}>0</EC>
+                <EC style={{ textAlign: 'right', background: '#f8f8f8', fontWeight: 700 }}>{totalTSP}</EC>
+                <EC style={{ textAlign: 'right', background: '#f8f8f8', fontWeight: 700 }}>{fmt(inv.subtotal)}</EC>
+              </tr>
+              </tbody>
+            </table>
+            <table style={{ borderCollapse: 'collapse', width: '100%' }}><tbody>
+
+            {/* ── Bank (left) + Tax Summary (right) ── */}
+            <tr>
+              <td colSpan={9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
+                <div style={{ fontSize: 10, marginBottom: 4 }}><strong>Amount in Words :</strong> Rupees {amtWords}</div>
+                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap', marginTop: 6 }}>
+                  {bankText}
+                </div>
+              </td>
+              <td colSpan={5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
+                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
+                  {taxSummary}
+                </div>
+              </td>
+            </tr>
+
+            {/* ── Bank footer line ── */}
+            <tr>
+              <td colSpan={14} style={{ border: '1px solid #000', padding: '3px 7px', fontSize: 9, textAlign: 'center' }}>
+                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', fontFamily: 'Arial, sans-serif', fontSize: 9, whiteSpace: 'pre-wrap' }}>
+                  {bankFooter}
+                </div>
+              </td>
+            </tr>
+
+            {/* ── Notes (left) + Signature (right) ── */}
+            <tr>
+              <td colSpan={9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
+                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 9, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
+                  {notesText}
+                </div>
+              </td>
+              <td colSpan={5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'bottom', textAlign: 'right' }}>
+                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap', textAlign: 'right' }}>
+                  {`For TRIVENI CARGO EXPRESS INDIA PVT LTD\n\n\n\nAuthorised Signatory`}
+                </div>
+              </td>
+            </tr>
+
           </tbody>
         </table>
       </div>
-
-      <style>{`
-        @media print {
-          .no-print { display: none !important; }
-          body { background: #fff !important; }
-          #invoice-paper { box-shadow: none !important; margin: 0 !important; padding: 12px !important; max-width: 100% !important; }
-          [contenteditable] { outline: none !important; }
-        }
-      `}</style>
     </div>
   );
 }
 
-// ── Page export (Suspense wrapper required for useSearchParams) ───────────────
 export default function InvoiceEditorPage() {
   return (
     <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'Arial' }}>Loading editor…</div>}>
-      <EditorInner />
+      <InvoiceEditorInner />
     </Suspense>
   );
 }

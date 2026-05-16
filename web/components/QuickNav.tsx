@@ -11,7 +11,6 @@ const ROUTES = [
   { label: 'Payments',           href: '/dashboard/payments',           icon: CreditCard },
   { label: 'Parties',            href: '/dashboard/parties',            icon: Users },
   { label: 'Outstanding',        href: '/dashboard/outstanding',        icon: AlertTriangle },
-  { label: 'Freight Rates',      href: '/dashboard/rates',              icon: TrendingUp },
   { label: 'Import Wizard',      href: '/dashboard/import',             icon: Upload },
   { label: 'Analytics',          href: '/dashboard/analytics',          icon: BarChart2 },
   { label: 'Cargo Way Bill',     href: '/dashboard/bookings/dockets/way-bill', icon: ClipboardList },

@@ -1,10 +1,10 @@
 import prisma from '@/lib/prisma';
 
-export const DEFAULT_PAGES = ['dashboard', 'analytics'] as const;
+export const DEFAULT_PAGES = ['dashboard', 'analytics', 'purchases'] as const;
 
 export const GRANTABLE_PAGES = [
   'bookings/awb', 'bookings/dockets', 'invoices', 'payments', 'outstanding',
-  'parties', 'rates', 'import', 'reports', 'analytics', 'audit', 'notifications', 'settings',
+  'parties', 'rates', 'import', 'reports', 'analytics', 'audit', 'notifications', 'settings', 'purchases',
 ] as const;
 
 export type GrantablePage = typeof GRANTABLE_PAGES[number];

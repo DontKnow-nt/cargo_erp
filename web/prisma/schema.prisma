@@ -165,6 +165,7 @@ model Invoice {
   outstandingTotal Float    @map("outstanding_total")
   status           String   @default("DRAFT")
   notes            String?
+  editorHtml       String?  @map("editor_html")
   createdBy        String?  @map("created_by")
   createdAt        DateTime @default(now()) @map("created_at")
 

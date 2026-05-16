@@ -72,7 +72,8 @@ export function DateRangeFilter({ value, onChange }: { value: DateRange; onChang
 
 // ─── CSV Export ──────────────────────────────────────────────────────────────
 function sanitizeCsvCell(v: unknown): string {
-  const s = v === null || v === undefined ? '' : String(v);
+  const s = (v === null || v === undefined ? '' : String(v))
+    .replace(/→/g, '->').replace(/←/g, '<-').replace(/↔/g, '<->');
   // Prevent CSV formula injection
   const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
   return safe.includes(',') || safe.includes('"') || safe.includes('\n')
@@ -84,7 +85,8 @@ export function exportToCSV(data: Record<string,unknown>[], filename: string) {
   const headers = Object.keys(data[0]);
   const rows = data.map(row => headers.map(h => sanitizeCsvCell(row[h])).join(','));
   const csv = [headers.join(','), ...rows].join('\n');
-  const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
+  const BOM = '\uFEFF';
+  const blob = new Blob([BOM + csv], { type:'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = `${filename}.csv`;
@@ -96,9 +98,13 @@ export function exportToCSV(data: Record<string,unknown>[], filename: string) {
 export function exportToXLSX(data: Record<string,unknown>[], filename: string) {
   if (!data.length) return;
   const headers = Object.keys(data[0]);
-  const rows = data.map(row => headers.map(h => row[h] ?? '').join('\t'));
+  const rows = data.map(row => headers.map(h => {
+    const v = row[h] ?? '';
+    return String(v).replace(/→/g, '->').replace(/←/g, '<-').replace(/↔/g, '<->');
+  }).join('\t'));
+  const BOM = '\uFEFF';
   const tsv = [headers.join('\t'), ...rows].join('\n');
-  const blob = new Blob([tsv], { type:'application/vnd.ms-excel;charset=utf-8;' });
+  const blob = new Blob([BOM + tsv], { type:'application/vnd.ms-excel;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = `${filename}.xls`;

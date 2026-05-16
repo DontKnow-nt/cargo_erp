@@ -50,7 +50,6 @@ const data = {
       url: "#",
       icon: TrendingUp,
       items: [
-        { title: "Freight Rates", url: "/dashboard/rates" },
         { title: "Import Wizard", url: "/dashboard/import" },
       ],
     },
