@@ -3,7 +3,7 @@ import { useRef, useCallback, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { Printer, RotateCcw, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Plus, Minus, Save } from 'lucide-react';
-import { updateDocketBooking } from '@/lib/actions/bookings';
+import { updateDocketBooking, createDocketBooking } from '@/lib/actions/bookings';
 import toast from 'react-hot-toast';
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
@@ -104,18 +104,39 @@ function CargoWayBillInner() {
     paperRef.current?.querySelector(`[data-field="${field}"]`)?.textContent?.trim() ?? '';
 
   const handleSave = useCallback(async () => {
-    if (!docketId) { toast('No docket linked. Open from Docket Bookings list.', { icon: 'ℹ️' }); return; }
     setSaving(true);
     try {
-      await updateDocketBooking(docketId, {
-        origin: getField('origin'),
-        destination: getField('destination'),
-        wayBillNo: getField('wayBillNo'),
-        description: getField('description'),
-        consignee: getField('consignee'),
-        methodOfPacking: getField('methodOfPacking'),
-      });
-      toast.success('Docket saved');
+      const origin = getField('origin');
+      const destination = getField('destination');
+      const wayBillNo = getField('wayBillNo');
+      const description = getField('description');
+      const consignee = getField('consignee');
+      const methodOfPacking = getField('methodOfPacking');
+      const weightRaw = getField('weight');
+      const weight = parseFloat(weightRaw) || 0;
+      const partyName = getField('shipper').split('\n')[0].trim() || 'Unknown';
+
+      if (docketId) {
+        // Update existing docket
+        await updateDocketBooking(docketId, { origin, destination, wayBillNo, description, consignee, methodOfPacking });
+        toast.success('Docket updated');
+      } else {
+        // Create new docket from blank way bill
+        const docketNo = `DKT-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+        const res = await createDocketBooking({
+          docketNo, partyId: 'p-imported', partyName,
+          bookingDate: new Date().toISOString().split('T')[0],
+          origin, destination, description,
+          rateFittedAmount: 0, markupAmount: 0, gstRate: 18, gstAmount: 0, totalAmount: 0,
+          dueDatePolicy: 30, status: 'BOOKED',
+          wayBillNo: wayBillNo || undefined,
+          consignee: consignee || undefined,
+          methodOfPacking: methodOfPacking || undefined,
+          weight: weight || undefined,
+        });
+        if (res && 'error' in res) { toast.error('Save failed'); return; }
+        toast.success(`New docket ${docketNo} created`);
+      }
     } catch { toast.error('Save failed'); }
     finally { setSaving(false); }
   }, [docketId]);
@@ -211,7 +232,7 @@ img{max-width:100%;object-fit:contain}
             <tr>
               <td rowSpan={3} colSpan={2} style={{ border: '1px solid #000', padding: '3px 5px', width: '26%' }}>
                 <div style={{ fontSize: 9, color: '#555' }}>Shipper :</div>
-                <div contentEditable suppressContentEditableWarning suppressHydrationWarning style={{ outline: 'none', minHeight: 50, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}></div>
+                <div contentEditable suppressContentEditableWarning suppressHydrationWarning data-field="shipper" style={{ outline: 'none', minHeight: 50, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}></div>
               </td>
               <td rowSpan={3} style={{ border: '1px solid #000', padding: '3px 5px', width: '13%' }}>
                 <div style={{ fontSize: 9, color: '#555' }}>Description of Goods</div>
@@ -274,8 +295,8 @@ img{max-width:100%;object-fit:contain}
               <td colSpan={3} style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 9 }}>
                 Invoice No. <div contentEditable suppressContentEditableWarning suppressHydrationWarning style={{ outline: 'none', minHeight: 14, fontSize: 10, fontFamily: 'Arial, sans-serif' }}></div>
               </td>
-              <td colSpan={4} style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 9, textAlign: 'right' }}>
-                Weight in Kgs. <div contentEditable suppressContentEditableWarning suppressHydrationWarning style={{ outline: 'none', minHeight: 14, fontSize: 10, fontFamily: 'Arial, sans-serif', textAlign: 'right' }}></div>
+              <td colSpan={4} style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 9, textAlign: 'left' }}>
+                Weight in Kgs. <div contentEditable suppressContentEditableWarning suppressHydrationWarning data-field="weight" style={{ outline: 'none', minHeight: 14, fontSize: 10, fontFamily: 'Arial, sans-serif' }}></div>
               </td>
             </tr>
 
