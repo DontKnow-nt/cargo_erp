@@ -221,6 +221,15 @@ export async function cancelInvoice(id: string) {
   return { success: true };
 }
 
+export async function deleteOutstandingEntries(ids: string[]) {
+  const session = await requireRole('ACCOUNTS_EXECUTIVE');
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };
+  await prisma.outstandingEntry.deleteMany({ where: { id: { in: ids } } });
+  serverLog('info', 'outstanding.deleted', { userId: session.user.id, count: ids.length });
+  revalidatePath('/dashboard/outstanding');
+  return { success: true };
+}
+
 export async function deleteInvoices(ids: string[]) {
   const session = await requireRole('ACCOUNTS_EXECUTIVE');
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };

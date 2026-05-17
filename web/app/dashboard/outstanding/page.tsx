@@ -1,9 +1,11 @@
 'use client';
-import { AlertTriangle, Download, Search, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Download, Search, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { useSharedData } from '@/lib/useSharedData';
 import { LiveIndicator } from '@/components/LiveIndicator';
+import { deleteOutstandingEntries } from '@/lib/actions/invoices';
+import toast from 'react-hot-toast';
 
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
@@ -24,6 +26,19 @@ export default function OutstandingPage() {
   const [search, setSearch]     = useState('');
   const [partyFilter, setPartyFilter] = useState('ALL');
   const [bucketFilter, setBucketFilter] = useState('ALL');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  function confirmDelete() {
+    const ids = [...selected];
+    setSelected(new Set()); setShowDeleteConfirm(false);
+    startTransition(async () => {
+      await deleteOutstandingEntries(ids);
+      toast.success(`${ids.length} entr${ids.length > 1 ? 'ies' : 'y'} deleted`);
+      refresh();
+    });
+  }
 
   const totalOut = getTotalOutstanding();
   const totalOvd = getTotalOverdue();
@@ -57,6 +72,10 @@ export default function OutstandingPage() {
           <p className="page-subtitle">Party-wise outstanding balances with aging buckets. Red = overdue.</p>
         </div>
         <div style={{display:'flex',gap:9}}>
+          <LiveIndicator onRefresh={refresh} />
+          {selected.size > 0 && (
+            <button className="btn btn-danger btn-sm" onClick={()=>setShowDeleteConfirm(true)}><Trash2 size={12}/> Delete ({selected.size})</button>
+          )}
           <button className="btn btn-secondary btn-sm"><Download size={12}/> Export Statement</button>
         </div>
       </div>
@@ -137,19 +156,29 @@ export default function OutstandingPage() {
           <table>
             <thead>
               <tr>
+                <th style={{width:36}}>
+                  <input type="checkbox" checked={selected.size===filtered.length&&filtered.length>0}
+                    onChange={()=>selected.size===filtered.length?setSelected(new Set()):setSelected(new Set(filtered.map(o=>o.id)))}
+                    style={{width:15,height:15,cursor:'pointer',accentColor:'var(--accent)'}}/>
+                </th>
                 <th>Party</th><th>Invoice No.</th><th>Booking Ref</th>
                 <th>Invoice Date</th><th>Due Date</th>
                 <th style={{textAlign:'right'}}>Original</th><th style={{textAlign:'right'}}>Paid</th>
-                <th style={{textAlign:'right'}}>Outstanding</th><th>Aging</th>
+                <th style={{textAlign:'right'}}>Outstanding</th><th>Aging</th><th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.length===0&&<tr><td colSpan={9} style={{textAlign:'center',padding:'36px 0',color:'var(--text-muted)'}}>No outstanding entries</td></tr>}
+              {filtered.length===0&&<tr><td colSpan={11} style={{textAlign:'center',padding:'36px 0',color:'var(--text-muted)'}}>No outstanding entries</td></tr>}
               {filtered.map(o=>{
                 const isOverdue = new Date(o.dueDate)<new Date();
                 const c = BUCKET_COLORS[o.agingBucket];
                 return (
-                  <tr key={o.id}>
+                  <tr key={o.id} style={{background: selected.has(o.id) ? 'rgba(239,68,68,0.05)' : undefined}}>
+                    <td style={{padding:'0 10px'}}>
+                      <input type="checkbox" checked={selected.has(o.id)}
+                        onChange={()=>setSelected(s=>{const n=new Set(s);n.has(o.id)?n.delete(o.id):n.add(o.id);return n;})}
+                        style={{width:15,height:15,cursor:'pointer',accentColor:'var(--accent)'}}/>
+                    </td>
                     <td style={{fontWeight:600}}>{o.partyName}</td>
                     <td><span style={{fontFamily:'var(--font-mono)',fontSize:12,color:'var(--accent-dark)'}}>{o.invoiceNo}</span></td>
                     <td><span style={{fontFamily:'var(--font-mono)',fontSize:11}}>{o.bookingRef}</span></td>
@@ -159,6 +188,10 @@ export default function OutstandingPage() {
                     <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:'#059669'}}>{fmt(o.paidAmount)}</td>
                     <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:800,color:isOverdue?'#dc2626':'var(--text-primary)'}}>{fmt(o.outstandingAmount)}</td>
                     <td><span style={{padding:'2px 9px',borderRadius:99,fontSize:10,fontWeight:600,color:c,background:c+'15',border:`1px solid ${c}40`,fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.07em'}}>{BUCKET_LABELS[o.agingBucket]}</span></td>
+                    <td>
+                      <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 6px',color:'#dc2626'}}
+                        onClick={()=>{setSelected(new Set([o.id]));setShowDeleteConfirm(true);}}><Trash2 size={11}/></button>
+                    </td>
                   </tr>
                 );
               })}
@@ -167,5 +200,23 @@ export default function OutstandingPage() {
         </div>
       </div>
     </div>
+
+      {showDeleteConfirm && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{maxWidth:380}}>
+            <div style={{textAlign:'center',padding:'8px 0 20px'}}>
+              <div style={{width:52,height:52,borderRadius:'50%',background:'#fef2f2',border:'2px solid #fca5a5',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px'}}>
+                <Trash2 size={22} color="#dc2626"/>
+              </div>
+              <div style={{fontSize:16,fontWeight:800,marginBottom:8}}>Delete {selected.size} Entr{selected.size>1?'ies':'y'}?</div>
+              <div style={{fontSize:13,color:'var(--text-secondary)',marginBottom:20}}>This cannot be undone.</div>
+              <div style={{display:'flex',gap:10,justifyContent:'center'}}>
+                <button className="btn btn-secondary" onClick={()=>{setShowDeleteConfirm(false);setSelected(new Set());}}>Cancel</button>
+                <button className="btn btn-danger" disabled={isPending} onClick={confirmDelete}><Trash2 size={13}/> Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
   );
 }
