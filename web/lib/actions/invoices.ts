@@ -24,8 +24,19 @@ export async function getInvoice(id: string) {
 }
 
 async function nextInvoiceNo() {
-  const count = await prisma.invoice.count();
-  return `INV-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+  const year = new Date().getFullYear();
+  // Use timestamp + random suffix to avoid race conditions on concurrent invoice generation
+  const ts = Date.now().toString().slice(-6);
+  const rand = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+  const candidate = `INV-${year}-${ts}${rand}`;
+  // Verify uniqueness, retry if collision
+  const existing = await prisma.invoice.findUnique({ where: { invoiceNo: candidate } });
+  if (existing) {
+    // Fallback: count-based with timestamp
+    const count = await prisma.invoice.count();
+    return `INV-${year}-${String(count + 1).padStart(4, '0')}-${rand}`;
+  }
+  return candidate;
 }
 
 export async function generateInvoiceFromAwb(awbId: string) {
