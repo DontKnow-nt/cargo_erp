@@ -121,7 +121,7 @@ function NavRow({ item, collapsed, path }: { item: NavItem; collapsed: boolean; 
 }
 
 export default function Sidebar({ onClose, mobileOpen }: { onClose?: () => void; mobileOpen?: boolean }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [hoverExpanded, setHoverExpanded] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const path = usePathname();

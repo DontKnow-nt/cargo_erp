@@ -1,13 +1,15 @@
 'use client';
-import { Suspense, useRef, useCallback } from 'react';
+import { Suspense, useRef, useCallback, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Printer } from 'lucide-react';
+import { Printer, Save } from 'lucide-react';
 import { useSharedData } from '@/lib/useSharedData';
+import { updateDocketBooking } from '@/lib/actions/bookings';
+import toast from 'react-hot-toast';
 
-function EC({ children, style, colSpan }: { children?: string; style?: React.CSSProperties; colSpan?: number }) {
+function EC({ children, style, colSpan, dataField }: { children?: string; style?: React.CSSProperties; colSpan?: number; dataField?: string }) {
   return (
     <td colSpan={colSpan} style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 10, verticalAlign: 'top', ...style }}>
-      <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 14, fontFamily: 'Arial, sans-serif', fontSize: 10, whiteSpace: 'pre-wrap' }}>
+      <div contentEditable suppressContentEditableWarning data-field={dataField} style={{ outline: 'none', minHeight: 14, fontFamily: 'Arial, sans-serif', fontSize: 10, whiteSpace: 'pre-wrap' }}>
         {children ?? ''}
       </div>
     </td>
@@ -17,11 +19,33 @@ function EC({ children, style, colSpan }: { children?: string; style?: React.CSS
 function DocketEditorInner() {
   const searchParams = useSearchParams();
   const id = searchParams.get('id');
-  const { docketBookings, parties } = useSharedData();
+  const { docketBookings, parties, refresh } = useSharedData();
   const paperRef = useRef<HTMLDivElement>(null);
+  const [saving, setSaving] = useState(false);
 
   const d = docketBookings.find(b => b.id === id);
   const party = d ? parties.find(p => p.id === d.partyId) : undefined;
+
+  const getField = (field: string) =>
+    paperRef.current?.querySelector(`[data-field="${field}"]`)?.textContent?.trim() ?? '';
+
+  const handleSave = useCallback(async () => {
+    if (!d || !id) return;
+    setSaving(true);
+    try {
+      await updateDocketBooking(id, {
+        origin: getField('origin') || d.origin || '',
+        destination: getField('destination') || d.destination || '',
+        wayBillNo: getField('wayBillNo') || d.wayBillNo || '',
+        description: getField('description') || d.description || '',
+        consignee: getField('consignee') || d.consignee || '',
+        methodOfPacking: getField('methodOfPacking') || d.methodOfPacking || '',
+      });
+      toast.success('Docket saved');
+      refresh();
+    } catch { toast.error('Save failed'); }
+    finally { setSaving(false); }
+  }, [d, id, refresh]);
 
   const handlePrint = useCallback(async () => {
     const el = paperRef.current;
@@ -73,6 +97,9 @@ img{max-width:100%;object-fit:contain}
         <span style={{ fontSize: 12, color: '#6b7280' }}>{d.partyName}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: '#6b7280' }}>💡 Click any field to edit</span>
+          <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: '#059669', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+            <Save size={14} /> {saving ? 'Saving…' : 'Save'}
+          </button>
           <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
             <Printer size={14} /> Print / Download
           </button>
@@ -107,15 +134,15 @@ img{max-width:100%;object-fit:contain}
               <td colSpan={6} style={{ border: 'none', padding: 0 }}></td>
               <td style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 9, width: '11%' }}>
                 Origin
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 14, fontSize: 10, fontFamily: 'Arial, sans-serif' }}>{d.origin ?? ''}</div>
+                <div contentEditable suppressContentEditableWarning data-field="origin" style={{ outline: 'none', minHeight: 14, fontSize: 10, fontFamily: 'Arial, sans-serif' }}>{d.origin ?? ''}</div>
               </td>
               <td style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 9, width: '13%' }}>
                 Destination
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 14, fontSize: 10, fontFamily: 'Arial, sans-serif' }}>{d.destination ?? ''}</div>
+                <div contentEditable suppressContentEditableWarning data-field="destination" style={{ outline: 'none', minHeight: 14, fontSize: 10, fontFamily: 'Arial, sans-serif' }}>{d.destination ?? ''}</div>
               </td>
               <td colSpan={2} style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 9 }}>
                 Way Bill No. :
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 14, fontSize: 10, fontFamily: 'Arial, sans-serif' }}>{d.wayBillNo ?? ''}</div>
+                <div contentEditable suppressContentEditableWarning data-field="wayBillNo" style={{ outline: 'none', minHeight: 14, fontSize: 10, fontFamily: 'Arial, sans-serif' }}>{d.wayBillNo ?? ''}</div>
               </td>
             </tr>
 
@@ -127,7 +154,7 @@ img{max-width:100%;object-fit:contain}
               </td>
               <td rowSpan={3} style={{ border: '1px solid #000', padding: '3px 5px', width: '13%' }}>
                 <div style={{ fontSize: 9, color: '#555' }}>Description of Goods</div>
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 50, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>{d.description ?? ''}</div>
+                <div contentEditable suppressContentEditableWarning data-field="description" style={{ outline: 'none', minHeight: 50, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>{d.description ?? ''}</div>
               </td>
               <td style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 9, textAlign: 'center', width: '9%' }}>No. Pieces /<br />Packages</td>
               <td style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 9, textAlign: 'center', width: '9%' }}>Actual Weight<br />in Kgs.</td>
@@ -169,7 +196,7 @@ img{max-width:100%;object-fit:contain}
             <tr>
               <td rowSpan={2} colSpan={2} style={{ border: '1px solid #000', padding: '3px 5px' }}>
                 <div style={{ fontSize: 9, color: '#555' }}>Consignee :</div>
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 40, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>{d.consignee ?? ''}</div>
+                <div contentEditable suppressContentEditableWarning data-field="consignee" style={{ outline: 'none', minHeight: 40, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>{d.consignee ?? ''}</div>
               </td>
               <td style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 9, color: '#333' }}>Date of Delivery :<br />Details</td>
               <td colSpan={2} style={{ border: '1px solid #000', padding: '3px 5px', textAlign: 'center' }}>
@@ -208,7 +235,7 @@ img{max-width:100%;object-fit:contain}
               <EC colSpan={2}>{d.value ? String(d.value) : ''}</EC>
               <td colSpan={4} style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 9 }}>
                 Method of Packing
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 14, fontSize: 10, fontFamily: 'Arial, sans-serif' }}>{d.methodOfPacking ?? ''}</div>
+                <div contentEditable suppressContentEditableWarning data-field="methodOfPacking" style={{ outline: 'none', minHeight: 14, fontSize: 10, fontFamily: 'Arial, sans-serif' }}>{d.methodOfPacking ?? ''}</div>
               </td>
             </tr>
 
