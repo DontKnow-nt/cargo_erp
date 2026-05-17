@@ -199,7 +199,6 @@ export default function OutstandingPage() {
           </table>
         </div>
       </div>
-    </div>
 
       {showDeleteConfirm && (
         <div className="modal-overlay">
@@ -218,5 +217,6 @@ export default function OutstandingPage() {
           </div>
         </div>
       )}
+    </div>
   );
 }
