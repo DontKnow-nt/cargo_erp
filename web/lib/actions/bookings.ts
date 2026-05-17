@@ -46,7 +46,7 @@ export async function createAwbBooking(data: unknown) {
   const d = parsed.data;
   const partyId = await resolvePartyId(d.partyId, d.partyName);
   const booking = await prisma.awbBooking.create({
-    data: { awbNo: d.awbNo, partyId, partyName: d.partyName, origin: d.origin, destination: d.destination, airlineName: d.airlineName, bookingDate: d.bookingDate, shipmentDate: d.shipmentDate ?? null, weight: d.weight, pieces: d.pieces, baseRate: d.baseRate, markupAmount: d.markupAmount, gstRate: d.gstRate, gstAmount: d.gstAmount, totalAmount: d.totalAmount, status: d.status, notes: d.notes ?? null, createdBy: session.user.id },
+    data: { awbNo: d.awbNo, partyId, partyName: d.partyName, origin: d.origin, destination: d.destination, airlineName: d.airlineName, bookingDate: d.bookingDate, shipmentDate: d.shipmentDate ?? null, weight: d.weight, pieces: d.pieces, baseRate: d.baseRate, markupAmount: d.markupAmount, gstRate: d.gstRate, gstAmount: d.gstAmount, totalAmount: d.totalAmount, status: d.status, notes: d.notes ?? null, weightCharge: d.weightCharge ?? 0, valuationCharge: d.valuationCharge ?? 0, otherChargesDueAgent: d.otherChargesDueAgent ?? 0, otherChargesDueCarrier: d.otherChargesDueCarrier ?? 0, totalPrepaid: d.totalPrepaid ?? 0, createdBy: session.user.id },
   });
   serverLog('info', 'awb.created', { userId: session.user.id, bookingId: booking.id, awbNo: d.awbNo });
   await recordAuditLog({

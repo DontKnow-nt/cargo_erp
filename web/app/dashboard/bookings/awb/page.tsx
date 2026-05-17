@@ -42,6 +42,8 @@ export default function AwbBookingsPage() {
   const [partyFilter, setPartyFilter] = useState('ALL');
   const [linkFilter, setLinkFilter] = useState<'ALL' | 'LINKED' | 'UNLINKED'>('ALL');
   const [dateRange, setDateRange]   = useState<DateRange>('all');
+  const [ocrExtracting, setOcrExtracting] = useState(false);
+  const ocrFileRef = useRef<HTMLInputElement>(null);
 
   // ── Multi-select / delete state ──────────────────────────────────────────
   const [selectMode, setSelectMode]   = useState(false);
@@ -83,7 +85,7 @@ export default function AwbBookingsPage() {
     });
   }
 
-  const initForm = { awbNo:'', awbPrefix:'312', partyId:'', origin:'', destination:'', airlineName:'', bookingDate:new Date().toISOString().split('T')[0], weight:0, pieces:1, baseRate:0, markupAmount:0, notes:'' };
+  const initForm = { awbNo:'', awbPrefix:'312', partyId:'', origin:'', destination:'', airlineName:'', bookingDate:new Date().toISOString().split('T')[0], weight:0, pieces:1, baseRate:0, markupAmount:0, notes:'', weightCharge:0, valuationCharge:0, otherChargesDueAgent:0, otherChargesDueCarrier:0, totalPrepaid:0 };
   const [form, setForm] = useState(initForm);
 
   const activeParties = parties.filter(p => p.status === 'ACTIVE');
@@ -115,6 +117,81 @@ export default function AwbBookingsPage() {
   const gstAmount   = 0;
   const totalAmount = freightBase + form.markupAmount;
 
+  function extractAwbFromText(text: string) {
+    const t = text.replace(/\r/g, ' ').replace(/\s+/g, ' ');
+    const result: Partial<typeof initForm> = {};
+
+    // AWB number: patterns like 312-28078632 or 312 28078632
+    const awbM = t.match(/\b(\d{3})[-\s](\d{7,8})\b/);
+    if (awbM) { result.awbPrefix = awbM[1]; result.awbNo = awbM[2]; }
+
+    // Origin/Destination from "Airport of Departure" or route codes
+    const routeM = t.match(/\b([A-Z]{3})\s*[-–→]\s*([A-Z]{3})\b/);
+    if (routeM) { result.origin = routeM[1]; result.destination = routeM[2]; }
+
+    // Airline
+    const airlineMap: Record<string,string> = { 'INDIGO':'IndiGo', '6E':'IndiGo', 'AIR INDIA':'Air India', 'AI':'Air India', 'SPICEJET':'SpiceJet', 'SG':'SpiceJet', 'VISTARA':'Vistara', 'UK':'Vistara', 'AKASA':'Akasa Air', 'QP':'Akasa Air' };
+    for (const [key, val] of Object.entries(airlineMap)) {
+      if (t.toUpperCase().includes(key)) { result.airlineName = val; break; }
+    }
+
+    // Weight (Gross Weight / Chargeable Weight)
+    const wtM = t.match(/(?:gross\s*weight|chargeable\s*weight|wt)[:\s]*(\d+(?:\.\d+)?)\s*(?:kg|KG)?/i);
+    if (wtM) result.weight = parseFloat(wtM[1]);
+
+    // Pieces
+    const pcsM = t.match(/(?:no\.?\s*of\s*pieces?|pieces?|pcs)[:\s]*(\d+)/i);
+    if (pcsM) result.pieces = parseInt(pcsM[1]);
+
+    // Rate (base rate per kg)
+    const rateM = t.match(/(?:rate\s*\/?\s*charge|rate\s*class)[:\s]*[\w\s]*?(\d+(?:\.\d+)?)/i);
+    if (rateM) result.baseRate = parseFloat(rateM[1]);
+
+    // Weight Charge (Prepaid section)
+    const wcM = t.match(/(?:weight\s*charge)[:\s]*(\d+(?:[.,]\d+)?)/i);
+    if (wcM) result.weightCharge = parseFloat(wcM[1].replace(',',''));
+
+    // Valuation Charge
+    const valM = t.match(/(?:valuation\s*charge)[:\s]*(\d+(?:[.,]\d+)?)/i);
+    if (valM) result.valuationCharge = parseFloat(valM[1].replace(',',''));
+
+    // Total Other Charges Due Agent
+    const agentM = t.match(/(?:total\s*other\s*charges?\s*due\s*agent)[:\s]*(\d+(?:[.,]\d+)?)/i);
+    if (agentM) result.otherChargesDueAgent = parseFloat(agentM[1].replace(',',''));
+
+    // Total Other Charges Due Carrier
+    const carrierM = t.match(/(?:total\s*other\s*charges?\s*due\s*carrier)[:\s]*(\d+(?:[.,]\d+)?)/i);
+    if (carrierM) result.otherChargesDueCarrier = parseFloat(carrierM[1].replace(',',''));
+
+    // Total Prepaid
+    const prepaidM = t.match(/(?:total\s*prepaid|prepaid)[:\s]*(\d+(?:[.,]\d+)?)/i);
+    if (prepaidM) result.totalPrepaid = parseFloat(prepaidM[1].replace(',',''));
+
+    // Date
+    const dateM = t.match(/(?:date)[:\s]*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i);
+    if (dateM) {
+      const parts = dateM[1].split(/[\/\-]/);
+      if (parts.length === 3) {
+        const y = parts[2].length === 2 ? '20'+parts[2] : parts[2];
+        result.bookingDate = `${y}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+      }
+    }
+
+    return result;
+  }
+
+  async function handleOcrUpload(file: File) {
+    setOcrExtracting(true);
+    try {
+      const text = await file.text();
+      const extracted = extractAwbFromText(text);
+      setForm(f => ({ ...f, ...extracted }));
+      setShowForm(true);
+      toast.success('AWB data extracted — please review and save');
+    } catch { toast.error('Could not read file'); }
+    finally { setOcrExtracting(false); }
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.awbNo || !form.partyId || !form.origin || !form.destination || !form.airlineName || form.weight <= 0) {
@@ -143,6 +220,9 @@ export default function AwbBookingsPage() {
         bookingDate:form.bookingDate, weight:form.weight, pieces:form.pieces,
         baseRate:form.baseRate, markupAmount:form.markupAmount,
         gstRate:0, gstAmount:0, totalAmount, status:'BOOKED', notes:form.notes,
+        weightCharge:form.weightCharge||0, valuationCharge:form.valuationCharge||0,
+        otherChargesDueAgent:form.otherChargesDueAgent||0, otherChargesDueCarrier:form.otherChargesDueCarrier||0,
+        totalPrepaid:form.totalPrepaid||0,
       });
       if (res && 'error' in res) { toast.error('Validation error — booking may not have saved'); }
       refresh();
@@ -216,6 +296,8 @@ export default function AwbBookingsPage() {
             <button className="btn btn-secondary btn-sm" onClick={()=>handleExport('xlsx')}><Download size={12}/> XLSX</button>
             <button className="btn btn-secondary btn-sm" onClick={()=>handleExport('pdf')}><Download size={12}/> PDF</button>
             <button className="btn btn-secondary btn-sm" onClick={()=>setShowBulk(true)}>Bulk Download</button>
+            <input ref={ocrFileRef} type="file" accept=".txt,.pdf,.csv" style={{display:'none'}} onChange={e=>{const f=e.target.files?.[0];if(f)handleOcrUpload(f);e.target.value='';}}/>
+            <button className="btn btn-secondary btn-sm" disabled={ocrExtracting} onClick={()=>ocrFileRef.current?.click()}>📄 {ocrExtracting?'Extracting…':'Upload AWB'}</button>
             <button className="btn btn-primary btn-sm" onClick={()=>setShowForm(true)}><Plus size={12}/> New AWB Booking</button>
           </>
         )}
@@ -468,6 +550,31 @@ export default function AwbBookingsPage() {
                 <div className="form-group">
                   <label className="label">Markup (₹)</label>
                   <input className="input" type="number" min="0" step="0.01" value={form.markupAmount||''} onChange={e=>setForm(f=>({...f,markupAmount:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}}/>
+                </div>
+              </div>
+
+              {/* AWB Charge fields */}
+              <div style={{fontSize:11,fontWeight:700,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8}}>AWB Charges</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}}>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label">Weight Charge (₹)</label>
+                  <input className="input" type="number" min="0" step="0.01" value={form.weightCharge||''} onChange={e=>setForm(f=>({...f,weightCharge:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}} placeholder="0"/>
+                </div>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label">Valuation Charge (₹)</label>
+                  <input className="input" type="number" min="0" step="0.01" value={form.valuationCharge||''} onChange={e=>setForm(f=>({...f,valuationCharge:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}} placeholder="0"/>
+                </div>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label">Other Charges Due Agent (₹)</label>
+                  <input className="input" type="number" min="0" step="0.01" value={form.otherChargesDueAgent||''} onChange={e=>setForm(f=>({...f,otherChargesDueAgent:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}} placeholder="0"/>
+                </div>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label">Other Charges Due Carrier (₹)</label>
+                  <input className="input" type="number" min="0" step="0.01" value={form.otherChargesDueCarrier||''} onChange={e=>setForm(f=>({...f,otherChargesDueCarrier:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}} placeholder="0"/>
+                </div>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label">Total Prepaid (₹)</label>
+                  <input className="input" type="number" min="0" step="0.01" value={form.totalPrepaid||''} onChange={e=>setForm(f=>({...f,totalPrepaid:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}} placeholder="0"/>
                 </div>
               </div>
 

@@ -109,6 +109,11 @@ model AwbBooking {
   totalAmount  Float    @map("total_amount")
   status       String   @default("BOOKED")
   notes        String?
+  weightCharge          Float?   @default(0) @map("weight_charge")
+  valuationCharge       Float?   @default(0) @map("valuation_charge")
+  otherChargesDueAgent  Float?   @default(0) @map("other_charges_due_agent")
+  otherChargesDueCarrier Float?  @default(0) @map("other_charges_due_carrier")
+  totalPrepaid          Float?   @default(0) @map("total_prepaid")
   createdBy    String?  @map("created_by")
   createdAt    DateTime @default(now()) @map("created_at")
 

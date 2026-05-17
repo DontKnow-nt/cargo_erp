@@ -59,6 +59,11 @@ export const AwbBookingSchema = z.object({
   totalAmount: nonNegNum,
   status: z.enum(['BOOKED', 'INVOICED', 'CANCELLED']).default('BOOKED'),
   notes: z.string().max(1000).optional(),
+  weightCharge: nonNegNum.optional(),
+  valuationCharge: nonNegNum.optional(),
+  otherChargesDueAgent: nonNegNum.optional(),
+  otherChargesDueCarrier: nonNegNum.optional(),
+  totalPrepaid: nonNegNum.optional(),
 });
 
 export const UpdateAwbBookingSchema = AwbBookingSchema.partial().omit({ partyId: true });
