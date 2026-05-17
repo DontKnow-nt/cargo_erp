@@ -54,8 +54,31 @@ export async function deleteParties(ids: string[]) {
   const session = await requireAuth();
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };
   if (!ids.every(id => typeof id === 'string' && id.length > 0)) return { error: 'Invalid IDs' };
-  // Only delete parties with no outstanding balance
-  await prisma.party.deleteMany({ where: { id: { in: ids } } });
+
+  // Check for any linked records that would block deletion
+  const [awbCount, docketCount, invoiceCount, outstandingCount] = await Promise.all([
+    prisma.awbBooking.count({ where: { partyId: { in: ids } } }),
+    prisma.docketBooking.count({ where: { partyId: { in: ids } } }),
+    prisma.invoice.count({ where: { partyId: { in: ids } } }),
+    prisma.outstandingEntry.count({ where: { partyId: { in: ids } } }),
+  ]);
+
+  const total = awbCount + docketCount + invoiceCount + outstandingCount;
+  if (total > 0) {
+    const parts = [
+      awbCount > 0 && `${awbCount} AWB booking${awbCount > 1 ? 's' : ''}`,
+      docketCount > 0 && `${docketCount} docket booking${docketCount > 1 ? 's' : ''}`,
+      invoiceCount > 0 && `${invoiceCount} invoice${invoiceCount > 1 ? 's' : ''}`,
+      outstandingCount > 0 && `${outstandingCount} outstanding entr${outstandingCount > 1 ? 'ies' : 'y'}`,
+    ].filter(Boolean).join(', ');
+    return { error: `Cannot delete: ${parts} linked to this party. Delete those records first.` };
+  }
+
+  // Also delete payment receipts (no bookings, safe to cascade)
+  await prisma.$transaction([
+    prisma.paymentReceipt.deleteMany({ where: { partyId: { in: ids } } }),
+    prisma.party.deleteMany({ where: { id: { in: ids } } }),
+  ]);
   serverLog('info', 'party.deleted', { userId: session.user.id, count: ids.length });
   revalidatePath('/dashboard/parties');
   return { success: true };
