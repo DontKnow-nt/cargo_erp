@@ -1,6 +1,10 @@
 'use client';
-import { useRef, useCallback } from 'react';
-import { Printer, RotateCcw, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Plus, Minus } from 'lucide-react';
+import { useRef, useCallback, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
+import { Printer, RotateCcw, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Plus, Minus, Save } from 'lucide-react';
+import { updateDocketBooking } from '@/lib/actions/bookings';
+import toast from 'react-hot-toast';
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 function Toolbar() {
@@ -72,9 +76,10 @@ function EditCell({ style, children, multiline, colSpan }: { style?: React.CSSPr
 }
 
 // ── Editable div (inline inside another <td>, avoids nested <td>) ─────────────
-function EditDiv() {
+function EditDiv({ dataField }: { dataField?: string }) {
   return (
     <div contentEditable suppressContentEditableWarning suppressHydrationWarning
+      data-field={dataField}
       style={{ outline: 'none', minHeight: 14, fontFamily: 'Arial, sans-serif', fontSize: 10, whiteSpace: 'pre-wrap' }} />
   );
 }
@@ -89,8 +94,31 @@ function LabelCell({ style, children }: { style?: React.CSSProperties; children:
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
-export default function CargoWayBillPage() {
+function CargoWayBillInner() {
   const paperRef = useRef<HTMLDivElement>(null);
+  const searchParams = useSearchParams();
+  const docketId = searchParams.get('id');
+  const [saving, setSaving] = useState(false);
+
+  const getField = (field: string) =>
+    paperRef.current?.querySelector(`[data-field="${field}"]`)?.textContent?.trim() ?? '';
+
+  const handleSave = useCallback(async () => {
+    if (!docketId) { toast('No docket linked. Open from Docket Bookings list.', { icon: 'ℹ️' }); return; }
+    setSaving(true);
+    try {
+      await updateDocketBooking(docketId, {
+        origin: getField('origin'),
+        destination: getField('destination'),
+        wayBillNo: getField('wayBillNo'),
+        description: getField('description'),
+        consignee: getField('consignee'),
+        methodOfPacking: getField('methodOfPacking'),
+      });
+      toast.success('Docket saved');
+    } catch { toast.error('Save failed'); }
+    finally { setSaving(false); }
+  }, [docketId]);
 
   const handlePrint = useCallback(async () => {
     const el = paperRef.current;
@@ -137,6 +165,7 @@ img{max-width:100%;object-fit:contain}
         <div style={{ display: 'flex', gap: 10, marginBottom: 10, alignItems: 'center' }}>
           <h1 className="page-title" style={{ flex: 1 }}>Cargo Way Bill</h1>
           <button className="btn btn-secondary btn-sm" onClick={handleReset}><RotateCcw size={13} /> Reset</button>
+          <button className="btn btn-success btn-sm" onClick={handleSave} disabled={saving} style={{ background: '#059669', color: '#fff', border: 'none' }}><Save size={13} /> {saving ? 'Saving…' : 'Save'}</button>
           <button className="btn btn-primary btn-sm" onClick={handlePrint}><Printer size={13} /> Print</button>
         </div>
         <Toolbar />
@@ -171,10 +200,10 @@ img{max-width:100%;object-fit:contain}
             {/* ROW 2: Origin / Destination / Way Bill No */}
             <tr>
               <td colSpan={6} style={{ border: 'none', padding: 0 }}></td>
-              <LabelCell style={{ width: '11%' }}>Origin<EditDiv /></LabelCell>
-              <LabelCell style={{ width: '13%' }}>Destination<EditDiv /></LabelCell>
+              <LabelCell style={{ width: '11%' }}>Origin<EditDiv dataField="origin" /></LabelCell>
+              <LabelCell style={{ width: '13%' }}>Destination<EditDiv dataField="destination" /></LabelCell>
               <td colSpan={2} style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 9 }}>
-                Way Bill No. :<EditDiv />
+                Way Bill No. :<EditDiv dataField="wayBillNo" />
               </td>
             </tr>
 
@@ -186,7 +215,7 @@ img{max-width:100%;object-fit:contain}
               </td>
               <td rowSpan={3} style={{ border: '1px solid #000', padding: '3px 5px', width: '13%' }}>
                 <div style={{ fontSize: 9, color: '#555' }}>Description of Goods</div>
-                <div contentEditable suppressContentEditableWarning suppressHydrationWarning style={{ outline: 'none', minHeight: 50, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}></div>
+                <div contentEditable suppressContentEditableWarning suppressHydrationWarning data-field="description" style={{ outline: 'none', minHeight: 50, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}></div>
               </td>
               <LabelCell style={{ width: '9%', textAlign: 'center' }}>No. Pieces /<br />Packages</LabelCell>
               <LabelCell style={{ width: '9%', textAlign: 'center' }}>Actual Weight<br />in Kgs.</LabelCell>
@@ -221,7 +250,7 @@ img{max-width:100%;object-fit:contain}
             <tr>
               <td rowSpan={2} colSpan={2} style={{ border: '1px solid #000', padding: '3px 5px' }}>
                 <div style={{ fontSize: 9, color: '#555' }}>Consignee :</div>
-                <div contentEditable suppressContentEditableWarning suppressHydrationWarning style={{ outline: 'none', minHeight: 40, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}></div>
+                <div contentEditable suppressContentEditableWarning suppressHydrationWarning data-field="consignee" style={{ outline: 'none', minHeight: 40, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}></div>
               </td>
               <LabelCell>Date of Delivery :<br />Details</LabelCell>
               <td colSpan={2} style={{ border: '1px solid #000', padding: '3px 5px', textAlign: 'center' }}>
@@ -256,7 +285,7 @@ img{max-width:100%;object-fit:contain}
               <LabelCell>Value</LabelCell>
               <EditCell colSpan={2} />
               <td colSpan={4} style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 9 }}>
-                Method of Packing <div contentEditable suppressContentEditableWarning suppressHydrationWarning style={{ outline: 'none', minHeight: 14, fontSize: 10, fontFamily: 'Arial, sans-serif' }}></div>
+                Method of Packing <div contentEditable suppressContentEditableWarning suppressHydrationWarning data-field="methodOfPacking" style={{ outline: 'none', minHeight: 14, fontSize: 10, fontFamily: 'Arial, sans-serif' }}></div>
               </td>
             </tr>
 
@@ -317,6 +346,14 @@ img{max-width:100%;object-fit:contain}
         </table>
       </div>
     </div>
+  );
+}
+
+export default function CargoWayBillPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 40, textAlign: 'center' }}>Loading…</div>}>
+      <CargoWayBillInner />
+    </Suspense>
   );
 }
 
