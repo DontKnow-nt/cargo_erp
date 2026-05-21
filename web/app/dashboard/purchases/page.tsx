@@ -17,6 +17,7 @@ const CATEGORIES = ['Transport', 'Fuel', 'Office Supplies', 'Maintenance', 'Util
 const emptyForm = {
   vendorName: '', invoiceNo: '', invoiceDate: new Date().toISOString().split('T')[0],
   dueDate: '', totalAmount: 0, subtotal: 0, gstAmount: 0, description: '', category: 'Transport',
+  gstRate: 18, tdsRate: 0, tdsAmount: 0, netPayable: 0,
 };
 
 export default function PurchasesPage() {
@@ -40,7 +41,7 @@ export default function PurchasesPage() {
       const res = await createPurchaseInvoice({
         vendorName: form.vendorName, invoiceNo: form.invoiceNo,
         invoiceDate: form.invoiceDate, dueDate: form.dueDate || undefined,
-        subtotal: form.totalAmount, gstAmount: 0, totalAmount: form.totalAmount,
+        subtotal: form.totalAmount, gstAmount: form.gstAmount || 0, totalAmount: form.netPayable || form.totalAmount,
         description: form.description || undefined, category: form.category || undefined,
       });
       if (res && 'error' in res) { toast.error('Validation error'); return; }
@@ -169,7 +170,7 @@ export default function PurchasesPage() {
       {/* Add Bill Modal */}
       {showForm && (
         <div className="modal-overlay">
-          <div className="modal-box" style={{maxWidth:500}}>
+          <div className="modal-box" style={{maxWidth:520}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
               <h2 style={{fontSize:16,fontWeight:800}}>Add Bill</h2>
               <button className="btn btn-ghost btn-icon" onClick={()=>{setShowForm(false);setForm(emptyForm);}}><X size={16}/></button>
@@ -201,16 +202,63 @@ export default function PurchasesPage() {
                   </select>
                 </div>
               </div>
-              <div className="form-row form-row-2" style={{marginBottom:12}}>
-                <div className="form-group">
-                  <label className="label">Amount (₹) *</label>
-                  <input className="input" type="number" min="0.01" step="0.01" required value={form.totalAmount||''} onChange={e=>setForm(f=>({...f,totalAmount:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}}/>
+
+              {/* Amount breakdown */}
+              <div style={{background:'var(--surface-sunken)',border:'1px solid var(--border)',borderRadius:8,padding:'12px 14px',marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:700,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:10}}>Amount Breakdown</div>
+                <div className="form-row form-row-2" style={{marginBottom:10}}>
+                  <div className="form-group" style={{marginBottom:0}}>
+                    <label className="label">Taxable Amount (₹) *</label>
+                    <input className="input" type="number" min="0" step="0.01" required value={form.totalAmount||''} style={{fontFamily:'var(--font-mono)'}}
+                      onChange={e=>{const taxable=parseFloat(e.target.value)||0;const gst=parseFloat(((taxable*form.gstRate)/100).toFixed(2));const tds=parseFloat(((taxable*form.tdsRate)/100).toFixed(2));setForm(f=>({...f,totalAmount:taxable,gstAmount:gst,tdsAmount:tds,netPayable:parseFloat((taxable+gst-tds).toFixed(2))}));}}/>
+                  </div>
+                  <div className="form-group" style={{marginBottom:0}}>
+                    <label className="label">Description</label>
+                    <input className="input" placeholder="What is this bill for?" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))}/>
+                  </div>
                 </div>
-                <div className="form-group">
-                  <label className="label">Description</label>
-                  <input className="input" placeholder="What is this bill for?" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))}/>
+                <div className="form-row form-row-2" style={{marginBottom:10}}>
+                  <div className="form-group" style={{marginBottom:0}}>
+                    <label className="label">GST Rate (%)</label>
+                    <select className="input" value={form.gstRate} onChange={e=>{const rate=parseFloat(e.target.value);const gst=parseFloat(((form.totalAmount*rate)/100).toFixed(2));const tds=form.tdsAmount;setForm(f=>({...f,gstRate:rate,gstAmount:gst,netPayable:parseFloat((f.totalAmount+gst-tds).toFixed(2))}));}}>
+                      {[0,5,10,12,18,28].map(r=><option key={r} value={r}>{r}%</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{marginBottom:0}}>
+                    <label className="label">GST Amount (₹)</label>
+                    <input className="input" type="number" min="0" step="0.01" value={form.gstAmount||''} style={{fontFamily:'var(--font-mono)'}} placeholder="Auto-calculated"
+                      onChange={e=>{const gst=parseFloat(e.target.value)||0;setForm(f=>({...f,gstAmount:gst,netPayable:parseFloat((f.totalAmount+gst-f.tdsAmount).toFixed(2))}));}}/>
+                  </div>
+                </div>
+                <div className="form-row form-row-2" style={{marginBottom:10}}>
+                  <div className="form-group" style={{marginBottom:0}}>
+                    <label className="label">TDS Rate (%)</label>
+                    <select className="input" value={form.tdsRate} onChange={e=>{const rate=parseFloat(e.target.value);const tds=parseFloat(((form.totalAmount*rate)/100).toFixed(2));setForm(f=>({...f,tdsRate:rate,tdsAmount:tds,netPayable:parseFloat((f.totalAmount+f.gstAmount-tds).toFixed(2))}));}}>
+                      {[0,1,2,5,10,15,20].map(r=><option key={r} value={r}>{r}%</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{marginBottom:0}}>
+                    <label className="label">TDS Amount (₹)</label>
+                    <input className="input" type="number" min="0" step="0.01" value={form.tdsAmount||''} style={{fontFamily:'var(--font-mono)'}} placeholder="Auto-calculated"
+                      onChange={e=>{const tds=parseFloat(e.target.value)||0;setForm(f=>({...f,tdsAmount:tds,netPayable:parseFloat((f.totalAmount+f.gstAmount-tds).toFixed(2))}));}}/>
+                  </div>
+                </div>
+                {/* Summary */}
+                <div style={{borderTop:'1px solid var(--border)',paddingTop:10,display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8}}>
+                  {[
+                    {label:'Taxable',val:`₹${(form.totalAmount||0).toFixed(2)}`,color:'var(--text-primary)'},
+                    {label:`GST`,val:`₹${(form.gstAmount||0).toFixed(2)}`,color:'#2563eb'},
+                    {label:`TDS (-)`,val:`₹${(form.tdsAmount||0).toFixed(2)}`,color:'#dc2626'},
+                    {label:'Net Payable',val:`₹${(form.netPayable||0).toFixed(2)}`,color:'#059669',bold:true},
+                  ].map(s=>(
+                    <div key={s.label} style={{padding:'8px 10px',background:'var(--surface-base)',border:`1px solid ${s.color}30`,borderRadius:7,textAlign:'center'}}>
+                      <div style={{fontSize:10,color:'var(--text-muted)',textTransform:'uppercase',marginBottom:3}}>{s.label}</div>
+                      <div style={{fontSize:13,fontWeight:(s as any).bold?800:700,fontFamily:'var(--font-mono)',color:s.color}}>{s.val}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
+
               <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
                 <button type="button" className="btn btn-secondary" onClick={()=>{setShowForm(false);setForm(emptyForm);}}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={isPending}><CheckCircle size={13}/> Save Bill</button>
