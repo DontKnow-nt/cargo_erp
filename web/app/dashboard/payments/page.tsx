@@ -159,15 +159,9 @@ export default function PaymentsPage() {
                   <label className="label">Reference No.</label>
                   <input className="input" placeholder="NEFT/RTGS/Cheque no." value={form.referenceNo} onChange={e=>setForm(f=>({...f,referenceNo:e.target.value}))}/>
                 </div>
-
-              <div className="form-row form-row-2" style={{marginBottom:12}}>
                 <div className="form-group">
                   <label className="label">Bank Name</label>
                   <input className="input" placeholder="e.g. HDFC Bank" value={form.bankName} onChange={e=>setForm(f=>({...f,bankName:e.target.value}))}/>
-                </div>
-                <div className="form-group">
-                  <label className="label">Remarks</label>
-                  <input className="input" value={form.remarks} onChange={e=>setForm(f=>({...f,remarks:e.target.value}))}/>
                 </div>
               </div>
 
