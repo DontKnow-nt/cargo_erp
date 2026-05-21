@@ -18,6 +18,7 @@ const emptyForm = {
   vendorName: '', invoiceNo: '', invoiceDate: new Date().toISOString().split('T')[0],
   dueDate: '', totalAmount: 0, subtotal: 0, gstAmount: 0, description: '', category: 'Transport',
   gstRate: 18, tdsRate: 0, tdsAmount: 0, netPayable: 0,
+  periodType: 'single' as 'single' | 'range', periodEnd: '',
 };
 
 export default function PurchasesPage() {
@@ -37,12 +38,15 @@ export default function PurchasesPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.vendorName || !form.invoiceNo || form.totalAmount <= 0) { toast.error('Fill required fields'); return; }
+    const periodLabel = form.periodType === 'range' && form.periodEnd
+      ? `Period: ${form.invoiceDate} to ${form.periodEnd}` : '';
+    const descWithPeriod = [form.description, periodLabel].filter(Boolean).join(' | ');
     startTransition(async () => {
       const res = await createPurchaseInvoice({
         vendorName: form.vendorName, invoiceNo: form.invoiceNo,
         invoiceDate: form.invoiceDate, dueDate: form.dueDate || undefined,
         subtotal: form.totalAmount, gstAmount: form.gstAmount || 0, totalAmount: form.netPayable || form.totalAmount,
-        description: form.description || undefined, category: form.category || undefined,
+        description: descWithPeriod || undefined, category: form.category || undefined,
       });
       if (res && 'error' in res) { toast.error('Validation error'); return; }
       toast.success('Bill added');
@@ -187,9 +191,29 @@ export default function PurchasesPage() {
                 </div>
               </div>
               <div className="form-row form-row-3" style={{marginBottom:12}}>
-                <div className="form-group">
-                  <label className="label">Bill Date *</label>
-                  <input className="input" type="date" required value={form.invoiceDate} onChange={e=>setForm(f=>({...f,invoiceDate:e.target.value}))}/>
+                <div className="form-group" style={{gridColumn:'1 / -1'}}>
+                  <label className="label">Period of Work *</label>
+                  <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                    <div style={{display:'flex',gap:0,border:'1px solid var(--border)',borderRadius:8,overflow:'hidden',flexShrink:0}}>
+                      {(['single','range'] as const).map(t=>(
+                        <button key={t} type="button"
+                          onClick={()=>setForm(f=>({...f,periodType:t,periodEnd:''}))}
+                          style={{padding:'6px 14px',fontSize:12,fontWeight:form.periodType===t?700:500,background:form.periodType===t?'var(--accent)':'var(--surface-base)',color:form.periodType===t?'#fff':'var(--text-secondary)',border:'none',cursor:'pointer'}}>
+                          {t==='single'?'Single Date':'Date Range'}
+                        </button>
+                      ))}
+                    </div>
+                    <input className="input" type="date" required value={form.invoiceDate} onChange={e=>setForm(f=>({...f,invoiceDate:e.target.value}))} style={{flex:1,minWidth:120}}/>
+                    {form.periodType==='range' && <>
+                      <span style={{fontSize:12,color:'var(--text-muted)',flexShrink:0}}>to</span>
+                      <input className="input" type="date" required={form.periodType==='range'} value={form.periodEnd} onChange={e=>setForm(f=>({...f,periodEnd:e.target.value}))} style={{flex:1,minWidth:120}}/>
+                    </>}
+                  </div>
+                  {form.periodType==='range' && form.invoiceDate && form.periodEnd && (
+                    <div style={{fontSize:10,color:'var(--text-muted)',marginTop:3}}>
+                      Period: {new Date(form.invoiceDate).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})} – {new Date(form.periodEnd).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}
+                    </div>
+                  )}
                 </div>
                 <div className="form-group">
                   <label className="label">Due Date</label>
