@@ -31,6 +31,7 @@ export default function CreditNotePage() {
   const router = useRouter();
 
   const filtered = invoices.filter(inv =>
+    inv.bookingType === 'CREDIT_NOTE' &&
     (inv.invoiceNo.toLowerCase().includes(search.toLowerCase()) ||
      inv.partyName.toLowerCase().includes(search.toLowerCase()) ||
      inv.bookingRef.toLowerCase().includes(search.toLowerCase())) &&
@@ -49,12 +50,13 @@ export default function CreditNotePage() {
     });
   }
 
+  const creditNotes = invoices.filter(i => i.bookingType === 'CREDIT_NOTE');
   const statusCounts = {
-    DRAFT: invoices.filter(i=>i.status==='DRAFT').length,
-    FINALIZED: invoices.filter(i=>i.status==='FINALIZED').length,
-    PAID: invoices.filter(i=>i.status==='PAID').length,
-    OVERDUE: invoices.filter(i=>i.status==='OVERDUE').length,
-    CANCELLED: invoices.filter(i=>i.status==='CANCELLED').length,
+    DRAFT: creditNotes.filter(i=>i.status==='DRAFT').length,
+    FINALIZED: creditNotes.filter(i=>i.status==='FINALIZED').length,
+    PAID: creditNotes.filter(i=>i.status==='PAID').length,
+    OVERDUE: creditNotes.filter(i=>i.status==='OVERDUE').length,
+    CANCELLED: creditNotes.filter(i=>i.status==='CANCELLED').length,
   };
 
   return (

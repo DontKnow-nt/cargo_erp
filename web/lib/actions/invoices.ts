@@ -288,6 +288,35 @@ export async function generateCombinedInvoice(
   return { invoiceId: invoice.id, invoiceNo };
 }
 
+export async function createCreditNote(data: { partyId: string; partyName: string; creditNoteNo: string; description: string; amount: number }) {
+  const session = await requireAuth();
+  const invoiceNo = data.creditNoteNo || await nextInvoiceNo();
+  const invoiceDate = new Date().toISOString().split('T')[0];
+  const due = new Date(invoiceDate); due.setDate(due.getDate() + 30);
+  const dueDate = due.toISOString().split('T')[0];
+  const grandTotal = data.amount || 0;
+
+  // Find or create party
+  let partyId = data.partyId;
+  if (!partyId || partyId === '') {
+    const existing = await prisma.party.findFirst({ where: { partyName: { equals: data.partyName.trim(), mode: 'insensitive' } } });
+    partyId = existing?.id ?? (await prisma.party.create({ data: { partyName: data.partyName || 'Unknown', status: 'ACTIVE' } })).id;
+  }
+
+  const invoice = await prisma.invoice.create({
+    data: {
+      invoiceNo, partyId, partyName: data.partyName || 'Unknown',
+      bookingType: 'CREDIT_NOTE', bookingRef: data.creditNoteNo || invoiceNo,
+      invoiceDate, dueDate, subtotal: grandTotal, gstTotal: 0, grandTotal,
+      paidTotal: 0, outstandingTotal: grandTotal, status: 'DRAFT', createdBy: session.user.id,
+      lines: { create: [{ description: data.description || 'Credit Note', qty: 1, rate: grandTotal, amount: grandTotal, taxRate: 0, taxAmount: 0, lineTotal: grandTotal }] },
+    },
+  });
+  serverLog('info', 'credit_note.created', { userId: session.user.id, id: invoice.id, invoiceNo });
+  revalidatePath('/dashboard/credit-note');
+  return { id: invoice.id, invoiceNo };
+}
+
 export async function deleteOutstandingEntries(ids: string[]) {
   const session = await requireAuth();
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };

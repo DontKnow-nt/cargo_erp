@@ -1,8 +1,9 @@
 'use client';
-import { Suspense, useRef, useCallback, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { Suspense, useRef, useCallback, useEffect, useState, useTransition } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Printer } from 'lucide-react';
 import { useSharedData } from '@/lib/useSharedData';
+import { createCreditNote } from '@/lib/actions/invoices';
 
 function Toolbar({ paperRef }: { paperRef: React.RefObject<HTMLDivElement | null> }) {
   const [fontSize, setFontSize] = useState('3');
@@ -246,6 +247,8 @@ function CreditNoteEditorInner() {
   const [saving, setSaving] = useState(false);
   const [banks, setBanks] = useState<{ id: string; bank_name: string; account_name: string; account_number: string; ifsc: string; branch: string; is_default: number }[]>([]);
   const [selectedBankId, setSelectedBankId] = useState('');
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
 
   useEffect(() => { fetch('/api/banks').then(r => r.json()).then(d => { setBanks(d); const def = d.find((b: { is_default: number }) => b.is_default === 1); if (def) setSelectedBankId(def.id); }).catch(() => {}); }, []);
   useEffect(() => {
@@ -278,6 +281,30 @@ function CreditNoteEditorInner() {
   // Blank mode
   if (!id) {
     const blankInv = { invoiceNo: '', partyName: 'TRIVENI CARGO EXPRESS INDIA PRIVATE LIMITED', invoiceDate: '', dueDate: '', bookingRef: '', subtotal: 0, gstTotal: 0, grandTotal: 0, lines: [] };
+
+    async function handleBlankSave() {
+      if (!paperRef.current) return;
+      setSaving(true);
+      try {
+        // Extract key fields from the editable content
+        const paper = paperRef.current;
+        const getCE = (sel: string) => paper.querySelector(sel)?.textContent?.trim() ?? '';
+        // Get all contenteditable spans for the credit note fields
+        const allSpans = paper.querySelectorAll('[contenteditable]');
+        const creditNoteNo = (allSpans[3] as HTMLElement)?.textContent?.trim() || '';
+        const desc = (paper.querySelector('#cn-data-body td:nth-child(3) [contenteditable]') as HTMLElement)?.textContent?.trim() || 'Credit Note';
+        const amtText = (paper.querySelector('#cn-data-body td:last-child [contenteditable]') as HTMLElement)?.textContent?.trim() || '0';
+        const amount = parseFloat(amtText.replace(/,/g, '')) || 0;
+
+        const res = await createCreditNote({ partyId: '', partyName: 'TRIVENI CARGO EXPRESS INDIA PRIVATE LIMITED', creditNoteNo, description: desc, amount });
+        if (res && 'id' in res) {
+          // Save HTML then redirect
+          await fetch(`/api/invoices/${res.id}/editor-html`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html: paper.innerHTML }) });
+          router.push(`/dashboard/credit-note/editor?id=${res.id}`);
+        }
+      } finally { setSaving(false); }
+    }
+
     return (
       <div style={{ minHeight: '100vh', background: '#e5e7eb', fontFamily: 'Arial, sans-serif' }}>
         <div style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, position: 'sticky', top: 0, zIndex: 10, flexWrap: 'wrap' }}>
@@ -285,6 +312,7 @@ function CreditNoteEditorInner() {
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
             {banks.length > 0 && <select value={selectedBankId} onChange={e => setSelectedBankId(e.target.value)} style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff' }}>{banks.map(b => <option key={b.id} value={b.id}>{b.bank_name}{b.is_default ? '★' : ''}</option>)}</select>}
             <span style={{ fontSize: 11, color: '#6b7280' }}>💡 Click any field to edit</span>
+            <button onClick={handleBlankSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: saving ? '#6b7280' : '#059669', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer' }}>{saving ? '⏳ Saving…' : '💾 Save'}</button>
             <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}><Printer size={14} /> Print / Download</button>
           </div>
         </div>
