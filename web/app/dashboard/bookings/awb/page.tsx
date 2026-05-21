@@ -590,7 +590,7 @@ export default function AwbBookingsPage() {
                 </div>
                 <div className="form-group">
                   <label className="label">Pieces</label>
-                  <input className="input" type="number" min="1" value={form.pieces} onChange={e=>setForm(f=>({...f,pieces:parseInt(e.target.value)||1}))}/>
+                  <input className="input" type="number" min="0" value={form.pieces||''} onChange={e=>setForm(f=>({...f,pieces:parseInt(e.target.value)||0}))}/>
                 </div>
               </div>
               <div className="form-row form-row-3" style={{marginBottom:16}}>
