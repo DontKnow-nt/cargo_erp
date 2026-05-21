@@ -20,7 +20,11 @@ export async function addPaymentReceipt(data: unknown) {
   if (inv.status === 'CANCELLED') return { error: 'Cannot pay cancelled invoice' };
 
   const count = await prisma.paymentReceipt.count();
-  const receiptNo = `RCP-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+  const ts = Date.now().toString().slice(-6);
+  const receiptNo = `RCP-${new Date().getFullYear()}-${ts}`;
+  // Check uniqueness
+  const existing = await prisma.paymentReceipt.findFirst({ where: { receiptNo } });
+  const finalReceiptNo = existing ? `RCP-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}-${ts.slice(-2)}` : receiptNo;
   const newPaid = inv.paidTotal + parsed.data.paymentAmount;
   const newOut = Math.max(0, inv.grandTotal - newPaid);
   const newStatus = newOut === 0 ? 'PAID' : 'PARTIALLY_PAID';
@@ -28,7 +32,7 @@ export async function addPaymentReceipt(data: unknown) {
   const [receipt] = await prisma.$transaction([
     prisma.paymentReceipt.create({
       data: {
-        receiptNo, partyId: parsed.data.partyId, partyName: parsed.data.partyName,
+        receiptNo: finalReceiptNo, partyId: parsed.data.partyId, partyName: parsed.data.partyName,
         invoiceId: parsed.data.invoiceId, invoiceNo: parsed.data.invoiceNo,
         paymentDate: parsed.data.paymentDate, paymentAmount: parsed.data.paymentAmount,
         freightComponent: parsed.data.freightComponent, gstComponent: parsed.data.gstComponent,
@@ -39,17 +43,20 @@ export async function addPaymentReceipt(data: unknown) {
       },
     }),
     prisma.invoice.update({ where: { id: parsed.data.invoiceId }, data: { paidTotal: newPaid, outstandingTotal: newOut, status: newStatus } }),
-    prisma.outstandingEntry.updateMany({ where: { invoiceId: parsed.data.invoiceId }, data: { paidAmount: newPaid, outstandingAmount: newOut } }),
+    prisma.outstandingEntry.updateMany({
+      where: { invoiceId: parsed.data.invoiceId },
+      data: { paidAmount: newPaid, outstandingAmount: newOut, agingBucket: newOut === 0 ? 'CURRENT' : undefined }
+    }),
   ]);
 
-  serverLog('info', 'payment.created', { userId: session.user.id, receiptId: receipt.id, receiptNo, invoiceId: parsed.data.invoiceId, amount: parsed.data.paymentAmount });
+  serverLog('info', 'payment.created', { userId: session.user.id, receiptId: receipt.id, receiptNo: finalReceiptNo, invoiceId: parsed.data.invoiceId, amount: parsed.data.paymentAmount });
   await recordAuditLog({
     userId: session.user.id,
     userEmail: session.user.email ?? null,
     action: 'PAYMENT_RECEIVED',
     resource: 'PAYMENT_RECEIPT',
     resourceId: receipt.id,
-    details: `${receiptNo} received against ${parsed.data.invoiceNo} for ${parsed.data.partyName}`,
+    details: `${finalReceiptNo} received against ${parsed.data.invoiceNo} for ${parsed.data.partyName}`,
   });
   await recordAuditLog({
     userId: session.user.id,
