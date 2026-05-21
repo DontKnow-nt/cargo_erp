@@ -97,7 +97,7 @@ export default function AwbBookingsPage() {
     });
   }
 
-  const initForm = { awbNo:'', awbPrefix:'312', partyId:'', origin:'', destination:'', airlineName:'', bookingDate:new Date().toISOString().split('T')[0], weight:0, pieces:1, baseRate:0, markupAmount:0, notes:'', weightCharge:0, valuationCharge:0, otherChargesDueAgent:0, otherChargesDueCarrier:0, totalPrepaid:0 };
+  const initForm = { awbNo:'', awbPrefix:'312', partyId:'', origin:'', destination:'', airlineName:'', bookingDate:new Date().toISOString().split('T')[0], weight:0, pieces:1, baseRate:0, markupAmount:0, notes:'', weightCharge:0, valuationCharge:0, otherChargesDueAgent:0, otherChargesDueCarrier:0, totalPrepaid:0, gstRate:18, gstAmount:0 };
   const [form, setForm] = useState(initForm);
 
   const activeParties = parties.filter(p => p.status === 'ACTIVE');
@@ -626,27 +626,46 @@ export default function AwbBookingsPage() {
 
               {/* AWB Charge fields */}
               <div style={{fontSize:11,fontWeight:700,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8}}>AWB Charges</div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:8}}>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="label">Weight Charge (₹)</label>
-                  <input className="input" type="number" min="0" step="0.01" value={form.weightCharge||''} onChange={e=>setForm(f=>({...f,weightCharge:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}} placeholder="0"/>
+                  <input className="input" type="number" min="0" step="0.01" value={form.weightCharge||''} onChange={e=>{const v=parseFloat(e.target.value)||0;setForm(f=>({...f,weightCharge:v,totalPrepaid:v+(f.valuationCharge||0)+(f.otherChargesDueAgent||0)+(f.otherChargesDueCarrier||0)+(f.gstAmount||0)}));}} style={{fontFamily:'var(--font-mono)'}} placeholder="0"/>
                 </div>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="label">Valuation Charge (₹)</label>
-                  <input className="input" type="number" min="0" step="0.01" value={form.valuationCharge||''} onChange={e=>setForm(f=>({...f,valuationCharge:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}} placeholder="0"/>
+                  <input className="input" type="number" min="0" step="0.01" value={form.valuationCharge||''} onChange={e=>{const v=parseFloat(e.target.value)||0;setForm(f=>({...f,valuationCharge:v,totalPrepaid:(f.weightCharge||0)+v+(f.otherChargesDueAgent||0)+(f.otherChargesDueCarrier||0)+(f.gstAmount||0)}));}} style={{fontFamily:'var(--font-mono)'}} placeholder="0"/>
                 </div>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="label">Other Charges Due Agent (₹)</label>
-                  <input className="input" type="number" min="0" step="0.01" value={form.otherChargesDueAgent||''} onChange={e=>setForm(f=>({...f,otherChargesDueAgent:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}} placeholder="0"/>
+                  <input className="input" type="number" min="0" step="0.01" value={form.otherChargesDueAgent||''} onChange={e=>{const v=parseFloat(e.target.value)||0;setForm(f=>({...f,otherChargesDueAgent:v,totalPrepaid:(f.weightCharge||0)+(f.valuationCharge||0)+v+(f.otherChargesDueCarrier||0)+(f.gstAmount||0)}));}} style={{fontFamily:'var(--font-mono)'}} placeholder="0"/>
                 </div>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="label">Other Charges Due Carrier (₹)</label>
-                  <input className="input" type="number" min="0" step="0.01" value={form.otherChargesDueCarrier||''} onChange={e=>setForm(f=>({...f,otherChargesDueCarrier:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}} placeholder="0"/>
+                  <input className="input" type="number" min="0" step="0.01" value={form.otherChargesDueCarrier||''} onChange={e=>{const v=parseFloat(e.target.value)||0;setForm(f=>({...f,otherChargesDueCarrier:v,totalPrepaid:(f.weightCharge||0)+(f.valuationCharge||0)+(f.otherChargesDueAgent||0)+v+(f.gstAmount||0)}));}} style={{fontFamily:'var(--font-mono)'}} placeholder="0"/>
                 </div>
-                <div className="form-group" style={{marginBottom:0}}>
-                  <label className="label">Total Prepaid (₹)</label>
-                  <input className="input" type="number" min="0" step="0.01" value={form.totalPrepaid||''} onChange={e=>setForm(f=>({...f,totalPrepaid:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}} placeholder="0"/>
+              </div>
+
+              {/* GST Calculator */}
+              <div style={{background:'var(--surface-sunken)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 12px',marginBottom:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8}}>GST Calculator</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                  <div className="form-group" style={{marginBottom:0}}>
+                    <label className="label">GST Rate (%)</label>
+                    <select className="input" value={form.gstRate} onChange={e=>{const rate=parseFloat(e.target.value);const base=(form.weightCharge||0)+(form.valuationCharge||0)+(form.otherChargesDueAgent||0)+(form.otherChargesDueCarrier||0);const gst=parseFloat((base*rate/100).toFixed(2));setForm(f=>({...f,gstRate:rate,gstAmount:gst,totalPrepaid:base+gst}));}} style={{height:36,fontSize:13}}>
+                      {[0,5,10,12,18,28].map(r=><option key={r} value={r}>{r}%</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{marginBottom:0}}>
+                    <label className="label">GST Amount (₹) <span style={{fontSize:10,color:'var(--text-muted)',fontWeight:400}}>or type directly</span></label>
+                    <input className="input" type="number" min="0" step="0.01" value={form.gstAmount||''} onChange={e=>{const v=parseFloat(e.target.value)||0;setForm(f=>({...f,gstAmount:v,totalPrepaid:(f.weightCharge||0)+(f.valuationCharge||0)+(f.otherChargesDueAgent||0)+(f.otherChargesDueCarrier||0)+v}));}} style={{fontFamily:'var(--font-mono)',height:36}} placeholder="0"/>
+                  </div>
                 </div>
+              </div>
+
+              {/* Total Prepaid — auto-summed, still editable */}
+              <div className="form-group" style={{marginBottom:16}}>
+                <label className="label">Total Prepaid (₹) <span style={{fontSize:10,color:'var(--text-muted)',fontWeight:400}}>auto-calculated, editable</span></label>
+                <input className="input" type="number" min="0" step="0.01" value={form.totalPrepaid||''} onChange={e=>setForm(f=>({...f,totalPrepaid:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)',fontWeight:700}} placeholder="0"/>
               </div>
 
               {/* Total summary */}
@@ -959,12 +978,41 @@ function AwbEditModal({ booking, parties, airlines, cities, onSave, editForm, se
         </div>
         {inp('Notes','notes')}
         <div style={{fontSize:11,fontWeight:700,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.07em',margin:'12px 0 8px'}}>AWB Charges</div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
-          {inp('Weight Charge (₹)','weightCharge','number',{min:0})}
-          {inp('Valuation Charge (₹)','valuationCharge','number',{min:0})}
-          {inp('Other Charges Due Agent (₹)','otherChargesDueAgent','number',{min:0})}
-          {inp('Other Charges Due Carrier (₹)','otherChargesDueCarrier','number',{min:0})}
-          {inp('Total Prepaid (₹)','totalPrepaid','number',{min:0})}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:8}}>
+          {[
+            {label:'Weight Charge (₹)',field:'weightCharge'},
+            {label:'Valuation Charge (₹)',field:'valuationCharge'},
+            {label:'Other Charges Due Agent (₹)',field:'otherChargesDueAgent'},
+            {label:'Other Charges Due Carrier (₹)',field:'otherChargesDueCarrier'},
+          ].map(({label,field})=>(
+            <div key={field} className="form-group" style={{marginBottom:0}}>
+              <label className="label">{label}</label>
+              <input className="input" type="number" min="0" step="0.01" value={editForm[field]||''} style={{fontFamily:'var(--font-mono)'}}
+                onChange={e=>{const v=parseFloat(e.target.value)||0;setEditForm((f:any)=>{const base=(f.weightCharge||0)+(f.valuationCharge||0)+(f.otherChargesDueAgent||0)+(f.otherChargesDueCarrier||0)-(f[field]||0)+v;const gst=f.gstAmount||0;return{...f,[field]:v,totalPrepaid:parseFloat((base+gst).toFixed(2))};});}}/>
+            </div>
+          ))}
+        </div>
+        {/* GST Calculator */}
+        <div style={{background:'var(--surface-sunken)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 12px',marginBottom:8}}>
+          <div style={{fontSize:11,fontWeight:700,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8}}>GST Calculator</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <div className="form-group" style={{marginBottom:0}}>
+              <label className="label">GST Rate (%)</label>
+              <select className="input" value={editForm.gstRate??18} onChange={e=>{const rate=parseFloat(e.target.value);setEditForm((f:any)=>{const base=(f.weightCharge||0)+(f.valuationCharge||0)+(f.otherChargesDueAgent||0)+(f.otherChargesDueCarrier||0);const gst=parseFloat((base*rate/100).toFixed(2));return{...f,gstRate:rate,gstAmount:gst,totalPrepaid:parseFloat((base+gst).toFixed(2))};});}} style={{height:36,fontSize:13}}>
+                {[0,5,10,12,18,28].map(r=><option key={r} value={r}>{r}%</option>)}
+              </select>
+            </div>
+            <div className="form-group" style={{marginBottom:0}}>
+              <label className="label">GST Amount (₹) <span style={{fontSize:10,color:'var(--text-muted)',fontWeight:400}}>or type directly</span></label>
+              <input className="input" type="number" min="0" step="0.01" value={editForm.gstAmount||''} style={{fontFamily:'var(--font-mono)',height:36}} placeholder="0"
+                onChange={e=>{const v=parseFloat(e.target.value)||0;setEditForm((f:any)=>{const base=(f.weightCharge||0)+(f.valuationCharge||0)+(f.otherChargesDueAgent||0)+(f.otherChargesDueCarrier||0);return{...f,gstAmount:v,totalPrepaid:parseFloat((base+v).toFixed(2))};});}}/>
+            </div>
+          </div>
+        </div>
+        <div className="form-group" style={{marginBottom:12}}>
+          <label className="label">Total Prepaid (₹) <span style={{fontSize:10,color:'var(--text-muted)',fontWeight:400}}>auto-calculated, editable</span></label>
+          <input className="input" type="number" min="0" step="0.01" value={editForm.totalPrepaid||''} style={{fontFamily:'var(--font-mono)',fontWeight:700}} placeholder="0"
+            onChange={e=>setEditForm((f:any)=>({...f,totalPrepaid:parseFloat(e.target.value)||0}))}/>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,margin:'16px 0'}}>
           {[{l:'Freight',v:`₹${(w*r).toFixed(0)}`},{l:'Markup',v:`₹${m.toFixed(0)}`},{l:'Total',v:`₹${total.toFixed(0)}`,hi:true}].map(s=>(
