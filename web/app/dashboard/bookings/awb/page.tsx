@@ -117,58 +117,72 @@ export default function AwbBookingsPage() {
   const gstAmount   = 0;
   const totalAmount = freightBase + form.markupAmount;
 
-  function extractAwbFromText(text: string) {
+  function extractAwbFromCsv(text: string): Partial<typeof initForm> | null {
+    const lines = text.split('\n').filter(l => l.trim());
+    if (lines.length < 2) return null;
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase().replace(/\s+/g,'_'));
+    const values = lines[1].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+    const row: Record<string,string> = {};
+    headers.forEach((h, i) => { row[h] = values[i] ?? ''; });
+
+    const get = (...keys: string[]) => keys.map(k => row[k]).find(v => v && v.trim()) ?? '';
+
+    const rawAwb = get('awb_no','awbno','awb','awb_number');
+    const awbParts = rawAwb.match(/^(\d{3})[-\s]?(\d{7,8})$/);
+
+    const weightRaw = get('weight','gross_weight','chargeable_weight','wt');
+    const rateRaw = get('base_rate','baserate','rate','rate_per_kg');
+    const dateRaw = get('booking_date','date','shipment_date');
+
+    const airlineRaw = get('airline_name','airlinename','airline','carrier').toUpperCase();
+    const airlineMap: Record<string,string> = { 'INDIGO':'IndiGo','6E':'IndiGo','AIR INDIA':'Air India','AI':'Air India','SPICEJET':'SpiceJet','SG':'SpiceJet','VISTARA':'Vistara','UK':'Vistara','AKASA':'Akasa Air','QP':'Akasa Air' };
+    const airline = Object.entries(airlineMap).find(([k]) => airlineRaw.includes(k))?.[1] || get('airline_name','airlinename','airline') || '';
+
+    return {
+      awbPrefix: awbParts ? awbParts[1] : (rawAwb.split(/[-\s]/)[0] || '312'),
+      awbNo: awbParts ? awbParts[2] : rawAwb.replace(/[-\s]/g,'').slice(3),
+      origin: get('origin').toUpperCase(),
+      destination: get('destination').toUpperCase(),
+      airlineName: airline,
+      bookingDate: dateRaw || new Date().toISOString().split('T')[0],
+      weight: parseFloat(weightRaw) || 0,
+      pieces: parseInt(get('pieces','no_of_pieces','pcs')) || 1,
+      baseRate: parseFloat(rateRaw) || 0,
+      markupAmount: parseFloat(get('markup_amount','markup')) || 0,
+      weightCharge: parseFloat(get('weight_charge','weightcharge')) || 0,
+      valuationCharge: parseFloat(get('valuation_charge','valuationcharge')) || 0,
+      otherChargesDueAgent: parseFloat(get('other_charges_due_agent','charges_agent')) || 0,
+      otherChargesDueCarrier: parseFloat(get('other_charges_due_carrier','charges_carrier')) || 0,
+      totalPrepaid: parseFloat(get('total_prepaid','prepaid')) || 0,
+    };
+  }
+
+  function extractAwbFromText(text: string): Partial<typeof initForm> {
     const t = text.replace(/\r/g, ' ').replace(/\s+/g, ' ');
     const result: Partial<typeof initForm> = {};
-
-    // AWB number: patterns like 312-28078632 or 312 28078632
     const awbM = t.match(/\b(\d{3})[-\s](\d{7,8})\b/);
     if (awbM) { result.awbPrefix = awbM[1]; result.awbNo = awbM[2]; }
-
-    // Origin/Destination from "Airport of Departure" or route codes
     const routeM = t.match(/\b([A-Z]{3})\s*[-–→]\s*([A-Z]{3})\b/);
     if (routeM) { result.origin = routeM[1]; result.destination = routeM[2]; }
-
-    // Airline
-    const airlineMap: Record<string,string> = { 'INDIGO':'IndiGo', '6E':'IndiGo', 'AIR INDIA':'Air India', 'AI':'Air India', 'SPICEJET':'SpiceJet', 'SG':'SpiceJet', 'VISTARA':'Vistara', 'UK':'Vistara', 'AKASA':'Akasa Air', 'QP':'Akasa Air' };
-    for (const [key, val] of Object.entries(airlineMap)) {
-      if (t.toUpperCase().includes(key)) { result.airlineName = val; break; }
-    }
-
-    // Weight (Gross Weight / Chargeable Weight)
-    const wtM = t.match(/(?:gross\s*weight|chargeable\s*weight|wt)[:\s]*(\d+(?:\.\d+)?)\s*(?:kg|KG)?/i);
+    const airlineMap: Record<string,string> = { 'INDIGO':'IndiGo','6E':'IndiGo','AIR INDIA':'Air India','AI':'Air India','SPICEJET':'SpiceJet','SG':'SpiceJet','VISTARA':'Vistara','UK':'Vistara','AKASA':'Akasa Air','QP':'Akasa Air' };
+    for (const [key, val] of Object.entries(airlineMap)) { if (t.toUpperCase().includes(key)) { result.airlineName = val; break; } }
+    const wtM = t.match(/(?:gross\s*weight|chargeable\s*weight|actual\s*weight|wt)[:\s]*(\d+(?:\.\d+)?)/i);
     if (wtM) result.weight = parseFloat(wtM[1]);
-
-    // Pieces
     const pcsM = t.match(/(?:no\.?\s*of\s*pieces?|pieces?|pcs)[:\s]*(\d+)/i);
     if (pcsM) result.pieces = parseInt(pcsM[1]);
-
-    // Rate (base rate per kg)
-    const rateM = t.match(/(?:rate\s*\/?\s*charge|rate\s*class)[:\s]*[\w\s]*?(\d+(?:\.\d+)?)/i);
+    const rateM = t.match(/(?:rate\s*\/?\s*charge|rate\/charge|rate)[:\s]*(\d+(?:\.\d+)?)/i);
     if (rateM) result.baseRate = parseFloat(rateM[1]);
-
-    // Weight Charge (Prepaid section)
     const wcM = t.match(/(?:weight\s*charge)[:\s]*(\d+(?:[.,]\d+)?)/i);
     if (wcM) result.weightCharge = parseFloat(wcM[1].replace(',',''));
-
-    // Valuation Charge
     const valM = t.match(/(?:valuation\s*charge)[:\s]*(\d+(?:[.,]\d+)?)/i);
     if (valM) result.valuationCharge = parseFloat(valM[1].replace(',',''));
-
-    // Total Other Charges Due Agent
     const agentM = t.match(/(?:total\s*other\s*charges?\s*due\s*agent)[:\s]*(\d+(?:[.,]\d+)?)/i);
     if (agentM) result.otherChargesDueAgent = parseFloat(agentM[1].replace(',',''));
-
-    // Total Other Charges Due Carrier
     const carrierM = t.match(/(?:total\s*other\s*charges?\s*due\s*carrier)[:\s]*(\d+(?:[.,]\d+)?)/i);
     if (carrierM) result.otherChargesDueCarrier = parseFloat(carrierM[1].replace(',',''));
-
-    // Total Prepaid
     const prepaidM = t.match(/(?:total\s*prepaid|prepaid)[:\s]*(\d+(?:[.,]\d+)?)/i);
     if (prepaidM) result.totalPrepaid = parseFloat(prepaidM[1].replace(',',''));
-
-    // Date
-    const dateM = t.match(/(?:date)[:\s]*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i);
+    const dateM = t.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/);
     if (dateM) {
       const parts = dateM[1].split(/[\/\-]/);
       if (parts.length === 3) {
@@ -176,7 +190,6 @@ export default function AwbBookingsPage() {
         result.bookingDate = `${y}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
       }
     }
-
     return result;
   }
 
@@ -184,7 +197,9 @@ export default function AwbBookingsPage() {
     setOcrExtracting(true);
     try {
       const text = await file.text();
-      const extracted = extractAwbFromText(text);
+      // Try CSV first (like import wizard), fallback to text extraction
+      const isCsv = file.name.endsWith('.csv') || (text.includes(',') && text.includes('\n'));
+      const extracted = isCsv ? (extractAwbFromCsv(text) ?? extractAwbFromText(text)) : extractAwbFromText(text);
       setForm(f => ({ ...f, ...extracted }));
       setShowForm(true);
       toast.success('AWB data extracted — please review and save');
