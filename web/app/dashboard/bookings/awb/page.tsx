@@ -35,7 +35,7 @@ export default function AwbBookingsPage() {
   const [showAddParty, setShowAddParty] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingId, setEditingId]   = useState<string|null>(null);
-  const [editForm, setEditForm]     = useState<Partial<typeof awbBookings[0]>>({});
+  const [editForm, setEditForm]     = useState<Partial<typeof awbBookings[0]> & { weightCharge?:number; valuationCharge?:number; otherChargesDueAgent?:number; otherChargesDueCarrier?:number; totalPrepaid?:number }>({});
   const [docketAwb, setDocketAwb]   = useState<typeof awbBookings[0]|null>(null);
   const [connectDocketAwb, setConnectDocketAwb] = useState<typeof awbBookings[0]|null>(null);
   const [search, setSearch]         = useState('');
