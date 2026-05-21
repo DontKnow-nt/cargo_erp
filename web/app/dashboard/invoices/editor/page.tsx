@@ -302,7 +302,8 @@ function InvoiceEditorInner() {
     awbTable.addEventListener('input', recalc);
     return () => awbTable.removeEventListener('input', recalc);
   }, [inv?.id]); // re-attach when invoice changes
-    if (!paperRef.current || !inv) return;
+
+  async function handleSave() {
     setSaving(true);
     await fetch(`/api/invoices/${inv.id}/editor-html`, {
       method: 'POST',
