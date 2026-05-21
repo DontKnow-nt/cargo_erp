@@ -130,6 +130,11 @@ export default function PurchasesPage() {
               )}
               {filtered.map(bill => {
                 const paid = bill.status === 'PAID';
+                const partial = bill.status === 'PARTIALLY_PAID';
+                const statusColor = paid ? '#059669' : partial ? '#d97706' : '#dc2626';
+                const statusBg   = paid ? '#ecfdf5' : partial ? '#fffbeb' : '#fef2f2';
+                const statusBdr  = paid ? '#6ee7b7' : partial ? '#fcd34d' : '#fca5a5';
+                const statusText = paid ? 'PAID' : partial ? 'PARTIAL' : 'PENDING';
                 return (
                   <tr key={bill.id} style={{background: selected.has(bill.id) ? 'rgba(239,68,68,0.05)' : undefined}}>
                     <td style={{padding:'0 10px'}}>
@@ -145,21 +150,29 @@ export default function PurchasesPage() {
                     <td style={{fontSize:12,color: bill.dueDate && !paid && new Date(bill.dueDate) < new Date() ? '#dc2626' : 'var(--text-muted)'}}>
                       {bill.dueDate ? fmtDate(bill.dueDate) : '—'}
                     </td>
-                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:800,color: paid ? '#059669' : '#dc2626'}}>{fmt(bill.totalAmount)}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:800,color: statusColor}}>{fmt(bill.totalAmount)}</td>
                     <td>
-                      <span style={{padding:'2px 9px',borderRadius:99,fontSize:10,fontWeight:600,
-                        color: paid ? '#059669' : '#d97706',
-                        background: paid ? '#ecfdf5' : '#fffbeb',
-                        border: `1px solid ${paid ? '#6ee7b7' : '#fcd34d'}`,
-                        fontFamily:'var(--font-mono)',textTransform:'uppercase'}}>
-                        {paid ? 'PAID' : 'PENDING'}
+                      <span style={{padding:'2px 9px',borderRadius:99,fontSize:10,fontWeight:600,color:statusColor,background:statusBg,border:`1px solid ${statusBdr}`,fontFamily:'var(--font-mono)',textTransform:'uppercase'}}>
+                        {statusText}
                       </span>
                     </td>
-                    <td>
+                    <td style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
                       {!paid && (
                         <button className="btn btn-ghost btn-sm" style={{fontSize:11,color:'#059669',whiteSpace:'nowrap'}}
-                          onClick={()=>markPaid(bill.id)}>
-                          <CheckCircle size={11}/> Mark Paid
+                          onClick={()=>startTransition(async()=>{await updatePurchaseInvoiceStatus(bill.id,'PAID');toast.success('Marked as paid');refresh();})}>
+                          ✓ Paid
+                        </button>
+                      )}
+                      {!partial && !paid && (
+                        <button className="btn btn-ghost btn-sm" style={{fontSize:11,color:'#d97706',whiteSpace:'nowrap'}}
+                          onClick={()=>startTransition(async()=>{await updatePurchaseInvoiceStatus(bill.id,'PARTIALLY_PAID' as any);toast.success('Marked as partially paid');refresh();})}>
+                          ~ Partial
+                        </button>
+                      )}
+                      {(paid || partial) && (
+                        <button className="btn btn-ghost btn-sm" style={{fontSize:11,color:'#dc2626',whiteSpace:'nowrap'}}
+                          onClick={()=>startTransition(async()=>{await updatePurchaseInvoiceStatus(bill.id,'PENDING');toast('Marked as not paid',{icon:'↩️'});refresh();})}>
+                          ↩ Unpaid
                         </button>
                       )}
                     </td>
