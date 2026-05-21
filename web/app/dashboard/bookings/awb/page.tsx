@@ -45,6 +45,7 @@ export default function AwbBookingsPage() {
   const [dateRange, setDateRange]   = useState<DateRange>('all');
   const [ocrExtracting, setOcrExtracting] = useState(false);
   const ocrFileRef = useRef<HTMLInputElement>(null);
+  const [extractedData, setExtractedData] = useState<Partial<typeof initForm> | null>(null);
 
   // ── Multi-select / delete state ──────────────────────────────────────────
   const [selectMode, setSelectMode]   = useState(false);
@@ -199,12 +200,10 @@ export default function AwbBookingsPage() {
     try {
       const text = await file.text();
       const isCsv = file.name.endsWith('.csv') || (text.includes(',') && text.split('\n')[0].includes(','));
-
       let extracted: Partial<typeof initForm>;
       if (isCsv) {
         extracted = extractAwbFromCsv(text) ?? extractAwbFromText(text);
       } else {
-        // Use the full document parser (same as import wizard)
         const parsed = parseAwbDocument(text);
         extracted = {
           awbPrefix: parsed.awbPrefix || '312',
@@ -222,16 +221,11 @@ export default function AwbBookingsPage() {
           totalPrepaid: parsed.totalPrepaid,
         };
       }
-
-      // Reset to clean state then apply extracted values
       const clean = Object.fromEntries(
         Object.entries(extracted).filter(([, v]) => v !== '' && v !== undefined && v !== null)
-      );
-      setForm({ ...initForm, ...clean });
-      setShowForm(true);
-      const filled = Object.keys(clean).filter(k => k !== 'awbPrefix').length;
-      toast.success(`AWB data extracted (${filled} fields filled) — please review and save`);
-      console.log('[AWB Extract]', clean);
+      ) as Partial<typeof initForm>;
+      // Show review modal instead of directly opening form
+      setExtractedData({ ...initForm, ...clean });
     } catch { toast.error('Could not read file'); }
     finally { setOcrExtracting(false); }
   }
@@ -653,6 +647,93 @@ export default function AwbBookingsPage() {
       )}
 
       {showBulk && <AwbBulkDownloadModal awbBookings={awbBookings} onClose={()=>setShowBulk(false)}/>}
+
+      {/* AWB Extract Review Modal */}
+      {extractedData && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{maxWidth:680}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <div>
+                <h2 style={{fontSize:16,fontWeight:800}}>📄 Review Extracted AWB Data</h2>
+                <p style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>Edit any field before saving</p>
+              </div>
+              <button className="btn btn-ghost btn-icon" onClick={()=>setExtractedData(null)}><X size={16}/></button>
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
+              <div className="form-group" style={{marginBottom:0}}>
+                <label className="label" style={{fontSize:11}}>AWB Number</label>
+                <div style={{display:'flex',alignItems:'center',border:'1px solid var(--border)',borderRadius:8,overflow:'hidden',background:'var(--surface-base)'}}>
+                  <input className="input" style={{border:'none',borderRadius:0,width:60,textAlign:'center',fontWeight:700,borderRight:'1px solid var(--border)',background:'var(--surface-sunken)',padding:'0 8px',fontFamily:'var(--font-mono)',height:36}} value={extractedData.awbPrefix??'312'} onChange={e=>setExtractedData(d=>({...d!,awbPrefix:e.target.value}))} maxLength={5}/>
+                  <span style={{padding:'0 6px',color:'var(--text-muted)',fontWeight:700}}>-</span>
+                  <input className="input" style={{border:'none',borderRadius:0,flex:1,fontFamily:'var(--font-mono)',height:36}} value={extractedData.awbNo??''} onChange={e=>setExtractedData(d=>({...d!,awbNo:e.target.value}))}/>
+                </div>
+              </div>
+              <div className="form-group" style={{marginBottom:0}}>
+                <label className="label" style={{fontSize:11}}>Airline</label>
+                <select className="input" style={{height:36,fontSize:13}} value={extractedData.airlineName??''} onChange={e=>setExtractedData(d=>({...d!,airlineName:e.target.value}))}>
+                  <option value="">Select…</option>
+                  {AIRLINES.map(a=><option key={a}>{a}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:12}}>
+              {[
+                {label:'Origin',field:'origin',placeholder:'e.g. DEL'},
+                {label:'Destination',field:'destination',placeholder:'e.g. BOM'},
+                {label:'Date',field:'bookingDate',type:'date'},
+              ].map(({label,field,placeholder,type})=>(
+                <div key={field} className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>{label}</label>
+                  <input className="input" style={{height:36,fontSize:13}} type={type||'text'} placeholder={placeholder} value={(extractedData as any)[field]??''} onChange={e=>setExtractedData(d=>({...d!,[field]:e.target.value.toUpperCase()}))}/>
+                </div>
+              ))}
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:12}}>
+              {[
+                {label:'Weight (kg)',field:'weight',num:true},
+                {label:'Base Rate (₹/kg)',field:'baseRate',num:true},
+                {label:'Pieces',field:'pieces',num:true},
+              ].map(({label,field,num})=>(
+                <div key={field} className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>{label}</label>
+                  <input className="input" style={{height:36,fontSize:13,fontFamily:'var(--font-mono)'}} type="number" min="0" value={(extractedData as any)[field]||''} onChange={e=>setExtractedData(d=>({...d!,[field]:parseFloat(e.target.value)||0}))}/>
+                </div>
+              ))}
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}}>
+              {[
+                {label:'Weight Charge (₹)',field:'weightCharge'},
+                {label:'Other Charges Due Agent (₹)',field:'otherChargesDueAgent'},
+                {label:'Other Charges Due Carrier (₹)',field:'otherChargesDueCarrier'},
+                {label:'Total Prepaid (₹)',field:'totalPrepaid'},
+              ].map(({label,field})=>(
+                <div key={field} className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>{label}</label>
+                  <input className="input" style={{height:36,fontSize:13,fontFamily:'var(--font-mono)'}} type="number" min="0" value={(extractedData as any)[field]||''} onChange={e=>setExtractedData(d=>({...d!,[field]:parseFloat(e.target.value)||0}))}/>
+                </div>
+              ))}
+            </div>
+
+            <div style={{background:'var(--surface-sunken)',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:12,color:'var(--text-secondary)'}}>
+              ⚠️ <strong>Party / Customer</strong> must be selected after saving — it will open the booking form with all data pre-filled.
+            </div>
+
+            <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+              <button className="btn btn-secondary" onClick={()=>setExtractedData(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={()=>{
+                setForm({...initForm,...extractedData});
+                setExtractedData(null);
+                setShowForm(true);
+                toast.success('Data loaded — select party and save');
+              }}><CheckCircle size={13}/> Use This Data</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showAddParty && (
         <AddPartyModal
