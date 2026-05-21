@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Printer } from 'lucide-react';
 import { useSharedData } from '@/lib/useSharedData';
 import { createCreditNote, updateCreditNoteAmount } from '@/lib/actions/invoices';
+import toast from 'react-hot-toast';
 
 function Toolbar({ paperRef }: { paperRef: React.RefObject<HTMLDivElement | null> }) {
   const [fontSize, setFontSize] = useState('3');
