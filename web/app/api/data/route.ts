@@ -22,6 +22,8 @@ export async function GET() {
     prisma.purchaseInvoice.findMany({ orderBy: { createdAt: 'desc' } }),
   ]);
 
-  return NextResponse.json({ parties, awbBookings, docketBookings, invoices, paymentReceipts, outstanding, rateVersions, freightRates, importJobs, auditLogs, users, purchaseBills, _ts: Date.now() });
+  return NextResponse.json({ parties, awbBookings, docketBookings, invoices, paymentReceipts, outstanding, rateVersions, freightRates, importJobs, auditLogs, users, purchaseBills, _ts: Date.now() }, {
+    headers: { 'Cache-Control': 'no-store' }
+  });
 }
 

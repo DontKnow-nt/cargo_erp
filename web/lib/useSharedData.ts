@@ -110,7 +110,7 @@ interface SharedData {
   refresh: () => void;
 }
 
-const POLL_INTERVAL = 5_000;
+const POLL_INTERVAL = 15_000;
 
 const EMPTY: Omit<SharedData, 'loading' | 'refresh'> = {
   parties: [], awbBookings: [], docketBookings: [],

@@ -72,9 +72,13 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as { role?: string; id?: string }).role = token.role as string;
         (session.user as { id?: string }).id = token.id as string;
-        // Instantly invalidate session if user was deleted
-        const dbUser = await prisma.user.findUnique({ where: { id: token.id as string }, select: { status: true } });
-        if (!dbUser || dbUser.status !== 'ACTIVE') return { ...session, user: undefined as any };
+        // Only check DB status every 60 seconds to avoid per-request DB queries
+        const lastCheck = (token as any).statusCheckedAt as number ?? 0;
+        if (Date.now() - lastCheck > 60_000) {
+          const dbUser = await prisma.user.findUnique({ where: { id: token.id as string }, select: { status: true } });
+          if (!dbUser || dbUser.status !== 'ACTIVE') return { ...session, user: undefined as any };
+          (token as any).statusCheckedAt = Date.now();
+        }
       }
       return session;
     },
