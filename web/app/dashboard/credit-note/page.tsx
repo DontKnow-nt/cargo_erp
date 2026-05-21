@@ -103,16 +103,14 @@ export default function CreditNotePage() {
             <thead>
               <tr>
                 <th style={{width:36}}></th>
-                <th>Credit Note No.</th><th>Party</th><th>Booking Ref</th><th>Type</th>
-                <th>Date</th><th>Due Date</th>
-                <th style={{textAlign:'right'}}>Subtotal</th><th style={{textAlign:'right'}}>GST</th>
-                <th style={{textAlign:'right'}}>Total</th><th style={{textAlign:'right'}}>Paid</th>
-                <th style={{textAlign:'right'}}>Outstanding</th><th>Status</th>
+                <th>Credit Note No.</th><th>Party</th><th>Description</th>
+                <th>Date</th><th style={{textAlign:'right'}}>Amount</th>
+                <th>Status</th>
                 <th style={{textAlign:'center'}}>By</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && <tr><td colSpan={15} style={{textAlign:'center',padding:'36px 0',color:'var(--text-muted)'}}>No credit notes found</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={9} style={{textAlign:'center',padding:'36px 0',color:'var(--text-muted)'}}>No credit notes found</td></tr>}
               {filtered.map(inv => (
                 <tr key={inv.id} style={{background: selected.has(inv.id) ? 'rgba(239,68,68,0.05)' : undefined}}>
                   <td style={{padding:'0 10px'}}>
@@ -126,15 +124,11 @@ export default function CreditNotePage() {
                     </span>
                   </td>
                   <td style={{fontWeight:500}} title={inv.partyName}>{shortName(inv.partyName)}</td>
-                  <td><span style={{fontFamily:'var(--font-mono)',fontSize:11}}>{inv.bookingRef}</span></td>
-                  <td><span style={{fontSize:10,fontFamily:'var(--font-mono)',background:'var(--surface-sunken)',padding:'2px 7px',borderRadius:5,border:'1px solid var(--border)'}}>{inv.bookingType}</span></td>
+                  <td style={{fontSize:12,color:'var(--text-secondary)',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={inv.lines?.[0]?.description||''}>
+                    {inv.lines?.[0]?.description || inv.bookingRef || '—'}
+                  </td>
                   <td style={{fontSize:12,color:'var(--text-muted)'}}>{fmtDate(inv.invoiceDate)}</td>
-                  <td style={{fontSize:12,color: new Date(inv.dueDate)<new Date()&&inv.status!=='PAID' ? '#dc2626' : 'var(--text-muted)'}}>{fmtDate(inv.dueDate)}</td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12}}>{fmt(inv.subtotal)}</td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:'var(--text-muted)'}}>{fmt(inv.gstTotal)}</td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:800}}>{fmt(inv.grandTotal)}</td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:'#059669'}}>{fmt(inv.paidTotal)}</td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:700,color: inv.outstandingTotal>0 ? '#dc2626' : '#059669'}}>{fmt(inv.outstandingTotal)}</td>
+                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:800,color: inv.grandTotal>0?'var(--text-primary)':'var(--text-muted)'}}>{fmt(inv.grandTotal)}</td>
                   <td><Badge status={inv.status}/></td>
                   <td style={{textAlign:'center'}}><CreatorAvatar userId={(inv as any).createdBy} createdAt={inv.createdAt}/></td>
                   <td style={{display:'flex',gap:4,flexWrap:'nowrap'}}>

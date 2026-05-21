@@ -288,6 +288,19 @@ export async function generateCombinedInvoice(
   return { invoiceId: invoice.id, invoiceNo };
 }
 
+export async function updateCreditNoteAmount(id: string, amount: number, description: string) {
+  await requireAuth();
+  if (!id || amount < 0) return { error: 'Invalid params' };
+  await prisma.invoice.update({
+    where: { id },
+    data: { subtotal: amount, grandTotal: amount, outstandingTotal: amount,
+      lines: { deleteMany: {}, create: [{ description: description || 'Credit Note', qty: 1, rate: amount, amount, taxRate: 0, taxAmount: 0, lineTotal: amount }] }
+    },
+  });
+  revalidatePath('/dashboard/credit-note');
+  return { success: true };
+}
+
 export async function createCreditNote(data: { partyId: string; partyName: string; creditNoteNo: string; description: string; amount: number }) {
   const session = await requireAuth();
   const invoiceNo = data.creditNoteNo || await nextInvoiceNo();

@@ -3,7 +3,7 @@ import { Suspense, useRef, useCallback, useEffect, useState, useTransition } fro
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Printer } from 'lucide-react';
 import { useSharedData } from '@/lib/useSharedData';
-import { createCreditNote } from '@/lib/actions/invoices';
+import { createCreditNote, updateCreditNoteAmount } from '@/lib/actions/invoices';
 
 function Toolbar({ paperRef }: { paperRef: React.RefObject<HTMLDivElement | null> }) {
   const [fontSize, setFontSize] = useState('3');
@@ -271,9 +271,26 @@ function CreditNoteEditorInner() {
   async function handleSave() {
     if (!paperRef.current || !inv) return;
     setSaving(true);
-    await fetch(`/api/invoices/${inv.id}/editor-html`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html: paperRef.current.innerHTML }) });
+    // Extract amount and description from editor DOM
+    const paper = paperRef.current;
+    const dataRows = paper.querySelectorAll('#cn-data-body tr');
+    let totalAmt = 0; const descs: string[] = [];
+    dataRows.forEach(row => {
+      const cells = row.querySelectorAll('[contenteditable]');
+      if (cells.length >= 3) {
+        const desc = (cells[1] as HTMLElement).textContent?.trim() || '';
+        const amtText = (cells[cells.length-1] as HTMLElement).textContent?.replace(/,/g,'').trim() || '0';
+        const amt = parseFloat(amtText) || 0;
+        if (desc) descs.push(desc);
+        totalAmt += amt;
+      }
+    });
+    await Promise.all([
+      fetch(`/api/invoices/${inv.id}/editor-html`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html: paper.innerHTML }) }),
+      totalAmt > 0 ? updateCreditNoteAmount(inv.id, totalAmt, descs.join('; ')) : Promise.resolve(),
+    ]);
     setSaving(false);
-    alert('Saved!');
+    toast.success('Credit note saved');
   }
 
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
