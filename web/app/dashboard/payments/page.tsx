@@ -154,11 +154,11 @@ export default function PaymentsPage() {
                   </select>
                 </div>
               </div>
+              <div className="form-row form-row-2" style={{marginBottom:12}}>
                 <div className="form-group">
                   <label className="label">Reference No.</label>
                   <input className="input" placeholder="NEFT/RTGS/Cheque no." value={form.referenceNo} onChange={e=>setForm(f=>({...f,referenceNo:e.target.value}))}/>
                 </div>
-              </div>
 
               <div className="form-row form-row-2" style={{marginBottom:12}}>
                 <div className="form-group">
