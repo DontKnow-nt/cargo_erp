@@ -291,7 +291,7 @@ export default function AwbBookingsPage() {
 
   function startEdit(b: typeof awbBookings[0]) {
     setEditingId(b.id);
-    setEditForm({ awbNo:b.awbNo, partyId:b.partyId, origin:b.origin, destination:b.destination, airlineName:b.airlineName, bookingDate:b.bookingDate, weight:b.weight, pieces:b.pieces, baseRate:b.baseRate, markupAmount:b.markupAmount, notes:b.notes });
+    setEditForm({ awbNo:b.awbNo, partyId:b.partyId, origin:b.origin, destination:b.destination, airlineName:b.airlineName, bookingDate:b.bookingDate, weight:b.weight, pieces:b.pieces, baseRate:b.baseRate, markupAmount:b.markupAmount, notes:b.notes, weightCharge:(b as any).weightCharge||0, valuationCharge:(b as any).valuationCharge||0, otherChargesDueAgent:(b as any).otherChargesDueAgent||0, otherChargesDueCarrier:(b as any).otherChargesDueCarrier||0, totalPrepaid:(b as any).totalPrepaid||0 });
     setShowEditModal(true);
   }
 
@@ -939,6 +939,14 @@ function AwbEditModal({ booking, parties, airlines, cities, onSave, editForm, se
           {inp('Markup (₹)','markupAmount','number',{min:0})}
         </div>
         {inp('Notes','notes')}
+        <div style={{fontSize:11,fontWeight:700,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.07em',margin:'12px 0 8px'}}>AWB Charges</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
+          {inp('Weight Charge (₹)','weightCharge','number',{min:0})}
+          {inp('Valuation Charge (₹)','valuationCharge','number',{min:0})}
+          {inp('Other Charges Due Agent (₹)','otherChargesDueAgent','number',{min:0})}
+          {inp('Other Charges Due Carrier (₹)','otherChargesDueCarrier','number',{min:0})}
+          {inp('Total Prepaid (₹)','totalPrepaid','number',{min:0})}
+        </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,margin:'16px 0'}}>
           {[{l:'Freight',v:`₹${(w*r).toFixed(0)}`},{l:'Markup',v:`₹${m.toFixed(0)}`},{l:'Total',v:`₹${total.toFixed(0)}`,hi:true}].map(s=>(
             <div key={s.l} style={{padding:'8px 12px',background:s.hi?'var(--accent-subtle)':'var(--surface-sunken)',border:`1px solid ${s.hi?'var(--warning-border)':'var(--border)'}`,borderRadius:8}}>
