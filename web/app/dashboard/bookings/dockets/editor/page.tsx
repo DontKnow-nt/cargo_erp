@@ -1,7 +1,7 @@
 'use client';
 import { Suspense, useRef, useCallback, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Printer, Save } from 'lucide-react';
+import { Printer, Save, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Plus, Minus, Undo, Redo } from 'lucide-react';
 import { useSharedData } from '@/lib/useSharedData';
 import { updateDocketBooking } from '@/lib/actions/bookings';
 import toast from 'react-hot-toast';
@@ -91,7 +91,7 @@ img{max-width:100%;object-fit:contain}
 
   return (
     <div style={{ minHeight: '100vh', background: '#e5e7eb', fontFamily: 'Arial, sans-serif' }}>
-      {/* Toolbar */}
+      {/* Main Toolbar */}
       <div style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, position: 'sticky', top: 0, zIndex: 10 }}>
         <span style={{ fontWeight: 700, fontSize: 14 }}>Docket Editor — <span style={{ fontFamily: 'monospace', color: '#2563eb' }}>{d.docketNo}</span></span>
         <span style={{ fontSize: 12, color: '#6b7280' }}>{d.partyName}</span>
@@ -104,6 +104,64 @@ img{max-width:100%;object-fit:contain}
             <Printer size={14} /> Print / Download
           </button>
         </div>
+      </div>
+
+      {/* Formatting Toolbar */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '6px 16px', display: 'flex', alignItems: 'center', gap: 4, position: 'sticky', top: 53, zIndex: 9, flexWrap: 'wrap' }}>
+        {[
+          { icon: <Bold size={13}/>, cmd: 'bold', title: 'Bold (Ctrl+B)' },
+          { icon: <Italic size={13}/>, cmd: 'italic', title: 'Italic (Ctrl+I)' },
+          { icon: <Underline size={13}/>, cmd: 'underline', title: 'Underline (Ctrl+U)' },
+        ].map(({ icon, cmd, title }) => (
+          <button key={cmd} title={title}
+            onMouseDown={e => { e.preventDefault(); document.execCommand(cmd, false); }}
+            style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 5, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#374151' }}>
+            {icon}
+          </button>
+        ))}
+        <div style={{ width: 1, height: 18, background: '#e2e8f0', margin: '0 4px' }} />
+        {[
+          { icon: <AlignLeft size={13}/>, cmd: 'justifyLeft', title: 'Align Left' },
+          { icon: <AlignCenter size={13}/>, cmd: 'justifyCenter', title: 'Align Center' },
+          { icon: <AlignRight size={13}/>, cmd: 'justifyRight', title: 'Align Right' },
+        ].map(({ icon, cmd, title }) => (
+          <button key={cmd} title={title}
+            onMouseDown={e => { e.preventDefault(); document.execCommand(cmd, false); }}
+            style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 5, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#374151' }}>
+            {icon}
+          </button>
+        ))}
+        <div style={{ width: 1, height: 18, background: '#e2e8f0', margin: '0 4px' }} />
+        <button title="Decrease font size" onMouseDown={e => { e.preventDefault();
+          const sel = window.getSelection(); if (!sel || sel.rangeCount === 0) return;
+          const range = sel.getRangeAt(0); if (range.collapsed) return;
+          const parent = range.commonAncestorContainer.parentElement;
+          const cur = parent ? parseFloat(getComputedStyle(parent).fontSize) : 10;
+          const span = document.createElement('span'); span.style.fontSize = `${Math.max(7, cur - 1)}px`;
+          range.surroundContents(span);
+        }} style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 5, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#374151' }}>
+          <Minus size={13}/>
+        </button>
+        <span style={{ fontSize: 11, color: '#94a3b8', padding: '0 2px' }}>Size</span>
+        <button title="Increase font size" onMouseDown={e => { e.preventDefault();
+          const sel = window.getSelection(); if (!sel || sel.rangeCount === 0) return;
+          const range = sel.getRangeAt(0); if (range.collapsed) return;
+          const parent = range.commonAncestorContainer.parentElement;
+          const cur = parent ? parseFloat(getComputedStyle(parent).fontSize) : 10;
+          const span = document.createElement('span'); span.style.fontSize = `${Math.min(36, cur + 1)}px`;
+          range.surroundContents(span);
+        }} style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 5, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#374151' }}>
+          <Plus size={13}/>
+        </button>
+        <div style={{ width: 1, height: 18, background: '#e2e8f0', margin: '0 4px' }} />
+        <button title="Undo (Ctrl+Z)" onMouseDown={e => { e.preventDefault(); document.execCommand('undo', false); }}
+          style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 5, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#374151' }}>
+          <Undo size={13}/>
+        </button>
+        <button title="Redo (Ctrl+Y)" onMouseDown={e => { e.preventDefault(); document.execCommand('redo', false); }}
+          style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 5, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#374151' }}>
+          <Redo size={13}/>
+        </button>
       </div>
 
       {/* Way Bill Paper — exact same template as way-bill/page.tsx */}
