@@ -142,14 +142,13 @@ export default function Sidebar({ onClose, mobileOpen }: { onClose?: () => void;
   }, []);
 
   // Filter nav sections to only show permitted items
+  const isSuperAdmin = (session?.user as { role?: string })?.role === 'SUPER_ADMIN';
   const visibleSections = navSections.map(section => ({
     ...section,
     items: section.items.filter(item => {
-      // Extract page key from href: /dashboard/bookings/awb -> bookings/awb
+      if (isSuperAdmin) return true; // SUPER_ADMIN sees everything
       const pageKey = item.href.replace('/dashboard/', '').replace('/dashboard', 'dashboard');
-      // Always show dashboard
       if (item.href === '/dashboard') return true;
-      // Show if in permitted pages
       return permittedPages.some(p => pageKey === p || pageKey.startsWith(p));
     }),
   })).filter(s => s.items.length > 0);
