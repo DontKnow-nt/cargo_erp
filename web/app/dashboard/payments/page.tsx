@@ -21,7 +21,7 @@ export default function PaymentsPage() {
   const [form, setForm] = useState(init);
 
   const selParty    = parties.find(p => p.id===form.partyId);
-  const partyInvoices = invoices.filter(i => i.partyId===form.partyId && ['FINALIZED','SENT','PARTIALLY_PAID','OVERDUE'].includes(i.status));
+  const partyInvoices = invoices.filter(i => i.partyId===form.partyId && ['DRAFT','FINALIZED','SENT','PARTIALLY_PAID','OVERDUE'].includes(i.status));
   const selInvoice  = invoices.find(i => i.id===form.invoiceId);
   const maxPayable  = selInvoice ? selInvoice.outstandingTotal : 0;
 
