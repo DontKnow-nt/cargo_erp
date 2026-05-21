@@ -224,7 +224,84 @@ function InvoiceEditorInner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inv?.id]);
 
-  async function handleSave() {
+  // Auto-calculate Freight = ChgWeight × Rate, Taxable = Freight + other cols, Grand Total
+  useEffect(() => {
+    const paper = paperRef.current;
+    if (!paper) return;
+
+    function recalc() {
+      const awbBody = paper!.querySelector<HTMLTableSectionElement>('#awb-body tbody');
+      if (!awbBody) return;
+      const rows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')].filter(r => !r.dataset.grandTotal);
+
+      let totalBoxes = 0, totalChgWt = 0, totalFreight = 0, totalAwbDo = 0, totalCarrier = 0, totalForwrd = 0, totalTsp = 0, totalTaxable = 0;
+
+      rows.forEach(row => {
+        const cells = row.querySelectorAll<HTMLTableCellElement>('td');
+        if (cells.length < 14) return;
+        const getCellText = (idx: number) => cells[idx]?.querySelector('[contenteditable]')?.textContent?.trim() ?? cells[idx]?.textContent?.trim() ?? '';
+        const parseNum = (s: string) => { const n = parseFloat(s.replace(/,/g,'')); return isNaN(n) ? null : n; };
+        const setCellText = (idx: number, val: string) => {
+          const ce = cells[idx]?.querySelector('[contenteditable]') as HTMLElement | null;
+          if (ce) ce.textContent = val;
+        };
+
+        const boxes = parseNum(getCellText(5)) ?? 0;
+        const chgWt = parseNum(getCellText(6)) ?? 0;
+        const rateRaw = getCellText(7);
+        const rateNum = parseNum(rateRaw); // null if 'na' or empty
+
+        // Freight = ChgWeight × Rate (only if rate is numeric)
+        let freight = parseNum(getCellText(8)) ?? 0;
+        if (rateNum !== null && chgWt > 0) {
+          freight = parseFloat((chgWt * rateNum).toFixed(2));
+          setCellText(8, freight.toFixed(2));
+        }
+
+        const awbDo    = parseNum(getCellText(9))  ?? 0;
+        const carrier  = parseNum(getCellText(10)) ?? 0;
+        const forwrd   = parseNum(getCellText(11)) ?? 0;
+        const tsp      = parseNum(getCellText(12)) ?? 0;
+
+        // Taxable = Freight + AWB&DO + Carrier + Forwrd + TSP
+        const taxable = parseFloat((freight + awbDo + carrier + forwrd + tsp).toFixed(2));
+        setCellText(13, taxable.toFixed(2));
+
+        totalBoxes    += boxes;
+        totalChgWt    += chgWt;
+        totalFreight  += freight;
+        totalAwbDo    += awbDo;
+        totalCarrier  += carrier;
+        totalForwrd   += forwrd;
+        totalTsp      += tsp;
+        totalTaxable  += taxable;
+      });
+
+      // Update grand total row
+      const gtRow = awbBody.querySelector<HTMLTableRowElement>('[data-grand-total]');
+      if (gtRow) {
+        const gcells = gtRow.querySelectorAll<HTMLTableCellElement>('td');
+        const setGT = (idx: number, val: string) => {
+          const ce = gcells[idx]?.querySelector('[contenteditable]') as HTMLElement | null;
+          if (ce) ce.textContent = val;
+          else if (gcells[idx]) gcells[idx].textContent = val;
+        };
+        setGT(5, totalBoxes.toString());
+        setGT(6, totalChgWt.toFixed(2));
+        setGT(8, totalFreight.toFixed(2));
+        setGT(9, totalAwbDo.toFixed(2));
+        setGT(10, totalCarrier.toFixed(2));
+        setGT(11, totalForwrd.toFixed(2));
+        setGT(12, totalTsp.toFixed(2));
+        setGT(13, totalTaxable.toFixed(2));
+      }
+    }
+
+    const awbTable = paper.querySelector('#awb-body');
+    if (!awbTable) return;
+    awbTable.addEventListener('input', recalc);
+    return () => awbTable.removeEventListener('input', recalc);
+  }, [inv?.id]); // re-attach when invoice changes
     if (!paperRef.current || !inv) return;
     setSaving(true);
     await fetch(`/api/invoices/${inv.id}/editor-html`, {
