@@ -41,6 +41,7 @@ const navSections = [
           { label: 'New Invoice',  href: '/dashboard/invoices/new' },
         ],
       },
+      { label: 'Credit Note',          icon: FileText,      href: '/dashboard/credit-note' },
       { label: 'Outstanding & Aging', icon: AlertTriangle, href: '/dashboard/outstanding' },
       { label: 'Bills to Pay',        icon: CreditCard,    href: '/dashboard/purchases' },
       { label: 'Reports',              icon: BarChart2,     href: '/dashboard/reports' },
