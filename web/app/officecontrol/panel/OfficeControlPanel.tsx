@@ -10,6 +10,7 @@ const PAGE_LABELS: Record<string, string> = {
   'bookings/awb':    'AWB Bookings',
   'bookings/dockets':'Docket Bookings',
   'invoices':        'Invoices',
+  'credit-note':     'Credit Note',
   'payments':        'Purchasing',
   'outstanding':     'Outstanding & Aging',
   'parties':         'Parties / Customers',
