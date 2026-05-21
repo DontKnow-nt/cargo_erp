@@ -183,6 +183,10 @@ export default function PurchasesPage() {
                           ↩ Unpaid
                         </button>
                       )}
+                      <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 6px',color:'#dc2626'}}
+                        title="Delete" onClick={()=>{setSelected(new Set([bill.id]));setShowDeleteConfirm(true);}}>
+                        <Trash2 size={11}/>
+                      </button>
                     </td>
                   </tr>
                 );
