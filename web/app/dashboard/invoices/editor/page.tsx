@@ -280,22 +280,65 @@ img{max-width:100%;object-fit:contain}
   const igstRate = inv.lines[0]?.taxRate ?? 18;
   const amtWords = numberToWords(Math.round(inv.grandTotal));
 
-  // Parse lines for AWB table
-  const lineRows = inv.lines.map((line, i) => {
-    const m = line.description.match(/([A-Z]{3})[→\-]([A-Z]{3}).*?(\d+)\s*kg\s*@\s*₹?([\d.]+)/i);
-    const origin = m ? m[1] : 'DEL';
-    const dest   = m ? m[2] : '';
-    const boxes  = m ? m[3] : String(line.qty);
-    const chgWt  = m ? m[3] : String(line.qty);
-    const rate   = m ? m[4] : String(line.rate);
-    const tsp    = i === 0 ? fmt(inv.lines.slice(1).reduce((s, l) => s + l.amount, 0)) : '0.00';
-    const taxable = i === 0 ? fmt(inv.subtotal) : fmt(line.amount);
-    return { origin, dest, boxes, chgWt, rate, freight: fmt(line.amount), tsp, taxable, awbNo: i === 0 ? inv.bookingRef : '', date: i === 0 ? inv.invoiceDate.replace(/\d{4}-/, '').replace('-', '/') : '' };
-  });
+  // Parse lines for AWB table — one row per booking line (skip markup/handling lines, combine into main row)
+  type LineRow = { origin:string; dest:string; boxes:string; chgWt:string; rate:string; freight:string; tsp:string; taxable:string; awbNo:string; date:string };
+  const lineRows: LineRow[] = [];
+  let runningTSP = 0;
 
-  const totalBoxes = inv.lines.reduce((s, l) => s + l.qty, 0);
-  const totalFreight = fmt(inv.lines[0]?.amount ?? 0);
-  const totalTSP = fmt(inv.lines.slice(1).reduce((s, l) => s + l.amount, 0));
+  // Group lines: main freight lines + their markup lines
+  const mainLines = inv.lines.filter(l => !l.description.toLowerCase().includes('handling') && !l.description.toLowerCase().includes('markup'));
+  const markupLines = inv.lines.filter(l => l.description.toLowerCase().includes('handling') || l.description.toLowerCase().includes('markup'));
+
+  if (mainLines.length === 0) {
+    // Fallback: use all lines
+    inv.lines.forEach((line, i) => {
+      const m = line.description.match(/([A-Z]{3})[→\->]([A-Z]{3})/i);
+      const wm = line.description.match(/(\d+(?:\.\d+)?)\s*kg/i);
+      const rm = line.description.match(/@\s*₹?([\d.]+)/i);
+      const awbM = line.description.match(/\b(\d{3}-\d{7,8})\b/);
+      const dktM = line.description.match(/Docket\s+([\w\-]+)/i);
+      lineRows.push({
+        origin: m?.[1] ?? '',
+        dest: m?.[2] ?? '',
+        boxes: String(Math.round(line.qty)),
+        chgWt: wm?.[1] ?? String(Math.round(line.qty)),
+        rate: rm?.[1] ?? String(line.rate),
+        freight: fmt(line.amount),
+        awbNo: awbM?.[1] ?? dktM?.[1] ?? (i === 0 ? inv.bookingRef.split(',')[0].trim() : ''),
+        date: i === 0 ? inv.invoiceDate.replace(/^\d{4}-/, '').replace('-', '/') : '',
+        tsp: '0.00',
+        taxable: fmt(line.amount),
+      });
+    });
+  } else {
+    mainLines.forEach((line, i) => {
+      const m = line.description.match(/([A-Z]{3})[→\->]([A-Z]{3})/i);
+      const wm = line.description.match(/(\d+(?:\.\d+)?)\s*kg/i);
+      const rm = line.description.match(/@\s*₹?([\d.]+)/i);
+      const awbM = line.description.match(/\b(\d{3}-\d{7,8})\b/);
+      const dktM = line.description.match(/Docket\s+([\w\-]+)/i);
+      // Find associated markup
+      const myMarkup = markupLines.find(ml => ml.description.includes(awbM?.[1] ?? '') || ml.description.includes(dktM?.[1] ?? ''));
+      const tspAmt = myMarkup?.amount ?? 0;
+      runningTSP += tspAmt;
+      lineRows.push({
+        origin: m?.[1] ?? '',
+        dest: m?.[2] ?? '',
+        boxes: String(Math.round(line.qty)),
+        chgWt: wm?.[1] ?? String(Math.round(line.qty)),
+        rate: rm?.[1] ?? String(line.rate),
+        freight: fmt(line.amount),
+        awbNo: awbM?.[1] ?? dktM?.[1] ?? (i === 0 ? inv.bookingRef.split(',')[0].trim() : inv.bookingRef.split(',')[i]?.trim() ?? ''),
+        date: inv.invoiceDate.replace(/^\d{4}-/, '').replace('-', '/'),
+        tsp: tspAmt > 0 ? fmt(tspAmt) : '0.00',
+        taxable: fmt(line.amount + tspAmt),
+      });
+    });
+  }
+
+  const totalBoxes = lineRows.reduce((s, r) => s + (parseFloat(r.boxes) || 0), 0);
+  const totalFreight = fmt(mainLines.reduce((s, l) => s + l.amount, 0) || inv.lines.reduce((s, l) => s + l.amount, 0));
+  const totalTSP = fmt(runningTSP || markupLines.reduce((s, l) => s + l.amount, 0));
 
   const bankText = bank
     ? `Bank           : ${bank.bank_name}\nA/c Name     : ${bank.account_name}\nAccount No.  : ${bank.account_number}\nIFSC Code    : ${bank.ifsc}\nBranch         : ${bank.branch}`
