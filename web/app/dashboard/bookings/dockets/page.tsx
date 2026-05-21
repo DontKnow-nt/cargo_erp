@@ -1,10 +1,10 @@
 'use client';
-import React, { useState, useRef, useCallback, useTransition } from 'react';
+import React, { useState, useRef, useCallback, useTransition, useEffect } from 'react';
 import { ClipboardList, Plus, Search, Download, X, CheckCircle, Edit2, Save, Trash2, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { exportToCSV, exportToXLSX, exportToPDF, filterByDateRange, DateRangeFilter, type DateRange, type ExportFormat } from '@/lib/exportUtils';
 import { createAwbBooking, createDocketBooking, deleteAwbBookings, deleteDocketBookings, linkAwbToDocket, unlinkAwbFromDocket, updateDocketBooking } from '@/lib/actions/bookings';
-import { generateInvoiceFromDocket } from '@/lib/actions/invoices';
+import { generateInvoiceFromDocket, generateCombinedInvoice } from '@/lib/actions/invoices';
 import { shortName, fmtDate } from '@/lib/utils';
 import { CreatorAvatar } from '@/components/CreatorAvatar';
 import { useSharedData } from '@/lib/useSharedData';
@@ -30,6 +30,13 @@ export default function DocketBookingsPage() {
   const [showForm, setShowForm]   = useState(false);
   const [showBulk, setShowBulk]   = useState(false);
   const [showAddParty, setShowAddParty] = useState(false);
+  const [canInvoice, setCanInvoice] = useState(false);
+  useEffect(() => {
+    fetch('/api/user-permissions').then(r => r.json()).then(d => {
+      const pages: string[] = d.pages ?? [];
+      setCanInvoice(pages.includes('invoices') || pages.includes('dashboard'));
+    }).catch(() => setCanInvoice(false));
+  }, []);
   const [connectAwbDocket, setConnectAwbDocket] = useState<typeof docketBookings[0]|null>(null);
   const [editingId, setEditingId]   = useState<string|null>(null);
   const [editForm, setEditForm]     = useState<Partial<typeof docketBookings[0]>>({});
@@ -167,6 +174,17 @@ export default function DocketBookingsPage() {
               <button className="btn btn-danger btn-sm" disabled={selected.size===0} onClick={()=>setShowDeleteConfirm(true)}>
                 <Trash2 size={12}/> Delete ({selected.size})
               </button>
+              {canInvoice && selected.size >= 2 && (
+                <button className="btn btn-sm" style={{background:'#059669',color:'#fff',border:'none',whiteSpace:'nowrap'}}
+                  disabled={isPending}
+                  onClick={()=>startTransition(async()=>{
+                    const res = await generateCombinedInvoice([], [...selected]);
+                    if (res && 'error' in res) toast.error(res.error as string);
+                    else { toast.success(`Combined invoice ${(res as any).invoiceNo} created`); exitSelectMode(); refresh(); }
+                  })}>
+                  🔗 Combine Invoice ({selected.size})
+                </button>
+              )}
             </>
           ) : (
             <>
@@ -264,7 +282,7 @@ export default function DocketBookingsPage() {
                         {!selectMode && b.status==='BOOKED' && (
                           <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={e=>{e.stopPropagation();startEdit(b);}}><Edit2 size={11}/> Edit</button>
                         )}
-                        {!selectMode && b.status==='BOOKED' && (
+                        {!selectMode && b.status==='BOOKED' && canInvoice && (
                           <button className="btn btn-secondary btn-sm" style={{fontSize:11,padding:'3px 9px',whiteSpace:'nowrap'}}
                             onClick={e=>{e.stopPropagation();startTransition(async()=>{const res=await generateInvoiceFromDocket(b.id);if(res&&'error'in res)toast.error(res.error as string);else if(res&&'invoiceNo'in res)toast.success(`Invoice ${res.invoiceNo} generated`);});}}>
                             Gen Invoice

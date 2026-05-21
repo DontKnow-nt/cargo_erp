@@ -1,10 +1,10 @@
 'use client';
-import React, { useState, useRef, useCallback, useTransition } from 'react';
+import React, { useState, useRef, useCallback, useTransition, useEffect } from 'react';
 import { Plane, Plus, Search, Download, X, CheckCircle, Edit2, Save, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { DateRangeFilter, filterByDateRange, exportToCSV, exportToXLSX, exportToPDF, BulkDownloadModal, type DateRange, type ExportFormat, type ExportModule } from '@/lib/exportUtils';
 import { createAwbBooking, createDocketBooking, deleteAwbBookings, deleteDocketBookings, linkAwbToDocket, unlinkAwbFromDocket, updateAwbBooking } from '@/lib/actions/bookings';
-import { generateInvoiceFromAwb } from '@/lib/actions/invoices';
+import { generateInvoiceFromAwb, generateCombinedInvoice } from '@/lib/actions/invoices';
 import { shortName, fmtDate } from '@/lib/utils';
 import { CreatorAvatar } from '@/components/CreatorAvatar';
 import { useSharedData } from '@/lib/useSharedData';
@@ -48,6 +48,14 @@ export default function AwbBookingsPage() {
   const [extractedData, setExtractedData] = useState<Partial<typeof initForm> | null>(null);
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  const [canInvoice, setCanInvoice] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/user-permissions').then(r => r.json()).then(d => {
+      const pages: string[] = d.pages ?? [];
+      setCanInvoice(pages.includes('invoices') || pages.includes('dashboard'));
+    }).catch(() => setCanInvoice(false));
+  }, []);
 
   // ── Multi-select / delete state ──────────────────────────────────────────
   const [selectMode, setSelectMode]   = useState(false);
@@ -341,6 +349,17 @@ export default function AwbBookingsPage() {
             <span style={{fontSize:12,color:'var(--text-secondary)',alignSelf:'center',fontWeight:600}}>{selected.size} selected</span>
             <button className="btn btn-secondary btn-sm" onClick={exitSelectMode}>Cancel</button>
             <button className="btn btn-danger btn-sm" disabled={selected.size===0} onClick={()=>setShowDeleteConfirm(true)}><Trash2 size={12}/> Delete ({selected.size})</button>
+            {canInvoice && selected.size >= 2 && (
+              <button className="btn btn-sm" style={{background:'#059669',color:'#fff',border:'none',whiteSpace:'nowrap'}}
+                disabled={isPending}
+                onClick={()=>startTransition(async()=>{
+                  const res = await generateCombinedInvoice([...selected],[]);
+                  if (res && 'error' in res) toast.error(res.error as string);
+                  else { toast.success(`Combined invoice ${(res as any).invoiceNo} created`); exitSelectMode(); refresh(); }
+                })}>
+                🔗 Combine Invoice ({selected.size})
+              </button>
+            )}
           </>
         ) : (
           <>
@@ -454,7 +473,7 @@ export default function AwbBookingsPage() {
                         {!selectMode && b.status==='BOOKED' && (
                           <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={e=>{e.stopPropagation();startEdit(b);}}><Edit2 size={11}/> Edit</button>
                         )}
-                        {!selectMode && b.status==='BOOKED' && (
+                        {!selectMode && b.status==='BOOKED' && canInvoice && (
                           <button className="btn btn-secondary btn-sm" style={{fontSize:11,padding:'3px 9px',whiteSpace:'nowrap'}} onClick={e=>{e.stopPropagation();handleGenInvoice(b.id,b.awbNo);}}>
                             Gen Invoice
                           </button>

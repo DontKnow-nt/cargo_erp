@@ -221,6 +221,73 @@ export async function cancelInvoice(id: string) {
   return { success: true };
 }
 
+export async function generateCombinedInvoice(
+  awbIds: string[],
+  docketIds: string[],
+) {
+  const session = await requireAuth();
+  if (awbIds.length + docketIds.length < 2) return { error: 'Select at least 2 bookings to combine' };
+
+  // Fetch all bookings
+  const [awbs, dockets] = await Promise.all([
+    awbIds.length ? prisma.awbBooking.findMany({ where: { id: { in: awbIds } } }) : Promise.resolve([]),
+    docketIds.length ? prisma.docketBooking.findMany({ where: { id: { in: docketIds } } }) : Promise.resolve([]),
+  ]);
+
+  const alreadyInvoiced = [...awbs.filter(b => b.status === 'INVOICED').map(b => b.awbNo), ...dockets.filter(b => b.status === 'INVOICED').map(b => b.docketNo)];
+  if (alreadyInvoiced.length) return { error: `Already invoiced: ${alreadyInvoiced.join(', ')}` };
+
+  // All must belong to same party
+  const partyIds = new Set([...awbs.map(b => b.partyId), ...dockets.map(b => b.partyId)]);
+  if (partyIds.size > 1) return { error: 'All bookings must belong to the same party for a combined invoice' };
+
+  const partyId = [...partyIds][0];
+  const party = await prisma.party.findUnique({ where: { id: partyId } });
+  const creditDays = party?.creditDays ?? 30;
+  const invoiceDate = new Date().toISOString().split('T')[0];
+  const due = new Date(invoiceDate); due.setDate(due.getDate() + creditDays);
+  const dueDate = due.toISOString().split('T')[0];
+  const invoiceNo = await nextInvoiceNo();
+  const partyName = awbs[0]?.partyName || dockets[0]?.partyName || '';
+
+  // Build lines — one per booking
+  const lines: { description: string; qty: number; rate: number; amount: number; taxRate: number; taxAmount: number; lineTotal: number }[] = [];
+
+  for (const bk of awbs) {
+    const baseAmt = bk.weight * bk.baseRate;
+    const markup = bk.markupAmount;
+    lines.push({ description: `AWB ${bk.awbNo} · ${bk.origin}→${bk.destination} · ${bk.weight}kg @ ₹${bk.baseRate}/kg`, qty: bk.weight, rate: bk.baseRate, amount: baseAmt, taxRate: bk.gstRate, taxAmount: baseAmt * bk.gstRate / 100, lineTotal: baseAmt * (1 + bk.gstRate / 100) });
+    if (markup > 0) lines.push({ description: `AWB ${bk.awbNo} · Handling charges`, qty: 1, rate: markup, amount: markup, taxRate: bk.gstRate, taxAmount: markup * bk.gstRate / 100, lineTotal: markup * (1 + bk.gstRate / 100) });
+  }
+  for (const bk of dockets) {
+    const base = bk.rateFittedAmount;
+    const markup = bk.markupAmount;
+    lines.push({ description: `Docket ${bk.docketNo} · ${bk.origin||''}→${bk.destination||''} · ${bk.description||'Freight'}`, qty: 1, rate: base, amount: base, taxRate: bk.gstRate, taxAmount: base * bk.gstRate / 100, lineTotal: base * (1 + bk.gstRate / 100) });
+    if (markup > 0) lines.push({ description: `Docket ${bk.docketNo} · Handling charges`, qty: 1, rate: markup, amount: markup, taxRate: bk.gstRate, taxAmount: markup * bk.gstRate / 100, lineTotal: markup * (1 + bk.gstRate / 100) });
+  }
+
+  const subtotal = lines.reduce((s, l) => s + l.amount, 0);
+  const gstTotal = lines.reduce((s, l) => s + l.taxAmount, 0);
+  const grandTotal = subtotal + gstTotal;
+  const bookingRef = [...awbs.map(b => b.awbNo), ...dockets.map(b => b.docketNo)].join(', ');
+
+  const invoice = await prisma.invoice.create({
+    data: { invoiceNo, partyId, partyName, bookingType: 'COMBINED', bookingRef, invoiceDate, dueDate, subtotal, gstTotal, grandTotal, paidTotal: 0, outstandingTotal: grandTotal, status: 'DRAFT', createdBy: session.user.id, lines: { create: lines } },
+  });
+
+  // Mark all as INVOICED
+  await Promise.all([
+    awbIds.length ? prisma.awbBooking.updateMany({ where: { id: { in: awbIds } }, data: { status: 'INVOICED' } }) : Promise.resolve(),
+    docketIds.length ? prisma.docketBooking.updateMany({ where: { id: { in: docketIds } }, data: { status: 'INVOICED' } }) : Promise.resolve(),
+  ]);
+
+  await prisma.outstandingEntry.create({ data: { partyId, partyName, invoiceId: invoice.id, invoiceNo, bookingRef, originalAmount: grandTotal, paidAmount: 0, outstandingAmount: grandTotal, invoiceDate, dueDate, agingBucket: 'CURRENT', creditLimit: party?.creditLimit ?? 0 } });
+
+  serverLog('info', 'invoice.combined', { userId: session.user.id, invoiceId: invoice.id, invoiceNo, awbIds, docketIds });
+  revalidatePath('/dashboard/invoices');
+  return { invoiceId: invoice.id, invoiceNo };
+}
+
 export async function deleteOutstandingEntries(ids: string[]) {
   const session = await requireAuth();
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };
