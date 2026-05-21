@@ -46,6 +46,8 @@ export default function AwbBookingsPage() {
   const [ocrExtracting, setOcrExtracting] = useState(false);
   const ocrFileRef = useRef<HTMLInputElement>(null);
   const [extractedData, setExtractedData] = useState<Partial<typeof initForm> | null>(null);
+  const [showPasteModal, setShowPasteModal] = useState(false);
+  const [pasteText, setPasteText] = useState('');
 
   // ── Multi-select / delete state ──────────────────────────────────────────
   const [selectMode, setSelectMode]   = useState(false);
@@ -195,37 +197,49 @@ export default function AwbBookingsPage() {
     return result;
   }
 
+  function handleExtract(text: string) {
+    const isCsv = text.includes(',') && text.split('\n')[0].split(',').length > 3;
+    let extracted: Partial<typeof initForm>;
+    if (isCsv) {
+      extracted = extractAwbFromCsv(text) ?? extractAwbFromText(text);
+    } else {
+      const parsed = parseAwbDocument(text);
+      extracted = {
+        awbPrefix: parsed.awbPrefix || '312',
+        awbNo: parsed.awbSuffix,
+        origin: parsed.origin,
+        destination: parsed.destination,
+        airlineName: parsed.airlineName,
+        bookingDate: parsed.bookingDate || new Date().toISOString().split('T')[0],
+        weight: parsed.weight,
+        pieces: parsed.pieces || 1,
+        baseRate: parsed.baseRate,
+        weightCharge: parsed.freightAmount,
+        otherChargesDueAgent: parsed.totalOtherChargesDueAgent,
+        otherChargesDueCarrier: parsed.totalOtherChargesDueCarrier,
+        totalPrepaid: parsed.totalPrepaid,
+      };
+    }
+    const clean = Object.fromEntries(
+      Object.entries(extracted).filter(([, v]) => v !== '' && v !== undefined && v !== null)
+    ) as Partial<typeof initForm>;
+    setExtractedData({ ...initForm, ...clean });
+    setShowPasteModal(false);
+    setPasteText('');
+  }
+
   async function handleOcrUpload(file: File) {
     setOcrExtracting(true);
     try {
       const text = await file.text();
-      const isCsv = file.name.endsWith('.csv') || (text.includes(',') && text.split('\n')[0].includes(','));
-      let extracted: Partial<typeof initForm>;
-      if (isCsv) {
-        extracted = extractAwbFromCsv(text) ?? extractAwbFromText(text);
-      } else {
-        const parsed = parseAwbDocument(text);
-        extracted = {
-          awbPrefix: parsed.awbPrefix || '312',
-          awbNo: parsed.awbSuffix,
-          origin: parsed.origin,
-          destination: parsed.destination,
-          airlineName: parsed.airlineName,
-          bookingDate: parsed.bookingDate || new Date().toISOString().split('T')[0],
-          weight: parsed.weight,
-          pieces: parsed.pieces || 1,
-          baseRate: parsed.baseRate,
-          weightCharge: parsed.freightAmount,
-          otherChargesDueAgent: parsed.totalOtherChargesDueAgent,
-          otherChargesDueCarrier: parsed.totalOtherChargesDueCarrier,
-          totalPrepaid: parsed.totalPrepaid,
-        };
+      // Check if it's readable text (not binary PDF)
+      const isProbablyBinary = text.slice(0, 5) === '%PDF-' || text.charCodeAt(0) > 127;
+      if (isProbablyBinary) {
+        toast('PDF detected — please copy-paste the AWB text instead', { icon: '📋' });
+        setShowPasteModal(true);
+        return;
       }
-      const clean = Object.fromEntries(
-        Object.entries(extracted).filter(([, v]) => v !== '' && v !== undefined && v !== null)
-      ) as Partial<typeof initForm>;
-      // Show review modal instead of directly opening form
-      setExtractedData({ ...initForm, ...clean });
+      handleExtract(text);
     } catch { toast.error('Could not read file'); }
     finally { setOcrExtracting(false); }
   }
@@ -334,8 +348,8 @@ export default function AwbBookingsPage() {
             <button className="btn btn-secondary btn-sm" onClick={()=>handleExport('xlsx')}><Download size={12}/> XLSX</button>
             <button className="btn btn-secondary btn-sm" onClick={()=>handleExport('pdf')}><Download size={12}/> PDF</button>
             <button className="btn btn-secondary btn-sm" onClick={()=>setShowBulk(true)}>Bulk Download</button>
-            <input ref={ocrFileRef} type="file" accept=".txt,.pdf,.csv" style={{display:'none'}} onChange={e=>{const f=e.target.files?.[0];if(f)handleOcrUpload(f);e.target.value='';}}/>
-            <button className="btn btn-secondary btn-sm" disabled={ocrExtracting} onClick={()=>ocrFileRef.current?.click()}>📄 {ocrExtracting?'Extracting…':'Upload AWB'}</button>
+            <input ref={ocrFileRef} type="file" accept=".txt,.csv" style={{display:'none'}} onChange={e=>{const f=e.target.files?.[0];if(f)handleOcrUpload(f);e.target.value='';}}/>
+            <button className="btn btn-secondary btn-sm" disabled={ocrExtracting} onClick={()=>setShowPasteModal(true)}>📄 {ocrExtracting?'Extracting…':'Upload AWB'}</button>
             <button className="btn btn-primary btn-sm" onClick={()=>setShowForm(true)}><Plus size={12}/> New AWB Booking</button>
           </>
         )}
@@ -647,6 +661,34 @@ export default function AwbBookingsPage() {
       )}
 
       {showBulk && <AwbBulkDownloadModal awbBookings={awbBookings} onClose={()=>setShowBulk(false)}/>}
+
+      {/* Paste AWB Text Modal */}
+      {showPasteModal && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{maxWidth:600}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+              <div>
+                <h2 style={{fontSize:16,fontWeight:800}}>📋 Paste AWB Text</h2>
+                <p style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>Open your AWB PDF → Select All → Copy → Paste here</p>
+              </div>
+              <button className="btn btn-ghost btn-icon" onClick={()=>{setShowPasteModal(false);setPasteText('');}}><X size={16}/></button>
+            </div>
+            <textarea
+              autoFocus
+              value={pasteText}
+              onChange={e=>setPasteText(e.target.value)}
+              placeholder="Paste the full AWB text here (Ctrl+A, Ctrl+C from your PDF viewer, then Ctrl+V here)..."
+              style={{width:'100%',height:220,padding:'10px 12px',border:'1px solid var(--border)',borderRadius:8,fontSize:12,fontFamily:'var(--font-mono)',resize:'vertical',outline:'none',background:'var(--surface-sunken)',boxSizing:'border-box'}}
+            />
+            <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:12}}>
+              <button className="btn btn-secondary" onClick={()=>{setShowPasteModal(false);setPasteText('');}}>Cancel</button>
+              <button className="btn btn-primary" disabled={!pasteText.trim()} onClick={()=>handleExtract(pasteText)}>
+                <CheckCircle size={13}/> Extract Data
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* AWB Extract Review Modal */}
       {extractedData && (
