@@ -11,6 +11,7 @@ import { useSharedData } from '@/lib/useSharedData';
 import { LiveIndicator } from '@/components/LiveIndicator';
 import RecordActivityAvatars from '@/components/RecordActivityAvatars';
 import { AddPartyModal } from '@/components/AddPartyModal';
+import { parseAwbDocument } from '@/lib/parseAwb';
 
 const AIRLINES = ['IndiGo','Air India','SpiceJet','GoAir','Vistara','Akasa Air'];
 const CITIES   = ['DEL','BOM','BLR','HYD','MAA','CCU','AMD','COK','JAI','PNQ','BHO','IXR'];
@@ -197,12 +198,35 @@ export default function AwbBookingsPage() {
     setOcrExtracting(true);
     try {
       const text = await file.text();
-      // Try CSV first (like import wizard), fallback to text extraction
-      const isCsv = file.name.endsWith('.csv') || (text.includes(',') && text.includes('\n'));
-      const extracted = isCsv ? (extractAwbFromCsv(text) ?? extractAwbFromText(text)) : extractAwbFromText(text);
+      const isCsv = file.name.endsWith('.csv') || (text.includes(',') && text.split('\n')[0].includes(','));
+
+      let extracted: Partial<typeof initForm>;
+      if (isCsv) {
+        extracted = extractAwbFromCsv(text) ?? extractAwbFromText(text);
+      } else {
+        // Use the full document parser (same as import wizard)
+        const parsed = parseAwbDocument(text);
+        extracted = {
+          awbPrefix: parsed.awbPrefix || '312',
+          awbNo: parsed.awbSuffix,
+          origin: parsed.origin,
+          destination: parsed.destination,
+          airlineName: parsed.airlineName,
+          bookingDate: parsed.bookingDate || new Date().toISOString().split('T')[0],
+          weight: parsed.weight,
+          pieces: parsed.pieces || 1,
+          baseRate: parsed.baseRate,
+          weightCharge: parsed.freightAmount,
+          otherChargesDueAgent: parsed.totalOtherChargesDueAgent,
+          otherChargesDueCarrier: parsed.totalOtherChargesDueCarrier,
+          totalPrepaid: parsed.totalPrepaid,
+        };
+      }
+
       setForm(f => ({ ...f, ...extracted }));
       setShowForm(true);
-      toast.success('AWB data extracted — please review and save');
+      const filled = Object.values(extracted).filter(v => v && v !== 0 && v !== '312').length;
+      toast.success(`AWB data extracted (${filled} fields) — please review and save`);
     } catch { toast.error('Could not read file'); }
     finally { setOcrExtracting(false); }
   }
