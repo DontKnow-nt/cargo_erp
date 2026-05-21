@@ -9,7 +9,7 @@ type Bill = {
   id: string; vendorName: string; invoiceNo: string;
   invoiceDate: string; dueDate?: string | null;
   totalAmount: number; description?: string | null;
-  category?: string | null; status: string;
+  category?: string | null; status: string; paidAmount?: number;
 };
 
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
@@ -29,6 +29,8 @@ export default function PurchasesPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [partialModal, setPartialModal] = useState<{ id: string; total: number; paid: number } | null>(null);
+  const [partialAmt, setPartialAmt] = useState(0);
 
   function refresh() {
     getPurchaseInvoices().then(d => setBills(d as unknown as Bill[])).catch(() => {});
@@ -120,7 +122,9 @@ export default function PurchasesPage() {
                 <th style={{width:36}}></th>
                 <th>Vendor</th><th>Bill No.</th><th>Category</th><th>Description</th>
                 <th>Date</th><th>Due Date</th>
-                <th style={{textAlign:'right'}}>Amount</th>
+                <th style={{textAlign:'right'}}>Total</th>
+                <th style={{textAlign:'right'}}>Paid</th>
+                <th style={{textAlign:'right'}}>Left</th>
                 <th>Status</th><th>Action</th>
               </tr>
             </thead>
@@ -151,6 +155,10 @@ export default function PurchasesPage() {
                       {bill.dueDate ? fmtDate(bill.dueDate) : '—'}
                     </td>
                     <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:800,color: statusColor}}>{fmt(bill.totalAmount)}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:'#059669'}}>{bill.paidAmount ? fmt(bill.paidAmount) : '—'}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color: (bill.totalAmount-(bill.paidAmount||0))>0 ? '#dc2626' : '#059669'}}>
+                      {fmt(Math.max(0, bill.totalAmount - (bill.paidAmount||0)))}
+                    </td>
                     <td>
                       <span style={{padding:'2px 9px',borderRadius:99,fontSize:10,fontWeight:600,color:statusColor,background:statusBg,border:`1px solid ${statusBdr}`,fontFamily:'var(--font-mono)',textTransform:'uppercase'}}>
                         {statusText}
@@ -165,7 +173,7 @@ export default function PurchasesPage() {
                       )}
                       {!partial && !paid && (
                         <button className="btn btn-ghost btn-sm" style={{fontSize:11,color:'#d97706',whiteSpace:'nowrap'}}
-                          onClick={()=>startTransition(async()=>{await updatePurchaseInvoiceStatus(bill.id,'PARTIALLY_PAID' as any);toast.success('Marked as partially paid');refresh();})}>
+                          onClick={()=>{ setPartialAmt(bill.paidAmount||0); setPartialModal({id:bill.id,total:bill.totalAmount,paid:bill.paidAmount||0}); }}>
                           ~ Partial
                         </button>
                       )}
@@ -301,6 +309,51 @@ export default function PurchasesPage() {
                 <button type="submit" className="btn btn-primary" disabled={isPending}><CheckCircle size={13}/> Save Bill</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {partialModal && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{maxWidth:380}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <h2 style={{fontSize:15,fontWeight:800}}>Partial Payment</h2>
+              <button className="btn btn-ghost btn-icon" onClick={()=>setPartialModal(null)}><X size={16}/></button>
+            </div>
+            <div style={{fontSize:12,color:'var(--text-secondary)',marginBottom:12}}>
+              Total Bill: <strong>{fmt(partialModal.total)}</strong> · Already Paid: <strong>{fmt(partialModal.paid)}</strong>
+            </div>
+            <div className="form-group" style={{marginBottom:16}}>
+              <label className="label">Amount Paid (₹)</label>
+              <input className="input" type="number" min="0" max={partialModal.total} step="0.01" autoFocus
+                value={partialAmt||''} onChange={e=>setPartialAmt(parseFloat(e.target.value)||0)}
+                style={{fontFamily:'var(--font-mono)',fontWeight:700}}/>
+            </div>
+            {partialAmt > 0 && (
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:16}}>
+                {[
+                  {label:'Paid',val:fmt(partialAmt),color:'#059669'},
+                  {label:'Left',val:fmt(Math.max(0,partialModal.total-partialAmt)),color:'#dc2626'},
+                ].map(s=>(
+                  <div key={s.label} style={{padding:'8px 12px',background:'var(--surface-sunken)',border:`1px solid ${s.color}30`,borderRadius:8,textAlign:'center'}}>
+                    <div style={{fontSize:10,color:'var(--text-muted)',textTransform:'uppercase'}}>{s.label}</div>
+                    <div style={{fontSize:14,fontWeight:800,fontFamily:'var(--font-mono)',color:s.color}}>{s.val}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+              <button className="btn btn-secondary" onClick={()=>setPartialModal(null)}>Cancel</button>
+              <button className="btn btn-primary" disabled={!partialAmt || isPending}
+                onClick={()=>startTransition(async()=>{
+                  const status = partialAmt >= partialModal.total ? 'PAID' : 'PARTIALLY_PAID';
+                  await updatePurchaseInvoiceStatus(partialModal.id, status as any, partialAmt);
+                  toast.success(status==='PAID' ? 'Fully paid!' : `₹${partialAmt.toLocaleString('en-IN')} recorded`);
+                  setPartialModal(null); refresh();
+                })}>
+                Save Payment
+              </button>
+            </div>
           </div>
         </div>
       )}

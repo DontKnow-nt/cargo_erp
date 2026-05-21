@@ -277,6 +277,7 @@ model PurchaseInvoice {
   description   String?
   category      String?
   status        String   @default("PENDING")
+  paidAmount    Float    @default(0) @map("paid_amount")
   fileUrl       String?  @map("file_url")
   rawText       String?  @map("raw_text")
   createdBy     String?  @map("created_by")

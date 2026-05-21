@@ -36,10 +36,10 @@ export async function createPurchaseInvoice(data: unknown) {
   return { id: inv.id };
 }
 
-export async function updatePurchaseInvoiceStatus(id: string, status: 'PENDING' | 'APPROVED' | 'PAID' | 'REJECTED' | 'PARTIALLY_PAID') {
+export async function updatePurchaseInvoiceStatus(id: string, status: 'PENDING' | 'APPROVED' | 'PAID' | 'REJECTED' | 'PARTIALLY_PAID', paidAmount?: number) {
   const session = await requireAuth();
-  await prisma.purchaseInvoice.update({ where: { id }, data: { status } });
-  serverLog('info', 'purchase.status_updated', { userId: session.user.id, id, status });
+  await prisma.purchaseInvoice.update({ where: { id }, data: { status, ...(paidAmount !== undefined && { paidAmount }) } });
+  serverLog('info', 'purchase.status_updated', { userId: session.user.id, id, status, paidAmount });
   revalidatePath('/dashboard/purchases');
   return { success: true };
 }
