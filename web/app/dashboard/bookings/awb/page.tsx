@@ -114,9 +114,9 @@ export default function AwbBookingsPage() {
     setForm(f => ({ ...f, origin, destination: dest, baseRate: rate ? rate.baseRate : f.baseRate }));
   }
 
-  const freightBase = form.weight * form.baseRate;
+  const freightBase = (form.weight || 0) * (form.baseRate || 0);
   const gstAmount   = 0;
-  const totalAmount = freightBase + form.markupAmount;
+  const totalAmount = freightBase + (form.markupAmount || 0);
 
   function extractAwbFromCsv(text: string): Partial<typeof initForm> | null {
     const lines = text.split('\n').filter(l => l.trim());
@@ -223,10 +223,15 @@ export default function AwbBookingsPage() {
         };
       }
 
-      setForm(f => ({ ...f, ...extracted }));
+      // Reset to clean state then apply extracted values
+      const clean = Object.fromEntries(
+        Object.entries(extracted).filter(([, v]) => v !== '' && v !== undefined && v !== null)
+      );
+      setForm({ ...initForm, ...clean });
       setShowForm(true);
-      const filled = Object.values(extracted).filter(v => v && v !== 0 && v !== '312').length;
-      toast.success(`AWB data extracted (${filled} fields) — please review and save`);
+      const filled = Object.keys(clean).filter(k => k !== 'awbPrefix').length;
+      toast.success(`AWB data extracted (${filled} fields filled) — please review and save`);
+      console.log('[AWB Extract]', clean);
     } catch { toast.error('Could not read file'); }
     finally { setOcrExtracting(false); }
   }
