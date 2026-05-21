@@ -11,7 +11,7 @@ const PAGE_LABELS: Record<string, string> = {
   'bookings/dockets':'Docket Bookings',
   'invoices':        'Invoices',
   'credit-note':     'Credit Note',
-  'payments':        'Purchasing',
+  'payments':        'Purchasing (Bills to Pay)',
   'outstanding':     'Outstanding & Aging',
   'parties':         'Parties / Customers',
   'rates':           'Freight Rates',
