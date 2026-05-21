@@ -114,101 +114,76 @@ function BlankCreditNoteEditor() {
       <Toolbar paperRef={paperRef} />
 
       <div ref={paperRef} style={{ background: '#fff', maxWidth: 1050, margin: '24px auto', padding: 12, boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}>
-        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+          <colgroup><col style={{width:'5%'}}/><col style={{width:'12%'}}/><col style={{width:'68%'}}/><col style={{width:'15%'}}/></colgroup>
           <tbody>
-            {/* Header */}
-            <tr>
-              <td colSpan={6} style={{ border: '1px solid #000', padding: '8px 10px', textAlign: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <img src="/logo.png" alt="Triveni" style={{ width: 60, height: 60, objectFit: 'contain', flexShrink: 0 }}/>
-                  <div style={{ flex: 1, textAlign: 'center' }}>
-                    <div style={{ fontSize: 16, fontWeight: 900 }}>TRIVENI CARGO EXPRESS INDIA PVT LTD</div>
-                    <div style={{ fontSize: 9 }}>Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi, Delhi 110037</div>
-                    <div style={{ fontSize: 9 }}>Tel. : 011-65809456, 9311389456</div>
-                    <div style={{ fontSize: 10, fontWeight: 700 }}>GSTIN : 07AAGCT2294N2ZR , CIN: U74999DL2017PTC316659</div>
-                    <div style={{ fontSize: 8, color: '#c00' }}>Regd. Office: Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi 110037, near Hotel City Centre</div>
-                    <div style={{ fontSize: 9 }}>Email : info@tceipl.com</div>
-                  </div>
+            <tr><td colSpan={4} style={{ border:'1px solid #000',padding:'8px 10px' }}>
+              <div style={{ display:'flex',alignItems:'center',gap:12 }}>
+                <img src="/logo.png" alt="Triveni" style={{ width:60,height:60,objectFit:'contain',flexShrink:0 }}/>
+                <div style={{ flex:1,textAlign:'center' }}>
+                  <div style={{ fontSize:16,fontWeight:900 }}>TRIVENI CARGO EXPRESS INDIA PVT LTD</div>
+                  <div style={{ fontSize:9 }}>Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi, Delhi 110037</div>
+                  <div style={{ fontSize:9 }}>Tel. : 011-65809456, 9311389456</div>
+                  <div style={{ fontSize:10,fontWeight:700 }}>GSTIN : 07AAGCT2294N2ZR , CIN: U74999DL2017PTC316659</div>
+                  <div style={{ fontSize:8,color:'#c00' }}>Regd. Office: Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi 110037, near Hotel City Centre</div>
+                  <div style={{ fontSize:9 }}>Email : info@tceipl.com</div>
                 </div>
-              </td>
-            </tr>
-            {/* CREDIT NOTE title */}
+              </div>
+            </td></tr>
+            <tr><td colSpan={4} style={{ border:'1px solid #000',padding:'4px',textAlign:'center',fontWeight:700,fontSize:14,textDecoration:'underline' }}>CREDIT NOTE</td></tr>
             <tr>
-              <td colSpan={6} style={{ border: '1px solid #000', padding: '4px', textAlign: 'center', fontWeight: 700, fontSize: 14, textDecoration: 'underline' }}>
-                CREDIT NOTE
-              </td>
-            </tr>
-            {/* Party info (left) + Credit Note info (right) */}
-            <tr>
-              <td colSpan={3} style={{ border: '1px solid #000', padding: '6px 8px', verticalAlign: 'top' }}>
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 80, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
+              <td colSpan={2} style={{ border:'1px solid #000',padding:'6px 8px',verticalAlign:'top' }}>
+                <div contentEditable suppressContentEditableWarning style={{ outline:'none',minHeight:80,fontSize:10,fontFamily:'Arial,sans-serif',whiteSpace:'pre-wrap' }}>
                   {`M/s :      TRIVENI CARGO EXPRESS INDIA PRIVATE LIMITED\nGSTIN :   07AAGCT2294N2ZR\nAddress : Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15,\n             Mahipalpur Extension, New Delhi, Delhi 110037`}
                 </div>
               </td>
-              <td colSpan={3} style={{ border: '1px solid #000', padding: '6px 8px', verticalAlign: 'top' }}>
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 80, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
+              <td colSpan={2} style={{ border:'1px solid #000',padding:'6px 8px',verticalAlign:'top' }}>
+                <div contentEditable suppressContentEditableWarning style={{ outline:'none',minHeight:80,fontSize:10,fontFamily:'Arial,sans-serif',whiteSpace:'pre-wrap' }}>
                   {`Credit Note No.  :  TCN/CCU/25-26/\nCredit Note Date :  ${today}\nPOS                   :  DELHI\n\nCreditNote Period From : \nReference No#          :`}
                 </div>
               </td>
             </tr>
-            {/* Table header */}
-            <tr style={{ background: '#f0f0f0' }}>
-              {['Sl#','SAC Code','Description','Taxable Amount'].map((h,i)=>(
-                <td key={i} colSpan={i===2?3:1} style={{ border:'1px solid #000',padding:'4px 6px',fontSize:10,textAlign:'center',fontWeight:700,background:'#f0f0f0' }}>
-                  <div contentEditable suppressContentEditableWarning style={{ outline:'none',fontFamily:'Arial,sans-serif',fontSize:10,fontWeight:700,textAlign:'center' }}>{h}</div>
-                </td>
-              ))}
+            <tr style={{ background:'#f0f0f0' }}>
+              <td style={{ border:'1px solid #000',padding:'4px 6px',fontSize:10,textAlign:'center',fontWeight:700,background:'#f0f0f0' }}><div contentEditable suppressContentEditableWarning style={{ outline:'none',fontFamily:'Arial,sans-serif',fontSize:10,fontWeight:700,textAlign:'center' }}>Sl#</div></td>
+              <td style={{ border:'1px solid #000',padding:'4px 6px',fontSize:10,textAlign:'center',fontWeight:700,background:'#f0f0f0' }}><div contentEditable suppressContentEditableWarning style={{ outline:'none',fontFamily:'Arial,sans-serif',fontSize:10,fontWeight:700,textAlign:'center' }}>SAC Code</div></td>
+              <td style={{ border:'1px solid #000',padding:'4px 6px',fontSize:10,textAlign:'center',fontWeight:700,background:'#f0f0f0' }}><div contentEditable suppressContentEditableWarning style={{ outline:'none',fontFamily:'Arial,sans-serif',fontSize:10,fontWeight:700,textAlign:'center' }}>Description</div></td>
+              <td style={{ border:'1px solid #000',padding:'4px 6px',fontSize:10,textAlign:'center',fontWeight:700,background:'#f0f0f0' }}><div contentEditable suppressContentEditableWarning style={{ outline:'none',fontFamily:'Arial,sans-serif',fontSize:10,fontWeight:700,textAlign:'right' }}>Taxable Amount</div></td>
             </tr>
-          </tbody>
-        </table>
-
-        {/* Data rows */}
-        <table id="cn-body" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
-          <tbody>
-            <tr>
-              <EC style={{ textAlign:'center', width:'5%' }}>1</EC>
-              <EC style={{ textAlign:'center', width:'12%' }}>996531</EC>
-              <EC style={{ width:'68%', lineHeight:1.5 }}>CREDIT NOTE ISSUED AGAINST INVOICE NO  AWB  , FOR CHARGED ON BILL</EC>
-              <EC style={{ textAlign:'right', width:'15%' }}>0.00</EC>
+            {/* Data rows */}
+            <EC style={{ textAlign:'center' }}>1</EC>
+            <tr id="cn-body" data-cn-rows="1">
+              <EC style={{ textAlign:'center' }}>1</EC>
+              <EC style={{ textAlign:'center' }}>996531</EC>
+              <EC style={{ lineHeight:1.5 }}>CREDIT NOTE ISSUED AGAINST INVOICE NO  AWB  , FOR CHARGED ON BILL</EC>
+              <EC style={{ textAlign:'right' }}>0.00</EC>
             </tr>
-          </tbody>
-        </table>
-
-        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-          <tbody>
-            {/* Bank + Tax */}
+            {/* Bank + Tax summary */}
             <tr>
-              <td colSpan={3} style={{ border:'1px solid #000',padding:'6px 8px',verticalAlign:'top' }}>
+              <td colSpan={2} style={{ border:'1px solid #000',padding:'6px 8px',verticalAlign:'top' }}>
                 <div style={{ fontSize:10,marginBottom:4 }}><strong>Amount in Words :</strong> Zero Only</div>
-                <div contentEditable suppressContentEditableWarning style={{ outline:'none',minHeight:70,fontSize:10,fontFamily:'Arial,sans-serif',whiteSpace:'pre-wrap',marginTop:6 }}>
-                  {bankText}
-                </div>
+                <div contentEditable suppressContentEditableWarning style={{ outline:'none',minHeight:70,fontSize:10,fontFamily:'Arial,sans-serif',whiteSpace:'pre-wrap',marginTop:6 }}>{bankText}</div>
               </td>
-              <td colSpan={3} style={{ border:'1px solid #000',padding:'6px 8px',verticalAlign:'top' }}>
+              <td colSpan={2} style={{ border:'1px solid #000',padding:'6px 8px',verticalAlign:'top' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline:'none',minHeight:70,fontSize:10,fontFamily:'Arial,sans-serif',whiteSpace:'pre-wrap' }}>
                   {`Total Taxable Amount  :  0.00\nSGST @ 0%                  :  0\nCGST @ 0%                  :  0\nIGST @ 18%                 :  0\nNet Payable Amount    :  0.00`}
                 </div>
               </td>
             </tr>
-            {/* Notes + Signatory */}
             <tr>
-              <td colSpan={4} style={{ border:'1px solid #000',padding:'5px 8px',verticalAlign:'top' }}>
+              <td colSpan={3} style={{ border:'1px solid #000',padding:'5px 8px',verticalAlign:'top' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline:'none',minHeight:60,fontSize:9,fontFamily:'Arial,sans-serif',whiteSpace:'pre-wrap' }}>
                   {`NOTES :\n1. DIFFERENCE, IF ANY, MAY BE NOTIFIED WITHIN 3 DAYS OF RECEIPT.\n2. PLEASE PAY YOUR BILL AMOUNT WITHIN 15 DAYS OF RECEIPT.\n3. INTEREST AT 24% P.A. WILL BE CHARGED IF THE BILL IS NOT PAID WITHIN THE STIPULATED TIME.\n4. PAYMENT SHOULD BE MADE BY A/C PAYEE CHEQUE OR DD IN FAVOUR OF TRIVENI CARGO EXPRESS INDIA PVT LTD.\n5. JURISDICTION: ALL DISPUTES ARISING UNDER THIS BILL SHALL BE SUBJECT TO BE UNDER NEW DELHI JURISDICTION.`}
                 </div>
               </td>
-              <td colSpan={2} style={{ border:'1px solid #000',padding:'5px 8px',verticalAlign:'bottom',textAlign:'right' }}>
+              <td style={{ border:'1px solid #000',padding:'5px 8px',verticalAlign:'bottom',textAlign:'right' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline:'none',fontSize:10,fontFamily:'Arial,sans-serif',whiteSpace:'pre-wrap',textAlign:'right' }}>
                   {`For TRIVENI CARGO EXPRESS INDIA PVT LTD\n\n\n\nAccts. Manager/Auth. Signatory`}
                 </div>
               </td>
             </tr>
-            {/* Footer */}
-            <tr>
-              <td colSpan={6} style={{ border:'1px solid #000',padding:'3px 8px',textAlign:'center',fontSize:8 }}>
-                Registered Office: Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi 110037, near Hotel City Centre
-              </td>
-            </tr>
+            <tr><td colSpan={4} style={{ border:'1px solid #000',padding:'3px 8px',textAlign:'center',fontSize:8 }}>
+              Registered Office: Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi 110037, near Hotel City Centre
+            </td></tr>
           </tbody>
         </table>
       </div>
@@ -285,98 +260,82 @@ function CreditNoteEditorInner() {
       <Toolbar paperRef={paperRef} />
 
       <div ref={paperRef} style={{ background: '#fff', maxWidth: 1050, margin: '24px auto', padding: 12, boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}>
-        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+          <colgroup><col style={{width:'5%'}}/><col style={{width:'12%'}}/><col style={{width:'68%'}}/><col style={{width:'15%'}}/></colgroup>
           <tbody>
-            <tr>
-              <td colSpan={6} style={{ border: '1px solid #000', padding: '8px 10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <img src="/logo.png" alt="Triveni" style={{ width: 60, height: 60, objectFit: 'contain', flexShrink: 0 }}/>
-                  <div style={{ flex: 1, textAlign: 'center' }}>
-                    <div style={{ fontSize: 16, fontWeight: 900 }}>TRIVENI CARGO EXPRESS INDIA PVT LTD</div>
-                    <div style={{ fontSize: 9 }}>Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi, Delhi 110037</div>
-                    <div style={{ fontSize: 9 }}>Tel. : 011-65809456, 9311389456</div>
-                    <div style={{ fontSize: 10, fontWeight: 700 }}>GSTIN : 07AAGCT2294N2ZR , CIN: U74999DL2017PTC316659</div>
-                    <div style={{ fontSize: 8, color: '#c00' }}>Regd. Office: Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi 110037, near Hotel City Centre</div>
-                    <div style={{ fontSize: 9 }}>Email : info@tceipl.com</div>
-                  </div>
+            <tr><td colSpan={4} style={{ border:'1px solid #000',padding:'8px 10px' }}>
+              <div style={{ display:'flex',alignItems:'center',gap:12 }}>
+                <img src="/logo.png" alt="Triveni" style={{ width:60,height:60,objectFit:'contain',flexShrink:0 }}/>
+                <div style={{ flex:1,textAlign:'center' }}>
+                  <div style={{ fontSize:16,fontWeight:900 }}>TRIVENI CARGO EXPRESS INDIA PVT LTD</div>
+                  <div style={{ fontSize:9 }}>Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi, Delhi 110037</div>
+                  <div style={{ fontSize:9 }}>Tel. : 011-65809456, 9311389456</div>
+                  <div style={{ fontSize:10,fontWeight:700 }}>GSTIN : 07AAGCT2294N2ZR , CIN: U74999DL2017PTC316659</div>
+                  <div style={{ fontSize:8,color:'#c00' }}>Regd. Office: Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi 110037, near Hotel City Centre</div>
+                  <div style={{ fontSize:9 }}>Email : info@tceipl.com</div>
                 </div>
-              </td>
-            </tr>
+              </div>
+            </td></tr>
+            <tr><td colSpan={4} style={{ border:'1px solid #000',padding:'4px',textAlign:'center',fontWeight:700,fontSize:14,textDecoration:'underline' }}>CREDIT NOTE</td></tr>
             <tr>
-              <td colSpan={6} style={{ border: '1px solid #000', padding: '4px', textAlign: 'center', fontWeight: 700, fontSize: 14, textDecoration: 'underline' }}>CREDIT NOTE</td>
-            </tr>
-            <tr>
-              <td colSpan={3} style={{ border: '1px solid #000', padding: '6px 8px', verticalAlign: 'top' }}>
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 80, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
+              <td colSpan={2} style={{ border:'1px solid #000',padding:'6px 8px',verticalAlign:'top' }}>
+                <div contentEditable suppressContentEditableWarning style={{ outline:'none',minHeight:80,fontSize:10,fontFamily:'Arial,sans-serif',whiteSpace:'pre-wrap' }}>
                   {`M/s :      ${inv.partyName}\nGSTIN :   ${party?.gstin || '—'}\nAddress : ${party?.billingAddress || '—'}`}
                 </div>
               </td>
-              <td colSpan={3} style={{ border: '1px solid #000', padding: '6px 8px', verticalAlign: 'top' }}>
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 80, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
+              <td colSpan={2} style={{ border:'1px solid #000',padding:'6px 8px',verticalAlign:'top' }}>
+                <div contentEditable suppressContentEditableWarning style={{ outline:'none',minHeight:80,fontSize:10,fontFamily:'Arial,sans-serif',whiteSpace:'pre-wrap' }}>
                   {`Credit Note No.  :  TCN/CCU/25-26/${inv.invoiceNo}\nCredit Note Date :  ${today}\nPOS                   :  DELHI\n\nCreditNote Period From : ${inv.invoiceDate} to ${inv.dueDate}\nReference No#          :  ${inv.bookingRef}`}
                 </div>
               </td>
             </tr>
-            <tr style={{ background: '#f0f0f0' }}>
-              {['Sl#','SAC Code','Description','Taxable Amount'].map((h,i)=>(
-                <td key={i} colSpan={i===2?3:1} style={{ border:'1px solid #000',padding:'4px 6px',fontSize:10,textAlign:'center',fontWeight:700,background:'#f0f0f0' }}>
-                  <div contentEditable suppressContentEditableWarning style={{ outline:'none',fontFamily:'Arial,sans-serif',fontSize:10,fontWeight:700,textAlign:'center' }}>{h}</div>
-                </td>
-              ))}
+            <tr style={{ background:'#f0f0f0' }}>
+              <td style={{ border:'1px solid #000',padding:'4px 6px',fontSize:10,textAlign:'center',fontWeight:700,background:'#f0f0f0' }}>Sl#</td>
+              <td style={{ border:'1px solid #000',padding:'4px 6px',fontSize:10,textAlign:'center',fontWeight:700,background:'#f0f0f0' }}>SAC Code</td>
+              <td style={{ border:'1px solid #000',padding:'4px 6px',fontSize:10,textAlign:'center',fontWeight:700,background:'#f0f0f0' }}>Description</td>
+              <td style={{ border:'1px solid #000',padding:'4px 6px',fontSize:10,textAlign:'right',fontWeight:700,background:'#f0f0f0' }}>Taxable Amount</td>
             </tr>
-          </tbody>
-        </table>
-
-        <table id="cn-body" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
-          <tbody>
-            {inv.lines.map((line, i) => (
-              <tr key={i}>
-                <EC style={{ textAlign:'center', width:'5%' }}>{i+1}</EC>
-                <EC style={{ textAlign:'center', width:'12%' }}>996531</EC>
-                <EC style={{ width:'68%', lineHeight:1.5 }}>{line.description}</EC>
-                <EC style={{ textAlign:'right', width:'15%' }}>{fmt(line.amount)}</EC>
+            {/* Data rows — wrapped in tbody with id for row add/remove */}
+            {inv.lines.map((line,i) => (
+              <tr key={i} id={i===0?'cn-body':undefined}>
+                <EC style={{ textAlign:'center' }}>{i+1}</EC>
+                <EC style={{ textAlign:'center' }}>996531</EC>
+                <EC style={{ lineHeight:1.5 }}>{line.description}</EC>
+                <EC style={{ textAlign:'right' }}>{fmt(line.amount)}</EC>
               </tr>
             ))}
-          </tbody>
-        </table>
-
-        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-          <tbody>
             <tr>
-              <td colSpan={3} style={{ border:'1px solid #000',padding:'6px 8px',verticalAlign:'top' }}>
+              <td colSpan={2} style={{ border:'1px solid #000',padding:'6px 8px',verticalAlign:'top' }}>
                 <div style={{ fontSize:10,marginBottom:4 }}><strong>Amount in Words :</strong> {amtWords}</div>
                 <div contentEditable suppressContentEditableWarning style={{ outline:'none',minHeight:70,fontSize:10,fontFamily:'Arial,sans-serif',whiteSpace:'pre-wrap',marginTop:6 }}>{bankText}</div>
               </td>
-              <td colSpan={3} style={{ border:'1px solid #000',padding:'6px 8px',verticalAlign:'top' }}>
+              <td colSpan={2} style={{ border:'1px solid #000',padding:'6px 8px',verticalAlign:'top' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline:'none',minHeight:70,fontSize:10,fontFamily:'Arial,sans-serif',whiteSpace:'pre-wrap' }}>
                   {`Total Taxable Amount  :  ${fmt(inv.subtotal)}\nSGST @ 9%                  :  0.00\nCGST @ 9%                  :  0.00\nIGST @ ${igstRate}%                 :  ${fmt(inv.gstTotal)}\nNet Payable Amount    :  ${fmt(grandTotal)}`}
                 </div>
               </td>
             </tr>
             <tr>
-              <td colSpan={4} style={{ border:'1px solid #000',padding:'5px 8px',verticalAlign:'top' }}>
+              <td colSpan={3} style={{ border:'1px solid #000',padding:'5px 8px',verticalAlign:'top' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline:'none',minHeight:60,fontSize:9,fontFamily:'Arial,sans-serif',whiteSpace:'pre-wrap' }}>
                   {`NOTES :\n1. DIFFERENCE, IF ANY, MAY BE NOTIFIED WITHIN 3 DAYS OF RECEIPT.\n2. PLEASE PAY YOUR BILL AMOUNT WITHIN 15 DAYS OF RECEIPT.\n3. INTEREST AT 24% P.A. WILL BE CHARGED IF THE BILL IS NOT PAID WITHIN THE STIPULATED TIME.\n4. PAYMENT SHOULD BE MADE BY A/C PAYEE CHEQUE OR DD IN FAVOUR OF TRIVENI CARGO EXPRESS INDIA PVT LTD.\n5. JURISDICTION: ALL DISPUTES ARISING UNDER THIS BILL SHALL BE SUBJECT TO BE UNDER NEW DELHI JURISDICTION.`}
                 </div>
               </td>
-              <td colSpan={2} style={{ border:'1px solid #000',padding:'5px 8px',verticalAlign:'bottom',textAlign:'right' }}>
+              <td style={{ border:'1px solid #000',padding:'5px 8px',verticalAlign:'bottom',textAlign:'right' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline:'none',fontSize:10,fontFamily:'Arial,sans-serif',whiteSpace:'pre-wrap',textAlign:'right' }}>
                   {`For TRIVENI CARGO EXPRESS INDIA PVT LTD\n\n\n\nAccts. Manager/Auth. Signatory`}
                 </div>
               </td>
             </tr>
-            <tr>
-              <td colSpan={6} style={{ border:'1px solid #000',padding:'3px 8px',textAlign:'center',fontSize:8 }}>
-                Registered Office: Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi 110037, near Hotel City Centre
-              </td>
-            </tr>
+            <tr><td colSpan={4} style={{ border:'1px solid #000',padding:'3px 8px',textAlign:'center',fontSize:8 }}>
+              Registered Office: Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi 110037, near Hotel City Centre
+            </td></tr>
           </tbody>
         </table>
       </div>
     </div>
   );
 }
-
 export default function CreditNoteEditorPage() {
   return (
     <Suspense fallback={<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',fontFamily:'Arial'}}>Loading…</div>}>
