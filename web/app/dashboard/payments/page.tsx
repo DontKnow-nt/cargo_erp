@@ -31,20 +31,23 @@ export default function PaymentsPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.partyId || !form.invoiceId || form.paymentAmount <= 0) { toast.error('Fill all required fields'); return; }
-    if (form.paymentAmount > maxPayable) { toast.error(`Max payable is ${fmt(maxPayable)}`); return; }
+    if (!form.partyId || form.paymentAmount <= 0) { toast.error('Fill all required fields'); return; }
+    // Auto-link to first outstanding invoice of the party if no invoice selected
+    const autoInvoice = partyInvoices.sort((a,b) => b.outstandingTotal - a.outstandingTotal)[0];
+    const linkedInvoiceId = form.invoiceId || autoInvoice?.id || '';
+    const linkedInvoiceNo = form.invoiceId ? (selInvoice?.invoiceNo||'') : (autoInvoice?.invoiceNo||'MANUAL');
     startTransition(async () => {
       const res = await addPaymentReceipt({
         partyId:form.partyId, partyName:selParty?.partyName||'',
-        invoiceId:form.invoiceId, invoiceNo:selInvoice?.invoiceNo||'',
+        invoiceId:linkedInvoiceId, invoiceNo:linkedInvoiceNo,
         paymentDate:form.paymentDate, paymentAmount:form.paymentAmount,
-        freightComponent:freightComp, gstComponent:gstComp,
+        freightComponent:form.paymentAmount, gstComponent:0,
         paymentMode:form.paymentMode as 'CASH'|'CHEQUE'|'BANK_TRANSFER'|'NEFT'|'RTGS'|'UPI'|'OTHER',
         referenceNo:form.referenceNo,
         bankName:form.bankName,
         notes:form.remarks,
       });
-      if (res && 'error' in res) { toast.error('Validation error'); return; }
+      if (res && 'error' in res) { toast.error(res.error as string); return; }
       toast.success('Payment receipt recorded');
       setShowForm(false); setForm(init);
       refresh();
@@ -134,40 +137,23 @@ export default function PaymentsPage() {
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="label">Invoice *</label>
-                  <select className="input" value={form.invoiceId} onChange={e=>setForm(f=>({...f,invoiceId:e.target.value,paymentAmount:0}))} required disabled={!form.partyId}>
-                    <option value="">Select invoice…</option>
-                    {partyInvoices.map(i=><option key={i.id} value={i.id}>{i.invoiceNo} · Outstanding: ₹{i.outstandingTotal.toLocaleString('en-IN')}</option>)}
-                  </select>
-                  {form.partyId&&partyInvoices.length===0&&<div style={{fontSize:11,color:'var(--text-muted)',marginTop:3}}>No payable invoices for this party</div>}
+                  <label className="label">Payment Amount (₹) *</label>
+                  <input className="input" type="number" min="0.01" step="0.01" value={form.paymentAmount||''} onChange={e=>setForm(f=>({...f,paymentAmount:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}} required/>
                 </div>
               </div>
 
-              {selInvoice && (
-                <div style={{background:'var(--info-bg)',border:'1px solid var(--info-border)',borderRadius:8,padding:'10px 14px',marginBottom:12,fontSize:12,color:'var(--info)'}}>
-                  Invoice Total: <strong>{fmt(selInvoice.grandTotal)}</strong> · Paid: <strong>{fmt(selInvoice.paidTotal)}</strong> · <strong style={{color:'#dc2626'}}>Outstanding: {fmt(selInvoice.outstandingTotal)}</strong>
-                </div>
-              )}
-
               <div className="form-row form-row-2" style={{marginBottom:12}}>
-                <div className="form-group">
-                  <label className="label">Payment Amount (₹) *</label>
-                  <input className="input" type="number" min="0.01" step="0.01" max={maxPayable} value={form.paymentAmount||''} onChange={e=>setForm(f=>({...f,paymentAmount:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}} required/>
-                  {maxPayable>0&&<div style={{fontSize:10,color:'var(--text-muted)',marginTop:3}}>Max: {fmt(maxPayable)}</div>}
-                </div>
                 <div className="form-group">
                   <label className="label">Payment Date</label>
                   <input className="input" type="date" value={form.paymentDate} onChange={e=>setForm(f=>({...f,paymentDate:e.target.value}))}/>
                 </div>
-              </div>
-
-              <div className="form-row form-row-2" style={{marginBottom:12}}>
                 <div className="form-group">
                   <label className="label">Payment Mode</label>
                   <select className="input" value={form.paymentMode} onChange={e=>setForm(f=>({...f,paymentMode:e.target.value as typeof form.paymentMode}))}>
                     {MODES.map(m=><option key={m}>{m}</option>)}
                   </select>
                 </div>
+              </div>
                 <div className="form-group">
                   <label className="label">Reference No.</label>
                   <input className="input" placeholder="NEFT/RTGS/Cheque no." value={form.referenceNo} onChange={e=>setForm(f=>({...f,referenceNo:e.target.value}))}/>
