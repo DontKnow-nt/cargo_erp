@@ -85,7 +85,7 @@ export async function deleteAwbBookings(ids: string[]) {
   const session = await requireAuth();
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };
   if (!ids.every(id => typeof id === 'string' && id.length > 0)) return { error: 'Invalid IDs' };
-  await prisma.awbBooking.deleteMany({ where: { id: { in: ids }, status: 'BOOKED' } });
+  await prisma.awbBooking.deleteMany({ where: { id: { in: ids } } });
   serverLog('info', 'awb.deleted', { userId: session.user.id, count: ids.length });
   await Promise.all(ids.map(id => recordAuditLog({
     userId: session.user.id,
@@ -151,7 +151,7 @@ export async function deleteDocketBookings(ids: string[]) {
   const session = await requireAuth();
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };
   if (!ids.every(id => typeof id === 'string' && id.length > 0)) return { error: 'Invalid IDs' };
-  await prisma.docketBooking.deleteMany({ where: { id: { in: ids }, status: 'BOOKED' } });
+  await prisma.docketBooking.deleteMany({ where: { id: { in: ids } } });
   serverLog('info', 'docket.deleted', { userId: session.user.id, count: ids.length });
   await Promise.all(ids.map(id => recordAuditLog({
     userId: session.user.id,
