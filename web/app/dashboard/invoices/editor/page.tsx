@@ -304,6 +304,7 @@ function InvoiceEditorInner() {
   }, [inv?.id]); // re-attach when invoice changes
 
   async function handleSave() {
+    if (!paperRef.current || !inv) return;
     setSaving(true);
     await fetch(`/api/invoices/${inv.id}/editor-html`, {
       method: 'POST',
