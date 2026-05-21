@@ -69,6 +69,7 @@ export default function CreditNotePage() {
           {selected.size > 0 && (
             <button className="btn btn-danger btn-sm" onClick={()=>setShowDeleteConfirm(true)}><Trash2 size={12}/> Delete ({selected.size})</button>
           )}
+          <button className="btn btn-primary btn-sm" onClick={()=>router.push('/dashboard/credit-note/editor')}>+ Make Credit Note</button>
         </div>
       </div>
 
