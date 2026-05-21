@@ -40,7 +40,7 @@ export async function getAwbBookings() {
 }
 
 export async function createAwbBooking(data: unknown) {
-  const session = await requireRole('OPERATIONS_MANAGER');
+  const session = await requireAuth();
   const parsed = AwbBookingSchema.safeParse(data);
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
   const d = parsed.data;
@@ -62,7 +62,7 @@ export async function createAwbBooking(data: unknown) {
 }
 
 export async function updateAwbBooking(id: string, data: unknown) {
-  const session = await requireRole('OPERATIONS_MANAGER');
+  const session = await requireAuth();
   const parsed = UpdateAwbBookingSchema.safeParse(data);
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
   const existing = await prisma.awbBooking.findUnique({ where: { id } });
@@ -82,7 +82,7 @@ export async function updateAwbBooking(id: string, data: unknown) {
 }
 
 export async function deleteAwbBookings(ids: string[]) {
-  const session = await requireRole('OPERATIONS_MANAGER');
+  const session = await requireAuth();
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };
   if (!ids.every(id => typeof id === 'string' && id.length > 0)) return { error: 'Invalid IDs' };
   await prisma.awbBooking.deleteMany({ where: { id: { in: ids }, status: 'BOOKED' } });
@@ -106,7 +106,7 @@ export async function getDocketBookings() {
 }
 
 export async function createDocketBooking(data: unknown) {
-  const session = await requireRole('OPERATIONS_MANAGER');
+  const session = await requireAuth();
   const parsed = DocketBookingSchema.safeParse(data);
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
   const d = parsed.data;
@@ -128,7 +128,7 @@ export async function createDocketBooking(data: unknown) {
 }
 
 export async function updateDocketBooking(id: string, data: unknown) {
-  const session = await requireRole('OPERATIONS_MANAGER');
+  const session = await requireAuth();
   const parsed = UpdateDocketBookingSchema.safeParse(data);
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
   const existing = await prisma.docketBooking.findUnique({ where: { id } });
@@ -148,7 +148,7 @@ export async function updateDocketBooking(id: string, data: unknown) {
 }
 
 export async function deleteDocketBookings(ids: string[]) {
-  const session = await requireRole('OPERATIONS_MANAGER');
+  const session = await requireAuth();
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };
   if (!ids.every(id => typeof id === 'string' && id.length > 0)) return { error: 'Invalid IDs' };
   await prisma.docketBooking.deleteMany({ where: { id: { in: ids }, status: 'BOOKED' } });
@@ -166,7 +166,7 @@ export async function deleteDocketBookings(ids: string[]) {
 }
 
 export async function linkAwbToDocket(docketId: string, awbId: string) {
-  const session = await requireRole('OPERATIONS_MANAGER');
+  const session = await requireAuth();
   const [docket, awb, duplicate] = await Promise.all([
     prisma.docketBooking.findUnique({ where: { id: docketId } }),
     prisma.awbBooking.findUnique({ where: { id: awbId } }),
@@ -204,7 +204,7 @@ export async function linkAwbToDocket(docketId: string, awbId: string) {
 }
 
 export async function unlinkAwbFromDocket(docketId: string) {
-  const session = await requireRole('OPERATIONS_MANAGER');
+  const session = await requireAuth();
   const docket = await prisma.docketBooking.findUnique({ where: { id: docketId } });
   if (!docket) return { error: 'Docket not found' };
   if (!docket.linkedAwbId) return { error: 'Docket is not linked to an AWB' };

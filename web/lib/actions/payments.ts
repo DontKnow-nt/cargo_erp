@@ -1,17 +1,17 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import prisma from '@/lib/prisma';
-import { requireRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
 import { PaymentReceiptSchema } from '@/lib/validations';
 import { recordAuditLog, serverLog } from '@/lib/logger';
 
 export async function getPayments() {
-  await requireRole('ACCOUNTS_EXECUTIVE');
+  await requireAuth();
   return prisma.paymentReceipt.findMany({ orderBy: { createdAt: 'desc' } });
 }
 
 export async function addPaymentReceipt(data: unknown) {
-  const session = await requireRole('ACCOUNTS_EXECUTIVE');
+  const session = await requireAuth();
   const parsed = PaymentReceiptSchema.safeParse(data);
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
 

@@ -1,13 +1,13 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import prisma from '@/lib/prisma';
-import { requireRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
 import { FreightRateVersionSchema, FreightRateSchema } from '@/lib/validations';
 import { recordAuditLog, serverLog } from '@/lib/logger';
 import { z } from 'zod';
 
 export async function createRateVersion(versionData: unknown, rates: unknown[]) {
-  const session = await requireRole('OPERATIONS_MANAGER');
+  const session = await requireAuth();
   const parsedV = FreightRateVersionSchema.safeParse(versionData);
   if (!parsedV.success) return { error: parsedV.error.flatten().fieldErrors };
   if (!Array.isArray(rates) || rates.length === 0) return { error: 'At least one rate row required' };

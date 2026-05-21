@@ -1,7 +1,7 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import prisma from '@/lib/prisma';
-import { requireRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
 import { z } from 'zod';
 import { serverLog } from '@/lib/logger';
 
@@ -20,12 +20,12 @@ const PurchaseSchema = z.object({
 });
 
 export async function getPurchaseInvoices() {
-  await requireRole('ACCOUNTS_EXECUTIVE');
+  await requireAuth();
   return prisma.purchaseInvoice.findMany({ orderBy: { createdAt: 'desc' } });
 }
 
 export async function createPurchaseInvoice(data: unknown) {
-  const session = await requireRole('ACCOUNTS_EXECUTIVE');
+  const session = await requireAuth();
   const parsed = PurchaseSchema.safeParse(data);
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
   const inv = await prisma.purchaseInvoice.create({
@@ -37,7 +37,7 @@ export async function createPurchaseInvoice(data: unknown) {
 }
 
 export async function updatePurchaseInvoiceStatus(id: string, status: 'PENDING' | 'APPROVED' | 'PAID' | 'REJECTED') {
-  const session = await requireRole('ACCOUNTS_EXECUTIVE');
+  const session = await requireAuth();
   await prisma.purchaseInvoice.update({ where: { id }, data: { status } });
   serverLog('info', 'purchase.status_updated', { userId: session.user.id, id, status });
   revalidatePath('/dashboard/purchases');
@@ -45,7 +45,7 @@ export async function updatePurchaseInvoiceStatus(id: string, status: 'PENDING' 
 }
 
 export async function deletePurchaseInvoices(ids: string[]) {
-  const session = await requireRole('ACCOUNTS_EXECUTIVE');
+  const session = await requireAuth();
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };
   await prisma.purchaseInvoice.deleteMany({ where: { id: { in: ids } } });
   serverLog('info', 'purchase.deleted', { userId: session.user.id, count: ids.length });

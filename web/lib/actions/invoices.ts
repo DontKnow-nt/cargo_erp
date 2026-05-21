@@ -14,12 +14,12 @@ function calculateInvoiceTotals(lines: PrismaInvoiceLineRecord[]) {
 }
 
 export async function getInvoices() {
-  await requireRole('ACCOUNTS_EXECUTIVE');
+  await requireAuth();
   return prisma.invoice.findMany({ include: { lines: true }, orderBy: { createdAt: 'desc' } });
 }
 
 export async function getInvoice(id: string) {
-  await requireRole('ACCOUNTS_EXECUTIVE');
+  await requireAuth();
   return prisma.invoice.findUnique({ where: { id }, include: { lines: true, party: true } });
 }
 
@@ -40,7 +40,7 @@ async function nextInvoiceNo() {
 }
 
 export async function generateInvoiceFromAwb(awbId: string) {
-  const session = await requireRole('ACCOUNTS_EXECUTIVE');
+  const session = await requireAuth();
   const bk = await prisma.awbBooking.findUnique({ where: { id: awbId } });
   if (!bk) return { error: 'Booking not found' };
   if (bk.status === 'INVOICED') return { error: 'Already invoiced' };
@@ -84,7 +84,7 @@ export async function generateInvoiceFromAwb(awbId: string) {
 }
 
 export async function generateInvoiceFromDocket(docketId: string) {
-  const session = await requireRole('ACCOUNTS_EXECUTIVE');
+  const session = await requireAuth();
   const bk = await prisma.docketBooking.findUnique({ where: { id: docketId } });
   if (!bk) return { error: 'Booking not found' };
   if (bk.status === 'INVOICED') return { error: 'Already invoiced' };
@@ -128,7 +128,7 @@ export async function generateInvoiceFromDocket(docketId: string) {
 }
 
 export async function updateInvoiceLine(invoiceId: string, lineId: string, data: unknown) {
-  const session = await requireRole('ACCOUNTS_EXECUTIVE');
+  const session = await requireAuth();
   const parsed = UpdateInvoiceLineSchema.safeParse(data);
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
   const inv = await prisma.invoice.findUnique({ where: { id: invoiceId } });
@@ -157,7 +157,7 @@ export async function updateInvoiceLine(invoiceId: string, lineId: string, data:
 }
 
 export async function addInvoiceLine(invoiceId: string, data: unknown) {
-  const session = await requireRole('ACCOUNTS_EXECUTIVE');
+  const session = await requireAuth();
   const parsed = InvoiceLineSchema.safeParse(data);
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
   const inv = await prisma.invoice.findUnique({ where: { id: invoiceId } });
@@ -184,7 +184,7 @@ export async function addInvoiceLine(invoiceId: string, data: unknown) {
 }
 
 export async function finalizeInvoice(id: string) {
-  const session = await requireRole('ACCOUNTS_EXECUTIVE');
+  const session = await requireAuth();
   const inv = await prisma.invoice.findUnique({ where: { id } });
   if (!inv) return { error: 'Invoice not found' };
   if (inv.status === 'CANCELLED') return { error: 'Cannot finalize cancelled invoice' };
@@ -203,7 +203,7 @@ export async function finalizeInvoice(id: string) {
 }
 
 export async function cancelInvoice(id: string) {
-  const session = await requireRole('ACCOUNTS_EXECUTIVE');
+  const session = await requireAuth();
   const inv = await prisma.invoice.findUnique({ where: { id } });
   if (!inv) return { error: 'Invoice not found' };
   if (inv.status === 'PAID') return { error: 'Cannot cancel paid invoice' };
@@ -222,7 +222,7 @@ export async function cancelInvoice(id: string) {
 }
 
 export async function deleteOutstandingEntries(ids: string[]) {
-  const session = await requireRole('ACCOUNTS_EXECUTIVE');
+  const session = await requireAuth();
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };
   await prisma.outstandingEntry.deleteMany({ where: { id: { in: ids } } });
   serverLog('info', 'outstanding.deleted', { userId: session.user.id, count: ids.length });
@@ -231,7 +231,7 @@ export async function deleteOutstandingEntries(ids: string[]) {
 }
 
 export async function deleteInvoices(ids: string[]) {
-  const session = await requireRole('ACCOUNTS_EXECUTIVE');
+  const session = await requireAuth();
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };
   if (!ids.every(id => typeof id === 'string' && id.length > 0)) return { error: 'Invalid IDs' };
   await prisma.$transaction([
