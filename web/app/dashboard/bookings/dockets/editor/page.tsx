@@ -280,9 +280,9 @@ img{max-width:100%;object-fit:contain}
                 Invoice No.
                 <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 14, fontSize: 10, fontFamily: 'Arial, sans-serif' }}></div>
               </td>
-              <td colSpan={4} style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 9, textAlign: 'right' }}>
+              <td colSpan={4} style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 9, textAlign: 'left' }}>
                 Weight in Kgs.
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 14, fontSize: 10, fontFamily: 'Arial, sans-serif', textAlign: 'right' }}>{(d as any).weight ? String((d as any).weight) : ''}</div>
+                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 14, fontSize: 10, fontFamily: 'Arial, sans-serif', textAlign: 'left' }}>{(d as any).weight ? String((d as any).weight) : ''}</div>
               </td>
             </tr>
 
