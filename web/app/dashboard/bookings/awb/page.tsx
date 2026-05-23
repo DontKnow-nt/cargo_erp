@@ -605,7 +605,7 @@ export default function AwbBookingsPage() {
                 </div>
                 <div className="form-group">
                   <label className="label">Weight (kg) *</label>
-                  <input className="input" type="number" min="0" step="0.1" placeholder="0" value={form.weight||''} onChange={e=>setForm(f=>({...f,weight:parseFloat(e.target.value)||0}))} required/>
+                  <input className="input" type="number" min="0" step="0.1" placeholder="0" value={form.weight||''} onChange={e=>{const w=parseFloat(e.target.value)||0;const wc=parseFloat((w*(form.baseRate||0)).toFixed(2));setForm(f=>({...f,weight:w,weightCharge:wc,totalPrepaid:wc+(f.valuationCharge||0)+(f.otherChargesDueAgent||0)+(f.otherChargesDueCarrier||0)+(f.gstAmount||0)}));}} required/>
                 </div>
                 <div className="form-group">
                   <label className="label">Pieces</label>
@@ -615,7 +615,7 @@ export default function AwbBookingsPage() {
               <div className="form-row form-row-3" style={{marginBottom:16}}>
                 <div className="form-group">
                   <label className="label">Base Rate (₹/kg) *</label>
-                  <input className="input" type="number" min="0" step="0.01" value={form.baseRate||''} onChange={e=>setForm(f=>({...f,baseRate:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}} required/>
+                  <input className="input" type="number" min="0" step="0.01" value={form.baseRate||''} onChange={e=>{const r=parseFloat(e.target.value)||0;const wc=parseFloat(((form.weight||0)*r).toFixed(2));setForm(f=>({...f,baseRate:r,weightCharge:wc,totalPrepaid:wc+(f.valuationCharge||0)+(f.otherChargesDueAgent||0)+(f.otherChargesDueCarrier||0)+(f.gstAmount||0)}));}} style={{fontFamily:'var(--font-mono)'}} required/>
                   {autoFilled && <div style={{fontSize:10,color:'var(--success)',marginTop:3}}>✓ Auto-filled from rate sheet</div>}
                 </div>
                 <div className="form-group">
