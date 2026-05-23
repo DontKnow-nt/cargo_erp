@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useCallback, useTransition, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { FileText, Download, Search, X, Plus, CheckCircle, Edit2, Printer, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import toast from 'react-hot-toast';
@@ -277,6 +278,7 @@ function InvBadge({ status }: { status: string }) {
 
 export default function InvoicesPage() {
   const { invoices, parties, awbBookings: awb, docketBookings: dockets, refresh } = useSharedData();
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   // Company info for invoice printing (matches Triveni Cargo format)
@@ -480,7 +482,7 @@ export default function InvoicesPage() {
                   <td style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
                     {!selectMode && <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={e=>{e.stopPropagation();setViewInvoice(inv);}}>View</button>}
                     {!selectMode && <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px',color:'#7c3aed'}} title="Open full editor in new tab" onClick={e=>{e.stopPropagation();window.open(`/dashboard/invoices/editor?id=${inv.id}`,'_blank');}}>✏️ Edit</button>}
-                    {!selectMode && <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={e=>{e.stopPropagation();const p=parties.find(x=>x.id===inv.partyId);const b=banks.find(x=>x.id===selectedBankId);printTriveniInvoice(inv, companyInfo, p?{gstin:p.gstin||'',address:p.billingAddress||'',pos:'DELHI',billingPeriod:''}:undefined, b);}} title="Print Invoice">🖨️</button>}
+                    {!selectMode && <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={e=>{e.stopPropagation();router.push(`/dashboard/invoices/editor?id=${inv.id}`);}} title="Open Editor / Print">🖨️</button>}
                     {!selectMode && inv.status==='DRAFT'&&<button className="btn btn-success btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={e=>{e.stopPropagation();startTransition(async()=>{await finalizeInvoice(inv.id);toast.success('Invoice finalized');});}}>Finalize</button>}
                     {!selectMode && ['DRAFT','REVIEWED'].includes(inv.status)&&<button className="btn btn-danger btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={e=>{e.stopPropagation();startTransition(async()=>{await cancelInvoice(inv.id);toast('Invoice cancelled',{icon:'🚫'});});}}>Cancel</button>}
                     {!selectMode && <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 6px',color:'#dc2626'}} title="Delete"
