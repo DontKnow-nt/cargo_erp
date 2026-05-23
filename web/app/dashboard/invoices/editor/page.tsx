@@ -424,17 +424,17 @@ function InvoiceEditorInner() {
         // Detect IGST rate (e.g. "IGST @ 18%")
         const igstMatch  = currentText.match(/IGST\s*@\s*(\d+(?:\.\d+)?)/i);
         const sgstMatch  = currentText.match(/SGST\s*@\s*(\d+(?:\.\d+)?)/i);
-        const igstRate   = igstMatch  ? parseFloat(igstMatch[1])  : 18;
+        const igstRateVal = igstMatch  ? parseFloat(igstMatch[1])  : 18;
         const sgstRate   = sgstMatch  ? parseFloat(sgstMatch[1])  : 0;
         const cgstRate   = sgstRate; // always equal to SGST
 
-        const sgstAmt    = parseFloat((totalTaxable * sgstRate  / 100).toFixed(2));
-        const cgstAmt    = parseFloat((totalTaxable * cgstRate  / 100).toFixed(2));
-        const igstAmt    = parseFloat((totalTaxable * igstRate  / 100).toFixed(2));
+        const sgstAmt    = parseFloat((totalTaxable * sgstRate   / 100).toFixed(2));
+        const cgstAmt    = parseFloat((totalTaxable * cgstRate   / 100).toFixed(2));
+        const igstAmt    = parseFloat((totalTaxable * igstRateVal / 100).toFixed(2));
         const netPayable = parseFloat((totalTaxable + sgstAmt + cgstAmt + igstAmt).toFixed(2));
 
         const fmtN = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        taxSummaryEl.innerText = `Total Taxable Amount : ${fmtN(totalTaxable)}\nSGST @ ${sgstRate}%              : ${fmtN(sgstAmt)}\nCGST @ ${cgstRate}%              : ${fmtN(cgstAmt)}\nIGST @ ${igstRate}%             : ${fmtN(igstAmt)}\nNet Payable Amount  : ${fmtN(netPayable)}`;
+        taxSummaryEl.innerText = `Total Taxable Amount : ${fmtN(totalTaxable)}\nSGST @ ${sgstRate}%              : ${fmtN(sgstAmt)}\nCGST @ ${cgstRate}%              : ${fmtN(cgstAmt)}\nIGST @ ${igstRateVal}%             : ${fmtN(igstAmt)}\nNet Payable Amount  : ${fmtN(netPayable)}`;
       }
     }
 
@@ -497,7 +497,7 @@ img{max-width:100%;object-fit:contain}
   );
 
   const billDate = inv.invoiceDate.split('-').reverse().join('.');
-  const igstRate = inv.lines[0]?.taxRate ?? 18;
+  const invIgstRate = inv.lines[0]?.taxRate ?? 18;
   const amtWords = numberToWords(Math.round(inv.grandTotal));
 
   // ── Build line rows: pull weight+pieces from actual AWB/docket bookings ──
@@ -558,11 +558,10 @@ img{max-width:100%;object-fit:contain}
   // Determine if IGST or SGST+CGST split based on gstTotal vs igstRate
   const sgstAmt  = parseFloat((inv.subtotal * 9 / 100).toFixed(2));
   const cgstAmt  = sgstAmt;
-  const igstAmt  = parseFloat((inv.subtotal * igstRate / 100).toFixed(2));
-  // Use IGST if gstTotal matches igstAmt (inter-state), else SGST+CGST
+  const igstAmt  = parseFloat((inv.subtotal * invIgstRate / 100).toFixed(2));
   const useIgst  = Math.abs(inv.gstTotal - igstAmt) < Math.abs(inv.gstTotal - (sgstAmt + cgstAmt));
   const taxSummary = useIgst
-    ? `Total Taxable Amount : ${fmt(inv.subtotal)}\nSGST @ 9%              : 0.00\nCGST @ 9%              : 0.00\nIGST @ ${igstRate}%             : ${fmt(inv.gstTotal)}\nNet Payable Amount  : ${fmt(inv.grandTotal)}`
+    ? `Total Taxable Amount : ${fmt(inv.subtotal)}\nSGST @ 9%              : 0.00\nCGST @ 9%              : 0.00\nIGST @ ${invIgstRate}%             : ${fmt(inv.gstTotal)}\nNet Payable Amount  : ${fmt(inv.grandTotal)}`
     : `Total Taxable Amount : ${fmt(inv.subtotal)}\nSGST @ 9%              : ${fmt(sgstAmt)}\nCGST @ 9%              : ${fmt(cgstAmt)}\nIGST @ 0%             : 0.00\nNet Payable Amount  : ${fmt(inv.grandTotal)}`;
 
   const notesText = `NOTES :\n1. DIFFERENCE, IF ANY, MAY BE NOTIFIED WITHIN 3 DAYS OF RECEIPT.\n2. PLEASE PAY YOUR BILL AMOUNT WITHIN 15 DAYS OF RECEIPT.\n3. INTEREST AT 24% P.A. WILL BE CHARGED IF THE BILL IS NOT PAID WITHIN THE STIPULATED TIME.\n4. PAYMENT SHOULD BE MADE BY A/C PAYEE CHEQUE OR DD IN FAVOUR OF TRIVENI CARGO EXPRESS INDIA PVT LTD.\n5. JURISDICTION: ALL DISPUTES ARISING UNDER THIS BILL SHALL BE SUBJECT TO BE UNDER NEW DELHI JURISDICTION.`;
