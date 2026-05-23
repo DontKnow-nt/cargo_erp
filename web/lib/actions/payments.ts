@@ -73,3 +73,31 @@ export async function addPaymentReceipt(data: unknown) {
   revalidatePath('/dashboard');
   return { receiptId: receipt.id, receiptNo };
 }
+
+export async function updatePaymentReceipt(id: string, data: { paymentDate: string; paymentAmount: number; paymentMode: string; referenceNo?: string; bankName?: string; remarks?: string }) {
+  const session = await requireAuth();
+  const receipt = await prisma.paymentReceipt.findUnique({ where: { id } });
+  if (!receipt) return { error: 'Receipt not found' };
+
+  const diff = data.paymentAmount - receipt.paymentAmount;
+  await prisma.paymentReceipt.update({
+    where: { id },
+    data: { paymentDate: data.paymentDate, paymentAmount: data.paymentAmount, freightComponent: data.paymentAmount, paymentMode: data.paymentMode, referenceNo: data.referenceNo ?? null, bankName: data.bankName ?? null, remarks: data.remarks ?? null },
+  });
+
+  if (receipt.invoiceId && diff !== 0) {
+    const inv = await prisma.invoice.findUnique({ where: { id: receipt.invoiceId } });
+    if (inv) {
+      const newPaid = Math.max(0, inv.paidTotal + diff);
+      const newOut  = Math.max(0, inv.grandTotal - newPaid);
+      await prisma.invoice.update({ where: { id: inv.id }, data: { paidTotal: newPaid, outstandingTotal: newOut, status: newOut === 0 ? 'PAID' : 'PARTIALLY_PAID' } });
+      await prisma.outstandingEntry.updateMany({ where: { invoiceId: inv.id }, data: { paidAmount: newPaid, outstandingAmount: newOut } });
+    }
+  }
+
+  serverLog('info', 'payment.updated', { userId: session.user.id, receiptId: id });
+  revalidatePath('/dashboard/payments');
+  revalidatePath('/dashboard/invoices');
+  revalidatePath('/dashboard/outstanding');
+  return { success: true };
+}

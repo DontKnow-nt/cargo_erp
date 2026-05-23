@@ -1,56 +1,60 @@
 'use client';
 import { useState, useTransition } from 'react';
-import { CreditCard, Plus, Search, Download, X, CheckCircle } from 'lucide-react';
-import { useStore } from '@/lib/store';
+import { CreditCard, Plus, Search, Download, X, CheckCircle, Edit2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { addPaymentReceipt } from '@/lib/actions/payments';
+import { addPaymentReceipt, updatePaymentReceipt } from '@/lib/actions/payments';
 import { useSharedData } from '@/lib/useSharedData';
 import { LiveIndicator } from '@/components/LiveIndicator';
+import { exportToCSV, exportToPDF } from '@/lib/exportUtils';
 
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const MODES = ['CASH','CHEQUE','BANK_TRANSFER','UPI','NEFT','RTGS'] as const;
+
+type FormState = { partyId:string; invoiceId:string; paymentDate:string; paymentAmount:number; paymentMode:typeof MODES[number]; referenceNo:string; bankName:string; remarks:string };
+const initForm = (): FormState => ({ partyId:'', invoiceId:'', paymentDate:new Date().toISOString().split('T')[0], paymentAmount:0, paymentMode:'NEFT', referenceNo:'', bankName:'', remarks:'' });
 
 export default function PaymentsPage() {
   const { paymentReceipts, invoices, parties, refresh } = useSharedData();
   const [isPending, startTransition] = useTransition();
 
   const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId]     = useState<string|null>(null);
   const [search, setSearch]     = useState('');
+  const [form, setForm]         = useState<FormState>(initForm());
 
-  const init = { partyId:'', invoiceId:'', paymentDate:new Date().toISOString().split('T')[0], paymentAmount:0, paymentMode:'NEFT' as const, referenceNo:'', bankName:'', remarks:'' };
-  const [form, setForm] = useState(init);
+  const selParty      = parties.find(p => p.id === form.partyId);
+  const partyInvoices = invoices.filter(i => i.partyId === form.partyId && ['DRAFT','FINALIZED','SENT','PARTIALLY_PAID','OVERDUE'].includes(i.status));
+  const selInvoice    = invoices.find(i => i.id === form.invoiceId);
 
-  const selParty    = parties.find(p => p.id===form.partyId);
-  const partyInvoices = invoices.filter(i => i.partyId===form.partyId && ['DRAFT','FINALIZED','SENT','PARTIALLY_PAID','OVERDUE'].includes(i.status));
-  const selInvoice  = invoices.find(i => i.id===form.invoiceId);
-  const maxPayable  = selInvoice ? selInvoice.outstandingTotal : 0;
-
-  const gstFrac  = selInvoice ? selInvoice.gstTotal / selInvoice.grandTotal : 0;
-  const gstComp  = form.paymentAmount * gstFrac;
-  const freightComp = form.paymentAmount - gstComp;
+  function openAdd() { setForm(initForm()); setEditId(null); setShowForm(true); }
+  function openEdit(r: typeof paymentReceipts[0]) {
+    setForm({ partyId:r.partyId, invoiceId:r.invoiceId, paymentDate:r.paymentDate, paymentAmount:r.paymentAmount, paymentMode:(r.paymentMode ?? 'NEFT') as typeof MODES[number], referenceNo:r.referenceNo??'', bankName:r.bankName??'', remarks:r.remarks??'' });
+    setEditId(r.id); setShowForm(true);
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.partyId || form.paymentAmount <= 0) { toast.error('Fill all required fields'); return; }
-    // Auto-link to first outstanding invoice of the party if no invoice selected
-    const autoInvoice = partyInvoices.sort((a,b) => b.outstandingTotal - a.outstandingTotal)[0];
-    const linkedInvoiceId = form.invoiceId || autoInvoice?.id || '';
-    const linkedInvoiceNo = form.invoiceId ? (selInvoice?.invoiceNo||'') : (autoInvoice?.invoiceNo||'MANUAL');
     startTransition(async () => {
-      const res = await addPaymentReceipt({
-        partyId:form.partyId, partyName:selParty?.partyName||'',
-        invoiceId:linkedInvoiceId, invoiceNo:linkedInvoiceNo,
-        paymentDate:form.paymentDate, paymentAmount:form.paymentAmount,
-        freightComponent:form.paymentAmount, gstComponent:0,
-        paymentMode:form.paymentMode as 'CASH'|'CHEQUE'|'BANK_TRANSFER'|'NEFT'|'RTGS'|'UPI'|'OTHER',
-        referenceNo:form.referenceNo,
-        bankName:form.bankName,
-        notes:form.remarks,
-      });
-      if (res && 'error' in res) { toast.error(res.error as string); return; }
-      toast.success('Payment receipt recorded');
-      setShowForm(false); setForm(init);
-      refresh();
+      if (editId) {
+        const res = await updatePaymentReceipt(editId, form);
+        if (res && 'error' in res) { toast.error(res.error as string); return; }
+        toast.success('Payment updated');
+      } else {
+        const autoInv = partyInvoices.sort((a,b) => b.outstandingTotal - a.outstandingTotal)[0];
+        const res = await addPaymentReceipt({
+          partyId:form.partyId, partyName:selParty?.partyName||'',
+          invoiceId:form.invoiceId || autoInv?.id || '',
+          invoiceNo:form.invoiceId ? (selInvoice?.invoiceNo||'') : (autoInv?.invoiceNo||'MANUAL'),
+          paymentDate:form.paymentDate, paymentAmount:form.paymentAmount,
+          freightComponent:form.paymentAmount, gstComponent:0,
+          paymentMode:form.paymentMode as 'CASH'|'CHEQUE'|'BANK_TRANSFER'|'NEFT'|'RTGS'|'UPI'|'OTHER',
+          referenceNo:form.referenceNo, bankName:form.bankName, notes:form.remarks,
+        });
+        if (res && 'error' in res) { toast.error(res.error as string); return; }
+        toast.success('Payment receipt recorded');
+      }
+      setShowForm(false); setForm(initForm()); setEditId(null); refresh();
     });
   }
 
@@ -60,16 +64,32 @@ export default function PaymentsPage() {
     r.invoiceNo.toLowerCase().includes(search.toLowerCase())
   );
 
+  function handleExport(type: 'csv' | 'pdf') {
+    const rows = filtered.map(r => ({
+      'Receipt No': r.receiptNo,
+      'Party': r.partyName,
+      'Invoice': r.invoiceNo,
+      'Date': r.paymentDate,
+      'Mode': r.paymentMode ?? '',
+      'Reference': r.referenceNo ?? '',
+      'Amount (₹)': r.paymentAmount.toFixed(2),
+      'Freight (₹)': r.freightComponent.toFixed(2),
+      'GST (₹)': r.gstComponent.toFixed(2),
+      'Status': r.status,
+    }));
+    if (type === 'csv') exportToCSV(rows, 'payment_receipts');
+    else exportToPDF('Payment Receipts', rows, 'payment_receipts');
+  }
+
   return (
     <div className="animate-fadeIn">
-      {/* Toolbar */}
       <div style={{ display:'flex', justifyContent:'flex-end', gap:9, marginBottom:14, alignItems:'center' }}>
         <LiveIndicator onRefresh={refresh} />
-        <button className="btn btn-secondary btn-sm"><Download size={12}/> Export</button>
-        <button className="btn btn-primary btn-sm" onClick={()=>setShowForm(true)}><Plus size={12}/> Record Payment</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')}><Download size={12}/> CSV</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')}><Download size={12}/> PDF</button>
+        <button className="btn btn-primary btn-sm" onClick={openAdd}><Plus size={12}/> Record Payment</button>
       </div>
 
-      {/* Stats */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:16}}>
         {[
           { label:'Total Receipts', val:paymentReceipts.length, color:'#2563eb' },
@@ -96,11 +116,11 @@ export default function PaymentsPage() {
                 <th>Receipt No.</th><th>Party</th><th>Invoice</th><th>Date</th><th>Mode</th>
                 <th>Reference</th><th style={{textAlign:'right'}}>Amount</th>
                 <th style={{textAlign:'right'}}>Freight</th><th style={{textAlign:'right'}}>GST</th>
-                <th>Status</th>
+                <th>Status</th><th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.length===0&&<tr><td colSpan={10} style={{textAlign:'center',padding:'36px 0',color:'var(--text-muted)'}}>No payment receipts</td></tr>}
+              {filtered.length===0&&<tr><td colSpan={11} style={{textAlign:'center',padding:'36px 0',color:'var(--text-muted)'}}>No payment receipts</td></tr>}
               {filtered.map(r=>(
                 <tr key={r.id}>
                   <td><span style={{fontFamily:'var(--font-mono)',fontSize:12,fontWeight:700}}>{r.receiptNo}</span></td>
@@ -113,6 +133,9 @@ export default function PaymentsPage() {
                   <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12}}>{fmt(r.freightComponent)}</td>
                   <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:'var(--text-muted)'}}>{fmt(r.gstComponent)}</td>
                   <td><span style={{fontSize:10,fontWeight:600,fontFamily:'var(--font-mono)',color:'#059669',background:'#ecfdf5',border:'1px solid #6ee7b7',padding:'2px 8px',borderRadius:99}}>{r.status}</span></td>
+                  <td>
+                    <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={()=>openEdit(r)}><Edit2 size={11}/> Edit</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -124,14 +147,14 @@ export default function PaymentsPage() {
         <div className="modal-overlay">
           <div className="modal-box" style={{maxWidth:560}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-              <h2 style={{fontSize:16,fontWeight:800}}>Record Payment Receipt</h2>
-              <button className="btn btn-ghost btn-icon" onClick={()=>{setShowForm(false);setForm(init);}}><X size={16}/></button>
+              <h2 style={{fontSize:16,fontWeight:800}}>{editId ? 'Edit Payment Receipt' : 'Record Payment Receipt'}</h2>
+              <button className="btn btn-ghost btn-icon" onClick={()=>{setShowForm(false);setForm(initForm());setEditId(null);}}><X size={16}/></button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="form-row form-row-2" style={{marginBottom:12}}>
                 <div className="form-group">
                   <label className="label">Party *</label>
-                  <select className="input" value={form.partyId} onChange={e=>setForm(f=>({...f,partyId:e.target.value,invoiceId:''}))} required>
+                  <select className="input" value={form.partyId} onChange={e=>setForm(f=>({...f,partyId:e.target.value,invoiceId:''}))} required disabled={!!editId}>
                     <option value="">Select party…</option>
                     {parties.filter(p=>p.status==='ACTIVE').map(p=><option key={p.id} value={p.id}>{p.partyName}</option>)}
                   </select>
@@ -141,7 +164,6 @@ export default function PaymentsPage() {
                   <input className="input" type="number" min="0.01" step="0.01" value={form.paymentAmount||''} onChange={e=>setForm(f=>({...f,paymentAmount:parseFloat(e.target.value)||0}))} style={{fontFamily:'var(--font-mono)'}} required/>
                 </div>
               </div>
-
               <div className="form-row form-row-2" style={{marginBottom:12}}>
                 <div className="form-group">
                   <label className="label">Payment Date</label>
@@ -164,25 +186,13 @@ export default function PaymentsPage() {
                   <input className="input" placeholder="e.g. HDFC Bank" value={form.bankName} onChange={e=>setForm(f=>({...f,bankName:e.target.value}))}/>
                 </div>
               </div>
-
-              {form.paymentAmount>0&&(
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:14}}>
-                  {[
-                    {label:'Total Payment',val:fmt(form.paymentAmount),hi:true},
-                    {label:'Freight Component',val:fmt(freightComp)},
-                    {label:'GST Component',val:fmt(gstComp)},
-                  ].map(s=>(
-                    <div key={s.label} style={{padding:'9px 12px',background:s.hi?'var(--success-bg)':'var(--surface-sunken)',border:`1px solid ${s.hi?'var(--success-border)':'var(--border)'}`,borderRadius:8}}>
-                      <div style={{fontSize:10,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.07em'}}>{s.label}</div>
-                      <div style={{fontSize:14,fontWeight:800,fontFamily:'var(--font-mono)',color:s.hi?'#059669':'var(--text-primary)'}}>{s.val}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
+              <div className="form-group" style={{marginBottom:16}}>
+                <label className="label">Remarks</label>
+                <input className="input" value={form.remarks} onChange={e=>setForm(f=>({...f,remarks:e.target.value}))} placeholder="Optional remarks"/>
+              </div>
               <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
-                <button type="button" className="btn btn-secondary" onClick={()=>{setShowForm(false);setForm(init);}}>Cancel</button>
-                <button type="submit" className="btn btn-primary"><CheckCircle size={13}/> Save Receipt</button>
+                <button type="button" className="btn btn-secondary" onClick={()=>{setShowForm(false);setForm(initForm());setEditId(null);}}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={isPending}><CheckCircle size={13}/> {editId ? 'Update Receipt' : 'Save Receipt'}</button>
               </div>
             </form>
           </div>

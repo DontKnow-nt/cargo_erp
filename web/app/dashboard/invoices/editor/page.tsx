@@ -174,13 +174,11 @@ function Toolbar({ paperRef }: { paperRef: React.RefObject<HTMLDivElement | null
 // ── Editable cell with Excel-formula support ──────────────────────────────────
 // Typing "4*8=" or "100+50=" evaluates the math and replaces with result
 function evalFormula(text: string): string | null {
-  // Must end with '='
-  if (!text.endsWith('=')) return null;
-  const expr = text.slice(0, -1).trim();
-  // Only allow numbers, operators, dots, spaces, parens, %
+  const expr = text.trim();
+  if (!expr) return null;
+  // Only allow safe math characters (BODMAS + percentage)
   if (!/^[\d\s+\-*/().%]+$/.test(expr)) return null;
   try {
-    // Handle % — convert "80%" to "0.8" or "100*20%" to "100*0.20"
     const normalized = expr.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');
     // eslint-disable-next-line no-new-func
     const result = Function('"use strict"; return (' + normalized + ')')() as number;
@@ -196,24 +194,23 @@ function EC({ children, style, colSpan, rowSpan }: {
   rowSpan?: number;
 }) {
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (e.key !== '=') return;
+    if (e.key !== 'Enter') return;
     const el = e.currentTarget;
-    // let the '=' be typed first, then evaluate
-    setTimeout(() => {
-      const text = el.innerText.trim();
-      const result = evalFormula(text);
-      if (result !== null) {
-        el.innerText = result;
-        // Move caret to end
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        range.collapse(false);
-        window.getSelection()?.removeAllRanges();
-        window.getSelection()?.addRange(range);
-        // Trigger recalc
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-    }, 0);
+    const text = el.innerText.trim();
+    const result = evalFormula(text);
+    if (result !== null) {
+      e.preventDefault();
+      el.innerText = result;
+      // Move caret to end
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    // else: let Enter do nothing (prevent newline in table cells)
+    else { e.preventDefault(); }
   }
 
   return (
@@ -402,15 +399,24 @@ function InvoiceEditorInner() {
         setGT(13, totalTaxable.toFixed(2));
       }
 
-      // Update tax summary — detect GST rate from existing content
+      // Update tax summary — detect GST structure from existing content
       const taxSummaryEl = paper!.querySelector<HTMLElement>('[data-tax-summary]');
       if (taxSummaryEl) {
-        const currentText = taxSummaryEl.textContent || '';
-        const igstMatch = currentText.match(/IGST\s*@\s*(\d+)/i);
-        const igstRate = igstMatch ? parseFloat(igstMatch[1]) : 18;
-        const igstAmt = parseFloat((totalTaxable * igstRate / 100).toFixed(2));
-        const netPayable = parseFloat((totalTaxable + igstAmt).toFixed(2));
-        taxSummaryEl.textContent = `Total Taxable Amount : ${totalTaxable.toFixed(2)}\nSGST @ 0%              : 0.00\nCGST @ 0%              : 0.00\nIGST @ ${igstRate}%             : ${igstAmt.toFixed(2)}\nNet Payable Amount  : ${netPayable.toFixed(2)}`;
+        const currentText = taxSummaryEl.innerText || '';
+        // Detect IGST rate (e.g. "IGST @ 18%")
+        const igstMatch  = currentText.match(/IGST\s*@\s*(\d+(?:\.\d+)?)/i);
+        const sgstMatch  = currentText.match(/SGST\s*@\s*(\d+(?:\.\d+)?)/i);
+        const igstRate   = igstMatch  ? parseFloat(igstMatch[1])  : 18;
+        const sgstRate   = sgstMatch  ? parseFloat(sgstMatch[1])  : 0;
+        const cgstRate   = sgstRate; // always equal to SGST
+
+        const sgstAmt    = parseFloat((totalTaxable * sgstRate  / 100).toFixed(2));
+        const cgstAmt    = parseFloat((totalTaxable * cgstRate  / 100).toFixed(2));
+        const igstAmt    = parseFloat((totalTaxable * igstRate  / 100).toFixed(2));
+        const netPayable = parseFloat((totalTaxable + sgstAmt + cgstAmt + igstAmt).toFixed(2));
+
+        const fmtN = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        taxSummaryEl.innerText = `Total Taxable Amount : ${fmtN(totalTaxable)}\nSGST @ ${sgstRate}%              : ${fmtN(sgstAmt)}\nCGST @ ${cgstRate}%              : ${fmtN(cgstAmt)}\nIGST @ ${igstRate}%             : ${fmtN(igstAmt)}\nNet Payable Amount  : ${fmtN(netPayable)}`;
       }
     }
 
@@ -531,7 +537,15 @@ img{max-width:100%;object-fit:contain}
     ? `${bank.bank_name}, A/c Name: ${bank.account_name}, A/C No. - ${bank.account_number}, IFSC Code - ${bank.ifsc}, Branch - ${bank.branch}`
     : `YES BANK Ltd., A/c Name: TRIVENI CARGO EXPRESS INDIA PVT LTD, A/C No. - 008463700000641, IFSC Code - YESB0000283, Branch - Vasant Kunj, New Delhi`;
 
-  const taxSummary = `Total Taxable Amount : ${fmt(inv.subtotal)}\nSGST @ 9%              : 0.00\nCGST @ 9%              : 0.00\nIGST @ ${igstRate}%             : ${fmt(inv.gstTotal)}\nNet Payable Amount  : ${fmt(inv.grandTotal)}`;
+  // Determine if IGST or SGST+CGST split based on gstTotal vs igstRate
+  const sgstAmt  = parseFloat((inv.subtotal * 9 / 100).toFixed(2));
+  const cgstAmt  = sgstAmt;
+  const igstAmt  = parseFloat((inv.subtotal * igstRate / 100).toFixed(2));
+  // Use IGST if gstTotal matches igstAmt (inter-state), else SGST+CGST
+  const useIgst  = Math.abs(inv.gstTotal - igstAmt) < Math.abs(inv.gstTotal - (sgstAmt + cgstAmt));
+  const taxSummary = useIgst
+    ? `Total Taxable Amount : ${fmt(inv.subtotal)}\nSGST @ 9%              : 0.00\nCGST @ 9%              : 0.00\nIGST @ ${igstRate}%             : ${fmt(inv.gstTotal)}\nNet Payable Amount  : ${fmt(inv.grandTotal)}`
+    : `Total Taxable Amount : ${fmt(inv.subtotal)}\nSGST @ 9%              : ${fmt(sgstAmt)}\nCGST @ 9%              : ${fmt(cgstAmt)}\nIGST @ 0%             : 0.00\nNet Payable Amount  : ${fmt(inv.grandTotal)}`;
 
   const notesText = `NOTES :\n1. DIFFERENCE, IF ANY, MAY BE NOTIFIED WITHIN 3 DAYS OF RECEIPT.\n2. PLEASE PAY YOUR BILL AMOUNT WITHIN 15 DAYS OF RECEIPT.\n3. INTEREST AT 24% P.A. WILL BE CHARGED IF THE BILL IS NOT PAID WITHIN THE STIPULATED TIME.\n4. PAYMENT SHOULD BE MADE BY A/C PAYEE CHEQUE OR DD IN FAVOUR OF TRIVENI CARGO EXPRESS INDIA PVT LTD.\n5. JURISDICTION: ALL DISPUTES ARISING UNDER THIS BILL SHALL BE SUBJECT TO BE UNDER NEW DELHI JURISDICTION.`;
 
