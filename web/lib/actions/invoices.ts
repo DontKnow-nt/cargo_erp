@@ -301,15 +301,16 @@ export async function updateCreditNoteAmount(id: string, amount: number, descrip
   return { success: true };
 }
 
-export async function createCreditNote(data: { partyId: string; partyName: string; creditNoteNo: string; description: string; amount: number }) {
+export async function createCreditNote(data: { partyId: string; partyName: string; creditNoteNo: string; description: string; amount: number; gstRate?: number; gstAmount?: number; taxableAmount?: number }) {
   const session = await requireAuth();
   const invoiceNo = data.creditNoteNo || await nextInvoiceNo();
   const invoiceDate = new Date().toISOString().split('T')[0];
   const due = new Date(invoiceDate); due.setDate(due.getDate() + 30);
   const dueDate = due.toISOString().split('T')[0];
-  const grandTotal = data.amount || 0;
+  const taxable = data.taxableAmount || data.amount || 0;
+  const gstAmt = data.gstAmount ?? 0;
+  const grandTotal = data.amount || taxable + gstAmt;
 
-  // Find or create party
   let partyId = data.partyId;
   if (!partyId || partyId === '') {
     const existing = await prisma.party.findFirst({ where: { partyName: { equals: data.partyName.trim(), mode: 'insensitive' } } });
@@ -320,9 +321,9 @@ export async function createCreditNote(data: { partyId: string; partyName: strin
     data: {
       invoiceNo, partyId, partyName: data.partyName || 'Unknown',
       bookingType: 'CREDIT_NOTE', bookingRef: data.creditNoteNo || invoiceNo,
-      invoiceDate, dueDate, subtotal: grandTotal, gstTotal: 0, grandTotal,
+      invoiceDate, dueDate, subtotal: taxable, gstTotal: gstAmt, grandTotal,
       paidTotal: 0, outstandingTotal: grandTotal, status: 'DRAFT', createdBy: session.user.id,
-      lines: { create: [{ description: data.description || 'Credit Note', qty: 1, rate: grandTotal, amount: grandTotal, taxRate: 0, taxAmount: 0, lineTotal: grandTotal }] },
+      lines: { create: [{ description: data.description || 'Credit Note', qty: 1, rate: taxable, amount: taxable, taxRate: data.gstRate ?? 0, taxAmount: gstAmt, lineTotal: grandTotal }] },
     },
   });
   serverLog('info', 'credit_note.created', { userId: session.user.id, id: invoice.id, invoiceNo });
