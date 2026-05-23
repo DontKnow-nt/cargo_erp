@@ -23,20 +23,29 @@ function Toolbar() {
     range.surroundContents(span);
   }
 
-  const btn = (onClick: () => void, icon: React.ReactNode, title: string) => (
-    <button
-      onMouseDown={e => { e.preventDefault(); onClick(); }}
-      title={title}
-      style={{ padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#374151' }}
-    >{icon}</button>
-  );
+  const [activeCmds, setActiveCmds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
+    const h = () => { try { setActiveCmds(new Set(['bold','italic','underline','justifyLeft','justifyCenter','justifyRight'].filter(c=>document.queryCommandState(c)))); } catch {} };
+    document.addEventListener('selectionchange', h);
+    return () => document.removeEventListener('selectionchange', h);
+  }, []);
+
+  const btn = (onClick: () => void, icon: React.ReactNode, title: string, cmd?: string) => {
+    const isActive = cmd ? activeCmds.has(cmd) : false;
+    return (
+      <button onMouseDown={e => { e.preventDefault(); onClick(); }} title={title}
+        style={{ padding: '5px 8px', border: isActive ? '2px solid #059669' : '1px solid #e2e8f0', borderRadius: 6, background: isActive ? '#ecfdf5' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#374151' }}
+      >{icon}</button>
+    );
+  };
 
   return (
     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center', padding: '8px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, marginBottom: 12 }}>
       <span style={{ fontSize: 11, color: '#94a3b8', marginRight: 4 }}>Format:</span>
-      {btn(() => exec('bold'),      <Bold size={13} />,      'Bold (Ctrl+B)')}
-      {btn(() => exec('italic'),    <Italic size={13} />,    'Italic (Ctrl+I)')}
-      {btn(() => exec('underline'), <Underline size={13} />, 'Underline (Ctrl+U)')}
+      {btn(() => exec('bold'),      <Bold size={13} />,      'Bold (Ctrl+B)', 'bold')}
+      {btn(() => exec('italic'),    <Italic size={13} />,    'Italic (Ctrl+I)', 'italic')}
+      {btn(() => exec('underline'), <Underline size={13} />, 'Underline (Ctrl+U)', 'underline')}
       <div style={{ width: 1, height: 20, background: '#e2e8f0', margin: '0 4px' }} />
       {btn(() => exec('justifyLeft'),   <AlignLeft size={13} />,   'Align Left')}
       {btn(() => exec('justifyCenter'), <AlignCenter size={13} />, 'Align Center')}

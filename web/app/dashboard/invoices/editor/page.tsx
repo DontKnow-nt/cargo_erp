@@ -112,24 +112,42 @@ function Toolbar({ paperRef }: { paperRef: React.RefObject<HTMLDivElement | null
     });
   }
 
-  const btn = (label: string, title: string, onClick: () => void, color?: string) => (
-    <button key={label} title={title}
-      onMouseDown={e => { e.preventDefault(); saveSelection(); onClick(); }}
-      style={{ padding: '4px 10px', borderRadius: 5, border: '1px solid #d1d5db', cursor: 'pointer', fontSize: 12, fontWeight: 600, background: '#fff', color: color || '#374151', minWidth: 32 }}>
-      {label}
-    </button>
-  );
+  const [activeCommands, setActiveCommands] = useState<Set<string>>(new Set());
+
+  function updateActiveState() {
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
+    const active = new Set(['bold','italic','underline','justifyLeft','justifyCenter','justifyRight'].filter(cmd => { try { return document.queryCommandState(cmd); } catch { return false; } }));
+    setActiveCommands(active);
+  }
+
+  const btn = (label: string, title: string, onClick: () => void, color?: string, cmd?: string) => {
+    const isActive = cmd ? activeCommands.has(cmd) : false;
+    return (
+      <button key={label} title={title}
+        onMouseDown={e => { e.preventDefault(); saveSelection(); onClick(); setTimeout(updateActiveState, 10); }}
+        style={{ padding: '4px 10px', borderRadius: 5, border: isActive ? '2px solid #059669' : '1px solid #d1d5db', cursor: 'pointer', fontSize: 12, fontWeight: 600, background: isActive ? '#ecfdf5' : '#fff', color: color || '#374151', minWidth: 32 }}>
+        {label}
+      </button>
+    );
+  };
 
   const sep = <div style={{ width: 1, background: '#e5e7eb', margin: '0 4px', alignSelf: 'stretch' }} />;
+
+  // Track active formatting on selection change
+  useEffect(() => {
+    document.addEventListener('selectionchange', updateActiveState);
+    return () => document.removeEventListener('selectionchange', updateActiveState);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, padding: '6px 12px', background: '#f0f4ff', borderBottom: '1px solid #e5e7eb' }}>
       {btn('↩ Undo', 'Undo row/col changes', undo)}
       {btn('↪ Redo', 'Redo row/col changes', redo)}
       {sep}
-      {btn('B', 'Bold', () => exec('bold'), '#111')}
-      {btn('I', 'Italic', () => exec('italic'), '#111')}
-      {btn('U̲', 'Underline', () => exec('underline'), '#111')}
+      {btn('B', 'Bold', () => exec('bold'), '#111', 'bold')}
+      {btn('I', 'Italic', () => exec('italic'), '#111', 'italic')}
+      {btn('U̲', 'Underline', () => exec('underline'), '#111', 'underline')}
       {sep}
       <span style={{ fontSize: 11, color: '#6b7280' }}>Size:</span>
       <select value={fontSize}

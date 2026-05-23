@@ -11,6 +11,14 @@ function Toolbar({ paperRef }: { paperRef: React.RefObject<HTMLDivElement | null
   const savedRange = useRef<Range | null>(null);
   const undoStack = useRef<string[]>([]);
   const redoStack = useRef<string[]>([]);
+  const [activeCmds, setActiveCmds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
+    const h = () => { try { setActiveCmds(new Set(['bold','italic','underline','justifyLeft','justifyCenter','justifyRight'].filter(c=>document.queryCommandState(c)))); } catch {} };
+    document.addEventListener('selectionchange', h);
+    return () => document.removeEventListener('selectionchange', h);
+  }, []);
   function saveSelection() { const sel = window.getSelection(); if (sel && sel.rangeCount) savedRange.current = sel.getRangeAt(0).cloneRange(); }
   function restoreSelection() { const sel = window.getSelection(); if (sel && savedRange.current) { try { sel.removeAllRanges(); sel.addRange(savedRange.current); } catch {} } }
   // eslint-disable-next-line @typescript-eslint/no-deprecated
@@ -22,17 +30,20 @@ function Toolbar({ paperRef }: { paperRef: React.RefObject<HTMLDivElement | null
   function getSelectedTd() { const sel = window.getSelection(); const node = sel?.anchorNode; if (!node) return null; const el = (node.nodeType === 3 ? node.parentElement : node) as Element; return el?.closest?.('td') ?? null; }
   function addRow() { const tbody = getDataBody(); if (!tbody) return; const td = getSelectedTd(); const tr = td?.closest('tr'); if (!tr || !tbody.contains(tr)) { alert('Click inside a data row first.'); return; } snapshot(); const nr = tr.cloneNode(true) as HTMLTableRowElement; nr.querySelectorAll('[contenteditable]').forEach(el => { (el as HTMLElement).innerText = ''; }); tr.after(nr); }
   function delRow() { const tbody = getDataBody(); if (!tbody) return; const td = getSelectedTd(); const tr = td?.closest('tr'); if (!tr || !tbody.contains(tr)) { alert('Click inside a data row first.'); return; } if (tbody.querySelectorAll('tr').length <= 1) return; snapshot(); tr.remove(); }
-  const btn = (label: string, title: string, onClick: () => void, color?: string) => (
-    <button key={label} title={title} onMouseDown={e => { e.preventDefault(); onClick(); }}
-      style={{ padding: '3px 8px', border: '1px solid #d1d5db', borderRadius: 5, background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: label === 'B' ? 700 : 500, fontStyle: label === 'I' ? 'italic' : 'normal', color: color || '#374151', minWidth: 28 }}>
-      {label}
-    </button>
-  );
+  const btn = (label: string, title: string, onClick: () => void, color?: string, cmd?: string) => {
+    const isActive = cmd ? activeCmds.has(cmd) : false;
+    return (
+      <button key={label} title={title} onMouseDown={e => { e.preventDefault(); onClick(); }}
+        style={{ padding: '3px 8px', border: isActive ? '2px solid #059669' : '1px solid #d1d5db', borderRadius: 5, background: isActive ? '#ecfdf5' : '#fff', cursor: 'pointer', fontSize: 12, fontWeight: label === 'B' ? 700 : 500, fontStyle: label === 'I' ? 'italic' : 'normal', color: color || '#374151', minWidth: 28 }}>
+        {label}
+      </button>
+    );
+  };
   const sep = <div style={{ width: 1, background: '#e5e7eb', margin: '0 4px', alignSelf: 'stretch' }} />;
   return (
     <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, padding: '6px 12px', background: '#f0f4ff', borderBottom: '1px solid #e5e7eb' }}>
       {btn('↩', 'Undo', undo)} {btn('↪', 'Redo', redo)} {sep}
-      {btn('B', 'Bold', () => exec('bold'), '#111')} {btn('I', 'Italic', () => exec('italic'), '#111')} {btn('U̲', 'Underline', () => exec('underline'), '#111')} {sep}
+      {btn('B', 'Bold', () => exec('bold'), '#111', 'bold')} {btn('I', 'Italic', () => exec('italic'), '#111', 'italic')} {btn('U̲', 'Underline', () => exec('underline'), '#111', 'underline')} {sep}
       <span style={{ fontSize: 11, color: '#6b7280' }}>Size:</span>
       <select value={fontSize} onMouseDown={() => saveSelection()} onChange={e => { const v = e.target.value; setFontSize(v); restoreSelection(); exec('fontSize', v); }}
         style={{ padding: '3px 6px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 12, width: 70 }}>

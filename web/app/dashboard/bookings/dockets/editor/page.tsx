@@ -22,6 +22,14 @@ function DocketEditorInner() {
   const { docketBookings, parties, refresh } = useSharedData();
   const paperRef = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
+  const [activeCmds, setActiveCmds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
+    const handler = () => { try { setActiveCmds(new Set(['bold','italic','underline','justifyLeft','justifyCenter','justifyRight'].filter(c=>document.queryCommandState(c)))); } catch {} };
+    document.addEventListener('selectionchange', handler);
+    return () => document.removeEventListener('selectionchange', handler);
+  }, []);
 
   const d = docketBookings.find(b => b.id === id);
   const party = d ? parties.find(p => p.id === d.partyId) : undefined;
@@ -114,8 +122,8 @@ img{max-width:100%;object-fit:contain}
           { icon: <Underline size={13}/>, cmd: 'underline', title: 'Underline (Ctrl+U)' },
         ].map(({ icon, cmd, title }) => (
           <button key={cmd} title={title}
-            onMouseDown={e => { e.preventDefault(); document.execCommand(cmd, false); }}
-            style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 5, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#374151' }}>
+            onMouseDown={e => { e.preventDefault(); document.execCommand(cmd, false); setTimeout(()=>{try{setActiveCmds(new Set(['bold','italic','underline','justifyLeft','justifyCenter','justifyRight'].filter(c=>document.queryCommandState(c))));}catch{}},10); }}
+            style={{ padding: '4px 8px', border: activeCmds.has(cmd)?'2px solid #059669':'1px solid #e2e8f0', borderRadius: 5, background: activeCmds.has(cmd)?'#ecfdf5':'#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#374151' }}>
             {icon}
           </button>
         ))}
@@ -126,8 +134,8 @@ img{max-width:100%;object-fit:contain}
           { icon: <AlignRight size={13}/>, cmd: 'justifyRight', title: 'Align Right' },
         ].map(({ icon, cmd, title }) => (
           <button key={cmd} title={title}
-            onMouseDown={e => { e.preventDefault(); document.execCommand(cmd, false); }}
-            style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 5, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#374151' }}>
+            onMouseDown={e => { e.preventDefault(); document.execCommand(cmd, false); setTimeout(()=>{try{setActiveCmds(new Set(['bold','italic','underline','justifyLeft','justifyCenter','justifyRight'].filter(c=>document.queryCommandState(c))));}catch{}},10); }}
+            style={{ padding: '4px 8px', border: activeCmds.has(cmd)?'2px solid #059669':'1px solid #e2e8f0', borderRadius: 5, background: activeCmds.has(cmd)?'#ecfdf5':'#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#374151' }}>
             {icon}
           </button>
         ))}
