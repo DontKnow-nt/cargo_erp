@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useCallback, useState } from 'react';
+import { useRef, useCallback, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { Printer, RotateCcw, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Plus, Minus, Save } from 'lucide-react';
