@@ -387,13 +387,14 @@ img{max-width:100%;object-fit:contain}
   const markupLines = inv.lines.filter(l => l.description.toLowerCase().includes('handling') || l.description.toLowerCase().includes('markup'));
 
   if (mainLines.length === 0) {
-    // Fallback: use all lines
+    // Fallback: use all lines — each gets its own row
     inv.lines.forEach((line, i) => {
       const m = line.description.match(/([A-Z]{3})[→\->]([A-Z]{3})/i);
       const wm = line.description.match(/(\d+(?:\.\d+)?)\s*kg/i);
       const rm = line.description.match(/@\s*₹?([\d.]+)/i);
       const awbM = line.description.match(/\b(\d{3}-\d{7,8})\b/);
       const dktM = line.description.match(/Docket\s+([\w\-]+)/i);
+      const refs = inv.bookingRef.split(',');
       lineRows.push({
         origin: m?.[1] ?? '',
         dest: m?.[2] ?? '',
@@ -401,8 +402,8 @@ img{max-width:100%;object-fit:contain}
         chgWt: wm?.[1] ?? String(Math.round(line.qty)),
         rate: rm?.[1] ?? String(line.rate),
         freight: fmt(line.amount),
-        awbNo: awbM?.[1] ?? dktM?.[1] ?? (i === 0 ? inv.bookingRef.split(',')[0].trim() : ''),
-        date: i === 0 ? inv.invoiceDate.replace(/^\d{4}-/, '').replace('-', '/') : '',
+        awbNo: awbM?.[1] ?? dktM?.[1] ?? refs[i]?.trim() ?? refs[0]?.trim() ?? '',
+        date: inv.invoiceDate.replace(/^\d{4}-/, '').replace('-', '/'),
         tsp: '0.00',
         taxable: fmt(line.amount),
       });
@@ -414,8 +415,8 @@ img{max-width:100%;object-fit:contain}
       const rm = line.description.match(/@\s*₹?([\d.]+)/i);
       const awbM = line.description.match(/\b(\d{3}-\d{7,8})\b/);
       const dktM = line.description.match(/Docket\s+([\w\-]+)/i);
-      // Find associated markup
-      const myMarkup = markupLines.find(ml => ml.description.includes(awbM?.[1] ?? '') || ml.description.includes(dktM?.[1] ?? ''));
+      const refs = inv.bookingRef.split(',');
+      const myMarkup = markupLines.find(ml => ml.description.includes(awbM?.[1] ?? '___') || ml.description.includes(dktM?.[1] ?? '___'));
       const tspAmt = myMarkup?.amount ?? 0;
       runningTSP += tspAmt;
       lineRows.push({
@@ -425,7 +426,7 @@ img{max-width:100%;object-fit:contain}
         chgWt: wm?.[1] ?? String(Math.round(line.qty)),
         rate: rm?.[1] ?? String(line.rate),
         freight: fmt(line.amount),
-        awbNo: awbM?.[1] ?? dktM?.[1] ?? (i === 0 ? inv.bookingRef.split(',')[0].trim() : inv.bookingRef.split(',')[i]?.trim() ?? ''),
+        awbNo: awbM?.[1] ?? dktM?.[1] ?? refs[i]?.trim() ?? refs[0]?.trim() ?? '',
         date: inv.invoiceDate.replace(/^\d{4}-/, '').replace('-', '/'),
         tsp: tspAmt > 0 ? fmt(tspAmt) : '0.00',
         taxable: fmt(line.amount + tspAmt),
