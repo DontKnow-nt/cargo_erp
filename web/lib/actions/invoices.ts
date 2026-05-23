@@ -352,3 +352,28 @@ export async function deleteInvoices(ids: string[]) {
   revalidatePath('/dashboard/invoices');
   return { success: true };
 }
+
+export async function uninvoiceAwb(awbId: string) {
+  const session = await requireAuth();
+  // Find the invoice linked to this AWB booking ref
+  const awb = await prisma.awbBooking.findUnique({ where: { id: awbId } });
+  if (!awb) return { error: 'AWB not found' };
+  if (awb.status !== 'INVOICED') return { error: 'AWB is not invoiced' };
+
+  const invoice = await prisma.invoice.findFirst({ where: { bookingRef: awb.awbNo, bookingType: 'AWB' } });
+
+  await prisma.$transaction(async tx => {
+    if (invoice) {
+      await tx.outstandingEntry.deleteMany({ where: { invoiceId: invoice.id } });
+      await tx.invoiceLine.deleteMany({ where: { invoiceId: invoice.id } });
+      await tx.invoice.delete({ where: { id: invoice.id } });
+    }
+    await tx.awbBooking.update({ where: { id: awbId }, data: { status: 'BOOKED' } });
+  });
+
+  serverLog('info', 'awb.uninvoiced', { userId: session.user.id, awbId, invoiceId: invoice?.id });
+  revalidatePath('/dashboard/bookings/awb');
+  revalidatePath('/dashboard/invoices');
+  revalidatePath('/dashboard/outstanding');
+  return { success: true };
+}

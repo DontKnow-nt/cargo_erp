@@ -4,7 +4,7 @@ import { Plane, Plus, Search, Download, X, CheckCircle, Edit2, Save, Trash2 } fr
 import toast from 'react-hot-toast';
 import { DateRangeFilter, filterByDateRange, exportToCSV, exportToXLSX, exportToPDF, BulkDownloadModal, type DateRange, type ExportFormat, type ExportModule } from '@/lib/exportUtils';
 import { createAwbBooking, createDocketBooking, deleteAwbBookings, deleteDocketBookings, linkAwbToDocket, unlinkAwbFromDocket, updateAwbBooking } from '@/lib/actions/bookings';
-import { generateInvoiceFromAwb, generateCombinedInvoice } from '@/lib/actions/invoices';
+import { generateInvoiceFromAwb, generateCombinedInvoice, uninvoiceAwb } from '@/lib/actions/invoices';
 import { shortName, fmtDate } from '@/lib/utils';
 import { CreatorAvatar } from '@/components/CreatorAvatar';
 import { useSharedData } from '@/lib/useSharedData';
@@ -64,6 +64,7 @@ export default function AwbBookingsPage() {
   const [selectMode, setSelectMode]   = useState(false);
   const [selected, setSelected]       = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [uninvoiceTarget, setUninvoiceTarget] = useState<{id:string;awbNo:string}|null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
 
   const enterSelectMode = useCallback(() => { setSelectMode(true); }, []);
@@ -481,6 +482,11 @@ export default function AwbBookingsPage() {
                             Gen Invoice
                           </button>
                         )}
+                        {!selectMode && b.status==='INVOICED' && (
+                          <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px',color:'#d97706',whiteSpace:'nowrap'}} onClick={e=>{e.stopPropagation();setUninvoiceTarget({id:b.id,awbNo:b.awbNo});}}>
+                            Uninvoice
+                          </button>
+                        )}
                         {!selectMode && !linkedDocket && (
                           <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px',color:'#7c3aed',whiteSpace:'nowrap'}} onClick={e=>{e.stopPropagation();setDocketAwb(b);}}>
                             + New Docket
@@ -544,6 +550,37 @@ export default function AwbBookingsPage() {
               <div style={{display:'flex',gap:10,justifyContent:'center'}}>
                 <button className="btn btn-secondary" onClick={()=>{setShowDeleteConfirm(false);if(!selectMode)setSelected(new Set());}}>Cancel</button>
                 <button className="btn btn-danger" onClick={confirmDelete}><Trash2 size={13}/> Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Uninvoice confirmation */}
+      {uninvoiceTarget && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{maxWidth:400}}>
+            <div style={{textAlign:'center',padding:'8px 0 20px'}}>
+              <div style={{width:52,height:52,borderRadius:'50%',background:'#fffbeb',border:'2px solid #fcd34d',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px',fontSize:24}}>
+                ⚠️
+              </div>
+              <div style={{fontSize:16,fontWeight:800,marginBottom:8}}>Uninvoice AWB {uninvoiceTarget.awbNo}?</div>
+              <div style={{fontSize:13,color:'var(--text-secondary)',marginBottom:20}}>
+                This will permanently delete the linked invoice and reset the AWB status to <strong>BOOKED</strong> so a new invoice can be generated.
+              </div>
+              <div style={{display:'flex',gap:10,justifyContent:'center'}}>
+                <button className="btn btn-secondary" onClick={()=>setUninvoiceTarget(null)}>Cancel</button>
+                <button className="btn btn-warning btn-sm" style={{background:'#d97706',color:'#fff',border:'none',padding:'8px 18px',borderRadius:7,fontWeight:700,fontSize:13,cursor:'pointer'}}
+                  onClick={()=>{
+                    const t = uninvoiceTarget; setUninvoiceTarget(null);
+                    startTransition(async()=>{
+                      const res = await uninvoiceAwb(t.id);
+                      if (res && 'error' in res) toast.error(res.error as string);
+                      else { toast.success(`AWB ${t.awbNo} uninvoiced`); refresh(); }
+                    });
+                  }}>
+                  Confirm Uninvoice
+                </button>
               </div>
             </div>
           </div>
