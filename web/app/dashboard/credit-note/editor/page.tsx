@@ -209,16 +209,18 @@ function CreditNoteTemplate({ inv, party, bank, today, amtWords }: {
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <tbody>
                 {[
-                  ['Total Taxable Amount', fmt(inv.subtotal)],
-                  [`SGST @ 0%`, '0'],
-                  [`CGST @ 0%`, '0'],
-                  [`IGST @ ${igstRate}%`, fmt(inv.gstTotal)],
-                  ['Net Payable Amount', fmt(inv.grandTotal)],
-                ].map(([label, value]) => (
+                  ['Total Taxable Amount', fmt(inv.subtotal), 'cn-taxable'],
+                  [`SGST @ 0%`, '0', ''],
+                  [`CGST @ 0%`, '0', ''],
+                  [`IGST @ ${igstRate}%`, fmt(inv.gstTotal), 'cn-igst'],
+                  ['Net Payable Amount', fmt(inv.grandTotal), 'cn-net'],
+                ].map(([label, value, dataKey]) => (
                   <tr key={label}>
                     <td style={{ fontSize: 10, fontWeight: ['Total Taxable Amount','Net Payable Amount'].includes(label) ? 700 : 400, padding: '2px 0', width: '60%' }}><span contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>{label}</span></td>
                     <td style={{ fontSize: 10, padding: '2px 4px', textAlign: 'center' }}>:</td>
-                    <td style={{ fontSize: 10, fontWeight: ['Total Taxable Amount','Net Payable Amount'].includes(label) ? 700 : 400, padding: '2px 0', textAlign: 'right' }}><span contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>{value}</span></td>
+                    <td style={{ fontSize: 10, fontWeight: ['Total Taxable Amount','Net Payable Amount'].includes(label) ? 700 : 400, padding: '2px 0', textAlign: 'right' }}>
+                      <span {...(dataKey ? { 'data-cn-key': dataKey } : {})} contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>{value}</span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -266,6 +268,43 @@ function CreditNoteEditorInner() {
   useEffect(() => {
     if (!id || !paperRef.current) return;
     fetch(`/api/invoices/${id}/editor-html`).then(r => r.json()).then(data => { if (data.html && paperRef.current) paperRef.current.innerHTML = data.html; }).catch(() => {});
+  }, [id]);
+
+  // Auto-recalc tax summary when data rows change
+  useEffect(() => {
+    const paper = paperRef.current;
+    if (!paper) return;
+    function recalcCN() {
+      const rows = paper!.querySelectorAll('#cn-data-body tr');
+      let total = 0;
+      rows.forEach(row => {
+        const cells = row.querySelectorAll('[contenteditable]');
+        if (cells.length >= 2) {
+          const amtText = (cells[cells.length - 1] as HTMLElement).textContent?.replace(/,/g, '').trim() || '0';
+          total += parseFloat(amtText) || 0;
+        }
+      });
+      // Detect IGST rate from label span
+      const igstLabel = paper!.querySelector('[data-cn-key="cn-igst"]');
+      let igstRate = 18;
+      if (igstLabel) {
+        // Look at sibling td before it for "IGST @ X%"
+        const tr = igstLabel.closest('tr');
+        const labelSpan = tr?.querySelector('td:first-child span');
+        const m = labelSpan?.textContent?.match(/(\d+)/);
+        if (m) igstRate = parseFloat(m[1]);
+      }
+      const igstAmt = parseFloat((total * igstRate / 100).toFixed(2));
+      const net = parseFloat((total + igstAmt).toFixed(2));
+      const set = (key: string, val: string) => { const el = paper!.querySelector(`[data-cn-key="${key}"]`) as HTMLElement | null; if (el) el.textContent = val; };
+      set('cn-taxable', total.toFixed(2));
+      set('cn-igst', igstAmt.toFixed(2));
+      set('cn-net', net.toFixed(2));
+    }
+    const body = paper.querySelector('#cn-data-body');
+    if (!body) return;
+    body.addEventListener('input', recalcCN);
+    return () => body.removeEventListener('input', recalcCN);
   }, [id]);
 
   const inv = invoices.find(i => i.id === id);

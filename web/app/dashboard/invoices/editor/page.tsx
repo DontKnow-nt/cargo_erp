@@ -171,16 +171,55 @@ function Toolbar({ paperRef }: { paperRef: React.RefObject<HTMLDivElement | null
   );
 }
 
-// ── Editable cell ─────────────────────────────────────────────────────────────
+// ── Editable cell with Excel-formula support ──────────────────────────────────
+// Typing "4*8=" or "100+50=" evaluates the math and replaces with result
+function evalFormula(text: string): string | null {
+  // Must end with '='
+  if (!text.endsWith('=')) return null;
+  const expr = text.slice(0, -1).trim();
+  // Only allow numbers, operators, dots, spaces, parens, %
+  if (!/^[\d\s+\-*/().%]+$/.test(expr)) return null;
+  try {
+    // Handle % — convert "80%" to "0.8" or "100*20%" to "100*0.20"
+    const normalized = expr.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');
+    // eslint-disable-next-line no-new-func
+    const result = Function('"use strict"; return (' + normalized + ')')() as number;
+    if (!isFinite(result)) return null;
+    return Number(result.toFixed(2)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  } catch { return null; }
+}
+
 function EC({ children, style, colSpan, rowSpan }: {
   children?: string | number;
   style?: React.CSSProperties;
   colSpan?: number;
   rowSpan?: number;
 }) {
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== '=') return;
+    const el = e.currentTarget;
+    // let the '=' be typed first, then evaluate
+    setTimeout(() => {
+      const text = el.innerText.trim();
+      const result = evalFormula(text);
+      if (result !== null) {
+        el.innerText = result;
+        // Move caret to end
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        window.getSelection()?.removeAllRanges();
+        window.getSelection()?.addRange(range);
+        // Trigger recalc
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }, 0);
+  }
+
   return (
     <td colSpan={colSpan} rowSpan={rowSpan} style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 10, verticalAlign: 'top', ...style }}>
       <div contentEditable suppressContentEditableWarning
+        onKeyDown={handleKeyDown}
         style={{ outline: 'none', minHeight: 14, fontFamily: 'Arial, sans-serif', fontSize: 10, whiteSpace: 'pre-wrap' }}>
         {children != null ? String(children) : ''}
       </div>
@@ -212,7 +251,7 @@ function fmt(n: number) {
 function InvoiceEditorInner() {
   const searchParams = useSearchParams();
   const invId = searchParams.get('id');
-  const { invoices, parties } = useSharedData();
+  const { invoices, parties, awbBookings, docketBookings } = useSharedData();
   const paperRef = useRef<HTMLDivElement>(null);
 
   const [saving, setSaving] = useState(false);
@@ -231,6 +270,20 @@ function InvoiceEditorInner() {
   const inv = invoices.find(i => i.id === invId);
   const party = inv ? parties.find(p => p.id === inv.partyId) : undefined;
   const bank = banks.find(b => b.id === selectedBankId) ?? banks[0];
+
+  // ── Update bank cells in paper whenever bank selection changes ──
+  useEffect(() => {
+    const paper = paperRef.current;
+    if (!paper || !bank) return;
+    const bankText = `Bank           : ${bank.bank_name}\nA/c Name     : ${bank.account_name}\nAccount No.  : ${bank.account_number}\nIFSC Code    : ${bank.ifsc}\nBranch         : ${bank.branch}`;
+    const bankFooter = `${bank.bank_name}, A/c Name: ${bank.account_name}, A/C No. - ${bank.account_number}, IFSC Code - ${bank.ifsc}, Branch - ${bank.branch}`;
+
+    // Find the bank detail div (data-bank-detail) and footer (data-bank-footer)
+    const bankDiv = paper.querySelector<HTMLElement>('[data-bank-detail]');
+    const footerDiv = paper.querySelector<HTMLElement>('[data-bank-footer]');
+    if (bankDiv) bankDiv.innerText = bankText;
+    if (footerDiv) footerDiv.innerText = bankFooter;
+  }, [selectedBankId, bank]);
 
   // Load saved HTML from DB when inv becomes available
   useEffect(() => {
@@ -313,6 +366,17 @@ function InvoiceEditorInner() {
         setGT(12, totalTsp.toFixed(2));
         setGT(13, totalTaxable.toFixed(2));
       }
+
+      // Update tax summary — detect GST rate from existing content
+      const taxSummaryEl = paper!.querySelector<HTMLElement>('[data-tax-summary]');
+      if (taxSummaryEl) {
+        const currentText = taxSummaryEl.textContent || '';
+        const igstMatch = currentText.match(/IGST\s*@\s*(\d+)/i);
+        const igstRate = igstMatch ? parseFloat(igstMatch[1]) : 18;
+        const igstAmt = parseFloat((totalTaxable * igstRate / 100).toFixed(2));
+        const netPayable = parseFloat((totalTaxable + igstAmt).toFixed(2));
+        taxSummaryEl.textContent = `Total Taxable Amount : ${totalTaxable.toFixed(2)}\nSGST @ 0%              : 0.00\nCGST @ 0%              : 0.00\nIGST @ ${igstRate}%             : ${igstAmt.toFixed(2)}\nNet Payable Amount  : ${netPayable.toFixed(2)}`;
+      }
     }
 
     const awbTable = paper.querySelector('#awb-body');
@@ -377,66 +441,52 @@ img{max-width:100%;object-fit:contain}
   const igstRate = inv.lines[0]?.taxRate ?? 18;
   const amtWords = numberToWords(Math.round(inv.grandTotal));
 
-  // Parse lines for AWB table — one row per booking line (skip markup/handling lines, combine into main row)
+  // ── Build line rows: pull weight+pieces from actual AWB/docket bookings ──
   type LineRow = { origin:string; dest:string; boxes:string; chgWt:string; rate:string; freight:string; tsp:string; taxable:string; awbNo:string; date:string };
   const lineRows: LineRow[] = [];
   let runningTSP = 0;
 
-  // Group lines: main freight lines + their markup lines
   const mainLines = inv.lines.filter(l => !l.description.toLowerCase().includes('handling') && !l.description.toLowerCase().includes('markup'));
   const markupLines = inv.lines.filter(l => l.description.toLowerCase().includes('handling') || l.description.toLowerCase().includes('markup'));
+  const useLines = mainLines.length > 0 ? mainLines : inv.lines;
 
-  if (mainLines.length === 0) {
-    // Fallback: use all lines — each gets its own row
-    inv.lines.forEach((line, i) => {
-      const m = line.description.match(/([A-Z]{3})[→\->]([A-Z]{3})/i);
-      const wm = line.description.match(/(\d+(?:\.\d+)?)\s*kg/i);
-      const rm = line.description.match(/@\s*₹?([\d.]+)/i);
-      const awbM = line.description.match(/\b(\d{3}-\d{7,8})\b/);
-      const dktM = line.description.match(/Docket\s+([\w\-]+)/i);
-      const refs = inv.bookingRef.split(',');
-      lineRows.push({
-        origin: m?.[1] ?? '',
-        dest: m?.[2] ?? '',
-        boxes: String(Math.round(line.qty)),
-        chgWt: wm?.[1] ?? String(Math.round(line.qty)),
-        rate: rm?.[1] ?? String(line.rate),
-        freight: fmt(line.amount),
-        awbNo: awbM?.[1] ?? dktM?.[1] ?? refs[i]?.trim() ?? refs[0]?.trim() ?? '',
-        date: inv.invoiceDate.replace(/^\d{4}-/, '').replace('-', '/'),
-        tsp: '0.00',
-        taxable: fmt(line.amount),
-      });
-    });
-  } else {
-    mainLines.forEach((line, i) => {
-      const m = line.description.match(/([A-Z]{3})[→\->]([A-Z]{3})/i);
-      const wm = line.description.match(/(\d+(?:\.\d+)?)\s*kg/i);
-      const rm = line.description.match(/@\s*₹?([\d.]+)/i);
-      const awbM = line.description.match(/\b(\d{3}-\d{7,8})\b/);
-      const dktM = line.description.match(/Docket\s+([\w\-]+)/i);
-      const refs = inv.bookingRef.split(',');
-      const myMarkup = markupLines.find(ml => ml.description.includes(awbM?.[1] ?? '___') || ml.description.includes(dktM?.[1] ?? '___'));
-      const tspAmt = myMarkup?.amount ?? 0;
-      runningTSP += tspAmt;
-      lineRows.push({
-        origin: m?.[1] ?? '',
-        dest: m?.[2] ?? '',
-        boxes: String(Math.round(line.qty)),
-        chgWt: wm?.[1] ?? String(Math.round(line.qty)),
-        rate: rm?.[1] ?? String(line.rate),
-        freight: fmt(line.amount),
-        awbNo: awbM?.[1] ?? dktM?.[1] ?? refs[i]?.trim() ?? refs[0]?.trim() ?? '',
-        date: inv.invoiceDate.replace(/^\d{4}-/, '').replace('-', '/'),
-        tsp: tspAmt > 0 ? fmt(tspAmt) : '0.00',
-        taxable: fmt(line.amount + tspAmt),
-      });
-    });
-  }
+  useLines.forEach((line, i) => {
+    const m = line.description.match(/([A-Z]{3})[→\->]([A-Z]{3})/i);
+    const rm = line.description.match(/@\s*₹?([\d.]+)/i);
+    const awbM = line.description.match(/\b(\d{3}-\d{7,8})\b/);
+    const dktM = line.description.match(/Docket\s+([\w\-]+)/i);
+    const refs = inv.bookingRef.split(',');
+    const ref = (awbM?.[1] ?? dktM?.[1] ?? refs[i]?.trim() ?? refs[0]?.trim() ?? '').trim();
 
-  const totalBoxes = lineRows.reduce((s, r) => s + (parseFloat(r.boxes) || 0), 0);
-  const totalFreight = fmt(mainLines.reduce((s, l) => s + l.amount, 0) || inv.lines.reduce((s, l) => s + l.amount, 0));
-  const totalTSP = fmt(runningTSP || markupLines.reduce((s, l) => s + l.amount, 0));
+    // Look up actual booking to get weight & pieces
+    const awbBk = awbBookings.find(a => a.awbNo === ref || a.awbNo === awbM?.[1]);
+    const dktBk = docketBookings.find(d => d.docketNo === ref || d.docketNo === dktM?.[1]);
+    const booking = awbBk ?? dktBk;
+
+    const boxes  = booking ? String(awbBk ? awbBk.pieces : Math.round(line.qty)) : String(Math.round(line.qty));
+    const chgWt  = booking ? String(awbBk ? awbBk.weight : ((dktBk as any)?.weight ?? Math.round(line.qty))) : (line.description.match(/(\d+(?:\.\d+)?)\s*kg/i)?.[1] ?? String(Math.round(line.qty)));
+    const rate   = rm?.[1] ?? String(line.rate);
+
+    const myMarkup = markupLines.find(ml => ml.description.includes(ref));
+    const tspAmt = myMarkup?.amount ?? 0;
+    if (mainLines.length > 0) runningTSP += tspAmt;
+
+    lineRows.push({
+      origin: m?.[1] ?? (booking ? (awbBk?.origin ?? dktBk?.origin ?? '') : ''),
+      dest:   m?.[2] ?? (booking ? (awbBk?.destination ?? dktBk?.destination ?? '') : ''),
+      boxes, chgWt, rate,
+      freight: fmt(line.amount),
+      awbNo: ref,
+      date: inv.invoiceDate.replace(/^\d{4}-/, '').replace('-', '/'),
+      tsp: tspAmt > 0 ? fmt(tspAmt) : '0.00',
+      taxable: fmt(line.amount + tspAmt),
+    });
+  });
+
+  const totalBoxes   = lineRows.reduce((s, r) => s + (parseFloat(r.boxes) || 0), 0);
+  const totalChgWt   = lineRows.reduce((s, r) => s + (parseFloat(r.chgWt) || 0), 0);
+  const totalFreight = fmt(useLines.reduce((s, l) => s + l.amount, 0));
+  const totalTSP     = fmt(runningTSP || markupLines.reduce((s, l) => s + l.amount, 0));
 
   const bankText = bank
     ? `Bank           : ${bank.bank_name}\nA/c Name     : ${bank.account_name}\nAccount No.  : ${bank.account_number}\nIFSC Code    : ${bank.ifsc}\nBranch         : ${bank.branch}`
@@ -569,7 +619,7 @@ img{max-width:100%;object-fit:contain}
                 <td style={{ border: '1px solid #000', padding: '4px 6px', textAlign: 'right', fontWeight: 700, fontSize: 10, background: '#f8f8f8' }}>Grand Total</td>
                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
                 <EC style={{ textAlign: 'center', background: '#f8f8f8', fontWeight: 700 }}>{totalBoxes}</EC>
-                <EC style={{ textAlign: 'center', background: '#f8f8f8', fontWeight: 700 }}>{totalBoxes}</EC>
+                <EC style={{ textAlign: 'center', background: '#f8f8f8', fontWeight: 700 }}>{totalChgWt}</EC>
                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
                 <EC style={{ textAlign: 'right', background: '#f8f8f8', fontWeight: 700 }}>{totalFreight}</EC>
                 <EC style={{ textAlign: 'right', background: '#f8f8f8', fontWeight: 700 }}>0.00</EC>
@@ -586,12 +636,12 @@ img{max-width:100%;object-fit:contain}
             <tr>
               <td colSpan={9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
                 <div style={{ fontSize: 10, marginBottom: 4 }}><strong>Amount in Words :</strong> Rupees {amtWords}</div>
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap', marginTop: 6 }}>
+                <div contentEditable suppressContentEditableWarning data-bank-detail style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap', marginTop: 6 }}>
                   {bankText}
                 </div>
               </td>
               <td colSpan={5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
+                <div data-tax-summary="1" contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
                   {taxSummary}
                 </div>
               </td>
@@ -600,7 +650,7 @@ img{max-width:100%;object-fit:contain}
             {/* ── Bank footer line ── */}
             <tr>
               <td colSpan={14} style={{ border: '1px solid #000', padding: '3px 7px', fontSize: 9, textAlign: 'center' }}>
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', fontFamily: 'Arial, sans-serif', fontSize: 9, whiteSpace: 'pre-wrap' }}>
+                <div contentEditable suppressContentEditableWarning data-bank-footer style={{ outline: 'none', fontFamily: 'Arial, sans-serif', fontSize: 9, whiteSpace: 'pre-wrap' }}>
                   {bankFooter}
                 </div>
               </td>
