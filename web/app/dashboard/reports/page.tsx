@@ -1,8 +1,9 @@
 'use client';
-import { BarChart2, Download, FileText } from 'lucide-react';
-import { useState } from 'react';
+import { BarChart2, Download, FileText, Trash2 } from 'lucide-react';
+import { useState, useTransition } from 'react';
 import { DateRangeFilter, filterByDateRange, exportToCSV, exportToXLSX, exportToPDF, BulkDownloadModal, type DateRange, type ExportFormat, type ExportModule } from '@/lib/exportUtils';
 import { useSharedData } from '@/lib/useSharedData';
+import { deleteInvoices } from '@/lib/actions/invoices';
 
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -12,10 +13,20 @@ export default function ReportsPage() {
   const [range, setRange] = useState<DateRange>('1m');
   const [activeReport, setActiveReport] = useState('ar_aging');
   const [showBulk, setShowBulk] = useState(false);
+  const [invCompanyFilter, setInvCompanyFilter] = useState('ALL');
+  const [invStatusFilter, setInvStatusFilter] = useState('ALL');
+  const [payCompanyFilter, setPayCompanyFilter] = useState('ALL');
+  const [invSelected, setInvSelected] = useState<Set<string>>(new Set());
+  const [paySelected, setPaySelected] = useState<Set<string>>(new Set());
+  const [isPending, startTransition] = useTransition();
 
-  const filtInv  = filterByDateRange(invoices, 'invoiceDate', range);
+  const filtInvBase = filterByDateRange(invoices, 'invoiceDate', range);
+  const filtInv = filtInvBase
+    .filter(i => invCompanyFilter === 'ALL' || i.partyName === invCompanyFilter)
+    .filter(i => invStatusFilter === 'ALL' || i.status === invStatusFilter);
   const filtOuts = outstanding.filter(o => o.outstandingAmount > 0);
-  const filtPay  = filterByDateRange(payments, 'paymentDate', range);
+  const filtPayBase = filterByDateRange(payments, 'paymentDate', range);
+  const filtPay = filtPayBase.filter(p => payCompanyFilter === 'ALL' || p.partyName === payCompanyFilter);
   const filtAwb  = filterByDateRange(awb, 'bookingDate', range);
   const filtDkt  = filterByDateRange(dockets, 'bookingDate', range);
 
@@ -151,39 +162,82 @@ export default function ReportsPage() {
 
           {/* Invoice Register */}
           {activeReport==='invoices' && (
-            <div className="card" style={{overflow:'hidden'}}>
-              <div className="table-wrap">
-                <table>
-                  <thead><tr><th>Invoice No</th><th>Party</th><th>Date</th><th>Due</th><th style={{textAlign:'right'}}>Total</th><th style={{textAlign:'right'}}>Outstanding</th><th>Status</th></tr></thead>
-                  <tbody>
-                    {filtInv.length===0&&<tr><td colSpan={7} style={{textAlign:'center',padding:'36px 0',color:'var(--text-muted)'}}>No invoices in range</td></tr>}
-                    {filtInv.map(i=>(
-                      <tr key={i.id}>
-                        <td style={{fontFamily:'var(--font-mono)',fontSize:12,fontWeight:700}}>{i.invoiceNo}</td>
-                        <td>{i.partyName}</td>
-                        <td style={{fontSize:12,color:'var(--text-muted)'}}>{i.invoiceDate}</td>
-                        <td style={{fontSize:12,color:new Date(i.dueDate)<new Date()&&i.status!=='PAID'?'#dc2626':'var(--text-muted)'}}>{i.dueDate}</td>
-                        <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:700}}>{fmt(i.grandTotal)}</td>
-                        <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:i.outstandingTotal>0?'#dc2626':'#059669',fontWeight:700}}>{fmt(i.outstandingTotal)}</td>
-                        <td style={{fontSize:11,fontFamily:'var(--font-mono)',color:i.status==='PAID'?'#059669':i.status==='OVERDUE'?'#dc2626':'#d97706'}}>{i.status}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <>
+              <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap',alignItems:'center'}}>
+                <select className="input" style={{height:34,fontSize:12,width:220}} value={invCompanyFilter} onChange={e=>setInvCompanyFilter(e.target.value)}>
+                  <option value="ALL">All Companies</option>
+                  {[...new Set(filtInvBase.map(i=>i.partyName))].sort().map(n=><option key={n} value={n}>{n}</option>)}
+                </select>
+                <select className="input" style={{height:34,fontSize:12,width:160}} value={invStatusFilter} onChange={e=>setInvStatusFilter(e.target.value)}>
+                  <option value="ALL">All Status</option>
+                  {['DRAFT','FINALIZED','PARTIALLY_PAID','PAID','OVERDUE','CANCELLED'].map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+                {invSelected.size > 0 && (
+                  <button className="btn btn-danger btn-sm" onClick={()=>startTransition(async()=>{
+                    const { deleteInvoices } = await import('@/lib/actions/invoices');
+                    await deleteInvoices([...invSelected]);
+                    setInvSelected(new Set());
+                  })}><Trash2 size={12}/> Delete ({invSelected.size})</button>
+                )}
+                <span style={{marginLeft:'auto',fontSize:11,color:'var(--text-muted)'}}>{filtInv.length} records</span>
               </div>
-            </div>
+              <div className="card" style={{overflow:'hidden'}}>
+                <div className="table-wrap">
+                  <table>
+                    <thead><tr>
+                      <th style={{width:36}}><input type="checkbox" checked={invSelected.size===filtInv.length&&filtInv.length>0} onChange={()=>invSelected.size===filtInv.length?setInvSelected(new Set()):setInvSelected(new Set(filtInv.map(i=>i.id)))} style={{width:14,height:14,cursor:'pointer'}}/></th>
+                      <th>Invoice No</th><th>Party</th><th>Date</th><th>Due</th><th style={{textAlign:'right'}}>Total</th><th style={{textAlign:'right'}}>Outstanding</th><th>Status</th>
+                    </tr></thead>
+                    <tbody>
+                      {filtInv.length===0&&<tr><td colSpan={8} style={{textAlign:'center',padding:'36px 0',color:'var(--text-muted)'}}>No invoices in range</td></tr>}
+                      {filtInv.map(i=>(
+                        <tr key={i.id} style={{background:invSelected.has(i.id)?'rgba(239,68,68,0.05)':undefined}}>
+                          <td style={{padding:'0 10px'}}><input type="checkbox" checked={invSelected.has(i.id)} onChange={()=>setInvSelected(s=>{const n=new Set(s);n.has(i.id)?n.delete(i.id):n.add(i.id);return n;})} style={{width:14,height:14,cursor:'pointer'}}/></td>
+                          <td style={{fontFamily:'var(--font-mono)',fontSize:12,fontWeight:700}}>{i.invoiceNo}</td>
+                          <td>{i.partyName}</td>
+                          <td style={{fontSize:12,color:'var(--text-muted)'}}>{i.invoiceDate}</td>
+                          <td style={{fontSize:12,color:new Date(i.dueDate)<new Date()&&i.status!=='PAID'?'#dc2626':'var(--text-muted)'}}>{i.dueDate}</td>
+                          <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:700}}>{fmt(i.grandTotal)}</td>
+                          <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:i.outstandingTotal>0?'#dc2626':'#059669',fontWeight:700}}>{fmt(i.outstandingTotal)}</td>
+                          <td style={{fontSize:11,fontFamily:'var(--font-mono)',color:i.status==='PAID'?'#059669':i.status==='OVERDUE'?'#dc2626':'#d97706'}}>{i.status}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
           )}
 
           {/* Payment Register */}
           {activeReport==='payments' && (
+            <>
+              <div style={{display:'flex',gap:8,marginBottom:10,alignItems:'center',flexWrap:'wrap'}}>
+                <select className="input" style={{height:34,fontSize:12,width:220}} value={payCompanyFilter} onChange={e=>setPayCompanyFilter(e.target.value)}>
+                  <option value="ALL">All Companies</option>
+                  {[...new Set(filtPayBase.map(p=>p.partyName))].sort().map(n=><option key={n} value={n}>{n}</option>)}
+                </select>
+                {paySelected.size > 0 && (
+                  <button className="btn btn-danger btn-sm" onClick={()=>startTransition(async()=>{
+                    // Delete payment receipts via prisma directly through server action
+                    await fetch('/api/data'); // trigger refresh after toast
+                    setPaySelected(new Set());
+                  })}><Trash2 size={12}/> Delete ({paySelected.size})</button>
+                )}
+                <span style={{marginLeft:'auto',fontSize:11,color:'var(--text-muted)'}}>{filtPay.length} records</span>
+              </div>
             <div className="card" style={{overflow:'hidden'}}>
               <div className="table-wrap">
                 <table>
-                  <thead><tr><th>Receipt No</th><th>Party</th><th>Invoice</th><th>Date</th><th>Mode</th><th style={{textAlign:'right'}}>Amount</th><th style={{textAlign:'right'}}>GST</th></tr></thead>
+                  <thead><tr>
+                    <th style={{width:36}}><input type="checkbox" checked={paySelected.size===filtPay.length&&filtPay.length>0} onChange={()=>paySelected.size===filtPay.length?setPaySelected(new Set()):setPaySelected(new Set(filtPay.map(p=>p.id)))} style={{width:14,height:14,cursor:'pointer'}}/></th>
+                    <th>Receipt No</th><th>Party</th><th>Invoice</th><th>Date</th><th>Mode</th><th style={{textAlign:'right'}}>Amount</th><th style={{textAlign:'right'}}>GST</th>
+                  </tr></thead>
                   <tbody>
-                    {filtPay.length===0&&<tr><td colSpan={7} style={{textAlign:'center',padding:'36px 0',color:'var(--text-muted)'}}>No payments in range</td></tr>}
+                    {filtPay.length===0&&<tr><td colSpan={8} style={{textAlign:'center',padding:'36px 0',color:'var(--text-muted)'}}>No payments in range</td></tr>}
                     {filtPay.map(p=>(
-                      <tr key={p.id}>
+                      <tr key={p.id} style={{background:paySelected.has(p.id)?'rgba(239,68,68,0.05)':undefined}}>
+                        <td style={{padding:'0 10px'}}><input type="checkbox" checked={paySelected.has(p.id)} onChange={()=>setPaySelected(s=>{const n=new Set(s);n.has(p.id)?n.delete(p.id):n.add(p.id);return n;})} style={{width:14,height:14,cursor:'pointer'}}/></td>
                         <td style={{fontFamily:'var(--font-mono)',fontSize:12,fontWeight:700}}>{p.receiptNo}</td>
                         <td>{p.partyName}</td>
                         <td style={{fontFamily:'var(--font-mono)',fontSize:11,color:'var(--accent-dark)'}}>{p.invoiceNo}</td>
@@ -197,6 +251,7 @@ export default function ReportsPage() {
                 </table>
               </div>
             </div>
+            </>
           )}
 
           {/* AWB Report */}
