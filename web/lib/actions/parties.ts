@@ -15,6 +15,9 @@ export async function createParty(data: unknown) {
   const parsed = PartySchema.safeParse(data);
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
   const { partyName, gstin, contactPerson, phone, email, billingAddress, creditLimit, creditDays, status } = parsed.data;
+  // Prevent duplicate party names
+  const existing = await prisma.party.findFirst({ where: { partyName: { equals: partyName.trim(), mode: 'insensitive' } } });
+  if (existing) return { error: `Party "${partyName}" already exists` };
   const party = await prisma.party.create({
     data: { partyName, gstin: gstin || null, contactPerson: contactPerson || null, phone: phone || null, email: email || null, billingAddress: billingAddress || null, creditLimit, creditDays, status, createdBy: session.user.id },
   });
