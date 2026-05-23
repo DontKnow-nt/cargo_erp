@@ -78,7 +78,7 @@ export const DocketBookingSchema = z.object({
   destination: z.string().max(100).trim().optional(),
   description: z.string().max(500).trim().optional(),
   weight: nonNegNum.max(100_000, 'Weight too high').optional(),
-  rateFittedAmount: positiveNum.max(10_000_000),
+  rateFittedAmount: nonNegNum.max(10_000_000),
   markupAmount: nonNegNum.max(1_000_000),
   gstRate: gstRate,
   gstAmount: nonNegNum,
