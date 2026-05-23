@@ -1,8 +1,8 @@
 'use client';
 import { useState, useTransition } from 'react';
-import { CreditCard, Plus, Search, Download, X, CheckCircle, Edit2 } from 'lucide-react';
+import { CreditCard, Plus, Search, Download, X, CheckCircle, Edit2, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { addPaymentReceipt, updatePaymentReceipt } from '@/lib/actions/payments';
+import { addPaymentReceipt, updatePaymentReceipt, deletePaymentReceipts } from '@/lib/actions/payments';
 import { useSharedData } from '@/lib/useSharedData';
 import { LiveIndicator } from '@/components/LiveIndicator';
 import { exportToCSV, exportToPDF } from '@/lib/exportUtils';
@@ -18,6 +18,8 @@ export default function PaymentsPage() {
   const [isPending, startTransition] = useTransition();
 
   const [showForm, setShowForm] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editId, setEditId]     = useState<string|null>(null);
   const [search, setSearch]     = useState('');
   const [form, setForm]         = useState<FormState>(initForm());
@@ -85,6 +87,9 @@ export default function PaymentsPage() {
     <div className="animate-fadeIn">
       <div style={{ display:'flex', justifyContent:'flex-end', gap:9, marginBottom:14, alignItems:'center' }}>
         <LiveIndicator onRefresh={refresh} />
+        {selected.size > 0 && (
+          <button className="btn btn-danger btn-sm" onClick={()=>setShowDeleteConfirm(true)}><Trash2 size={12}/> Delete ({selected.size})</button>
+        )}
         <button className="btn btn-secondary btn-sm" onClick={() => handleExport('csv')}><Download size={12}/> CSV</button>
         <button className="btn btn-secondary btn-sm" onClick={() => handleExport('pdf')}><Download size={12}/> PDF</button>
         <button className="btn btn-primary btn-sm" onClick={openAdd}><Plus size={12}/> Record Payment</button>
@@ -113,6 +118,7 @@ export default function PaymentsPage() {
           <table>
             <thead>
               <tr>
+                <th style={{width:36}}><input type="checkbox" checked={selected.size===filtered.length&&filtered.length>0} onChange={()=>selected.size===filtered.length?setSelected(new Set()):setSelected(new Set(filtered.map(r=>r.id)))} style={{width:15,height:15,cursor:'pointer',accentColor:'var(--accent)'}}/></th>
                 <th>Receipt No.</th><th>Party</th><th>Invoice</th><th>Date</th><th>Mode</th>
                 <th>Reference</th><th style={{textAlign:'right'}}>Amount</th>
                 <th style={{textAlign:'right'}}>Freight</th><th style={{textAlign:'right'}}>GST</th>
@@ -120,9 +126,10 @@ export default function PaymentsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length===0&&<tr><td colSpan={11} style={{textAlign:'center',padding:'36px 0',color:'var(--text-muted)'}}>No payment receipts</td></tr>}
+              {filtered.length===0&&<tr><td colSpan={12} style={{textAlign:'center',padding:'36px 0',color:'var(--text-muted)'}}>No payment receipts</td></tr>}
               {filtered.map(r=>(
-                <tr key={r.id}>
+                <tr key={r.id} style={{background:selected.has(r.id)?'rgba(239,68,68,0.05)':undefined}}>
+                  <td style={{padding:'0 10px'}}><input type="checkbox" checked={selected.has(r.id)} onChange={()=>setSelected(s=>{const n=new Set(s);n.has(r.id)?n.delete(r.id):n.add(r.id);return n;})} style={{width:15,height:15,cursor:'pointer',accentColor:'var(--accent)'}}/></td>
                   <td><span style={{fontFamily:'var(--font-mono)',fontSize:12,fontWeight:700}}>{r.receiptNo}</span></td>
                   <td style={{fontWeight:500}}>{r.partyName}</td>
                   <td><span style={{fontFamily:'var(--font-mono)',fontSize:11,color:'var(--accent-dark)'}}>{r.invoiceNo}</span></td>
@@ -133,8 +140,9 @@ export default function PaymentsPage() {
                   <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12}}>{fmt(r.freightComponent)}</td>
                   <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:'var(--text-muted)'}}>{fmt(r.gstComponent)}</td>
                   <td><span style={{fontSize:10,fontWeight:600,fontFamily:'var(--font-mono)',color:'#059669',background:'#ecfdf5',border:'1px solid #6ee7b7',padding:'2px 8px',borderRadius:99}}>{r.status}</span></td>
-                  <td>
+                  <td style={{display:'flex',gap:4}}>
                     <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={()=>openEdit(r)}><Edit2 size={11}/> Edit</button>
+                    <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 6px',color:'#dc2626'}} title="Delete" onClick={()=>{setSelected(new Set([r.id]));setShowDeleteConfirm(true);}}><Trash2 size={11}/></button>
                   </td>
                 </tr>
               ))}
@@ -195,6 +203,28 @@ export default function PaymentsPage() {
                 <button type="submit" className="btn btn-primary" disabled={isPending}><CheckCircle size={13}/> {editId ? 'Update Receipt' : 'Save Receipt'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showDeleteConfirm && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{maxWidth:380}}>
+            <div style={{textAlign:'center',padding:'8px 0 20px'}}>
+              <div style={{width:52,height:52,borderRadius:'50%',background:'#fef2f2',border:'2px solid #fca5a5',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px'}}>
+                <Trash2 size={22} color="#dc2626"/>
+              </div>
+              <div style={{fontSize:16,fontWeight:800,marginBottom:8}}>Delete {selected.size} Receipt{selected.size>1?'s':''}?</div>
+              <div style={{fontSize:13,color:'var(--text-secondary)',marginBottom:20}}>This cannot be undone.</div>
+              <div style={{display:'flex',gap:10,justifyContent:'center'}}>
+                <button className="btn btn-secondary" onClick={()=>{setShowDeleteConfirm(false);setSelected(new Set());}}>Cancel</button>
+                <button className="btn btn-danger" disabled={isPending} onClick={()=>startTransition(async()=>{
+                  await deletePaymentReceipts([...selected]);
+                  toast.success(`${selected.size} receipt${selected.size>1?'s':''} deleted`);
+                  setSelected(new Set()); setShowDeleteConfirm(false); refresh();
+                })}><Trash2 size={13}/> Delete</button>
+              </div>
+            </div>
           </div>
         </div>
       )}

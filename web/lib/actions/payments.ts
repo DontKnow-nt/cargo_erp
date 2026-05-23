@@ -101,3 +101,12 @@ export async function updatePaymentReceipt(id: string, data: { paymentDate: stri
   revalidatePath('/dashboard/outstanding');
   return { success: true };
 }
+
+export async function deletePaymentReceipts(ids: string[]) {
+  const session = await requireAuth();
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };
+  await prisma.paymentReceipt.deleteMany({ where: { id: { in: ids } } });
+  serverLog('info', 'payment.deleted', { userId: session.user.id, count: ids.length });
+  revalidatePath('/dashboard/payments');
+  return { success: true };
+}
