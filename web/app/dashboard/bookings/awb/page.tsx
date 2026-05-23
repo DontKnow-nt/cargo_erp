@@ -12,6 +12,7 @@ import { LiveIndicator } from '@/components/LiveIndicator';
 import RecordActivityAvatars from '@/components/RecordActivityAvatars';
 import { AddPartyModal } from '@/components/AddPartyModal';
 import { parseAwbDocument } from '@/lib/parseAwb';
+import { updateParty } from '@/lib/actions/parties';
 
 const AIRLINES = ['IndiGo','Air India','SpiceJet','GoAir','Vistara','Akasa Air'];
 const CITIES   = ['DEL','BOM','BLR','HYD','MAA','CCU','AMD','COK','JAI','PNQ','BHO','IXR'];
@@ -33,6 +34,8 @@ export default function AwbBookingsPage() {
   const [showForm, setShowForm]     = useState(false);
   const [showBulk, setShowBulk]     = useState(false);
   const [showAddParty, setShowAddParty] = useState(false);
+  const [showEditParty, setShowEditParty] = useState(false);
+  const [editPartyName, setEditPartyName] = useState('');
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingId, setEditingId]   = useState<string|null>(null);
   const [editForm, setEditForm]     = useState<Partial<typeof awbBookings[0]> & { weightCharge?:number; valuationCharge?:number; otherChargesDueAgent?:number; otherChargesDueCarrier?:number; totalPrepaid?:number }>({});
@@ -570,8 +573,12 @@ export default function AwbBookingsPage() {
                   <div style={{display:'flex',gap:6}}>
                     <select className="input" style={{flex:1}} value={form.partyId} onChange={e=>setForm(f=>({...f,partyId:e.target.value}))} required>
                       <option value="">Select party…</option>
-                      {activeParties.map(p=><option key={p.id} value={p.id}>{p.partyName}</option>)}
+                      {/* Deduplicate by name — keep first occurrence */}
+                      {activeParties.filter((p,i,arr)=>arr.findIndex(x=>x.partyName.trim().toLowerCase()===p.partyName.trim().toLowerCase())===i).map(p=><option key={p.id} value={p.id}>{p.partyName}</option>)}
                     </select>
+                    {form.partyId && (
+                      <button type="button" className="btn btn-secondary btn-sm" style={{whiteSpace:'nowrap'}} onClick={()=>{const p=activeParties.find(x=>x.id===form.partyId);setEditPartyName(p?.partyName||'');setShowEditParty(true);}}><Edit2 size={12}/></button>
+                    )}
                     <button type="button" className="btn btn-secondary btn-sm" style={{whiteSpace:'nowrap'}} onClick={()=>setShowAddParty(true)}><Plus size={12}/> Party</button>
                   </div>
                 </div>
@@ -823,6 +830,30 @@ export default function AwbBookingsPage() {
           }}
           onClose={() => setShowAddParty(false)}
         />
+      )}
+
+      {/* Edit Party Name Modal */}
+      {showEditParty && form.partyId && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{maxWidth:400}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <h2 style={{fontSize:15,fontWeight:800}}>Edit Company Name</h2>
+              <button className="btn btn-ghost btn-icon" onClick={()=>setShowEditParty(false)}><X size={16}/></button>
+            </div>
+            <div className="form-group" style={{marginBottom:16}}>
+              <label className="label">Company Name</label>
+              <input className="input" value={editPartyName} onChange={e=>setEditPartyName(e.target.value)} autoFocus/>
+            </div>
+            <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+              <button className="btn btn-secondary" onClick={()=>setShowEditParty(false)}>Cancel</button>
+              <button className="btn btn-primary" disabled={!editPartyName.trim()} onClick={()=>startTransition(async()=>{
+                await updateParty(form.partyId,{partyName:editPartyName.trim()});
+                toast.success('Company name updated');
+                setShowEditParty(false); refresh();
+              })}><CheckCircle size={13}/> Save</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {docketAwb && (
