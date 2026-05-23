@@ -255,7 +255,22 @@ function InvoiceEditorInner() {
 
   const [banks, setBanks] = useState<{id:string;bank_name:string;account_name:string;account_number:string;ifsc:string;branch:string;is_default:number}[]>([]);
   const [selectedBankId, setSelectedBankId] = useState('');
-  const [gstRate, setGstRate] = useState(18);
+  const [igstRate, setIgstRate] = useState(18);
+  const [cgstRate, setCgstRate] = useState(9);
+  const [sgstRate, setSgstRate] = useState(5);
+
+  function applyGstRates(ig: number, cg: number, sg: number) {
+    const taxEl = paperRef.current?.querySelector<HTMLElement>('[data-tax-summary]');
+    if (!taxEl) return;
+    const totalM = (taxEl.innerText || '').match(/Total Taxable Amount\s*:\s*([\d,.]+)/i);
+    const taxable = totalM ? parseFloat(totalM[1].replace(/,/g,'')) : 0;
+    const fmtN = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const igstAmt = parseFloat((taxable * ig / 100).toFixed(2));
+    const cgstAmt = parseFloat((taxable * cg / 100).toFixed(2));
+    const sgstAmt = parseFloat((taxable * sg / 100).toFixed(2));
+    const net = parseFloat((taxable + igstAmt + cgstAmt + sgstAmt).toFixed(2));
+    taxEl.innerText = `Total Taxable Amount : ${fmtN(taxable)}\nSGST @ ${sg}%              : ${fmtN(sgstAmt)}\nCGST @ ${cg}%              : ${fmtN(cgstAmt)}\nIGST @ ${ig}%             : ${fmtN(igstAmt)}\nNet Payable Amount  : ${fmtN(net)}`;
+  }
 
   useEffect(() => {
     fetch('/api/banks').then(r => r.json()).then(data => {
@@ -268,7 +283,7 @@ function InvoiceEditorInner() {
   const inv = invoices.find(i => i.id === invId);
   const party = inv ? parties.find(p => p.id === inv.partyId) : undefined;
   // Init GST rate from invoice lines
-  useEffect(() => { if (inv?.lines?.[0]?.taxRate) setGstRate(inv.lines[0].taxRate); }, [inv?.id]);
+  useEffect(() => { if (inv?.lines?.[0]?.taxRate) setIgstRate(inv.lines[0].taxRate); }, [inv?.id]);
   const bank = banks.find(b => b.id === selectedBankId) ?? banks[0];
 
   // ── Helper: write bank into paper DOM ────────────────────────────────────
@@ -570,25 +585,20 @@ img{max-width:100%;object-fit:contain}
               </select>
             </span>
           )}
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-            <span style={{ fontWeight: 600, color: '#374151' }}>GST:</span>
-            <select value={gstRate} onChange={e => {
-              const rate = parseFloat(e.target.value);
-              setGstRate(rate);
-              // Directly update tax summary div
-              const taxEl = paperRef.current?.querySelector<HTMLElement>('[data-tax-summary]');
-              if (taxEl) {
-                const currentText = taxEl.innerText || '';
-                const totalM = currentText.match(/Total Taxable Amount\s*:\s*([\d,.]+)/i);
-                const taxable = totalM ? parseFloat(totalM[1].replace(/,/g,'')) : 0;
-                const fmtN = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                const igstAmt = parseFloat((taxable * rate / 100).toFixed(2));
-                const net = parseFloat((taxable + igstAmt).toFixed(2));
-                taxEl.innerText = `Total Taxable Amount : ${fmtN(taxable)}\nSGST @ 0%              : 0.00\nCGST @ 0%              : 0.00\nIGST @ ${rate}%             : ${fmtN(igstAmt)}\nNet Payable Amount  : ${fmtN(net)}`;
-              }
-            }} style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
-              {[0,5,10,12,18,28].map(r => <option key={r} value={r}>{r}%</option>)}
-            </select>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+            {[
+              { label: 'IGST', val: igstRate, set: (v: number) => { setIgstRate(v); applyGstRates(v, cgstRate, sgstRate); } },
+              { label: 'CGST', val: cgstRate, set: (v: number) => { setCgstRate(v); applyGstRates(igstRate, v, sgstRate); } },
+              { label: 'SGST', val: sgstRate, set: (v: number) => { setSgstRate(v); applyGstRates(igstRate, cgstRate, v); } },
+            ].map(({ label, val, set }) => (
+              <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <span style={{ fontWeight: 600, color: '#374151', fontSize: 11 }}>{label}:</span>
+                <select value={val} onChange={e => set(parseFloat(e.target.value))}
+                  style={{ fontSize: 11, padding: '3px 5px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', width: 58 }}>
+                  {[0,5,9,10,12,18,28].map(r => <option key={r} value={r}>{r}%</option>)}
+                </select>
+              </span>
+            ))}
           </span>
           <span style={{ fontSize: 11, color: '#6b7280' }}>💡 Click any field to edit</span>
           <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: saving ? '#6b7280' : '#059669', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer' }}>

@@ -261,8 +261,34 @@ function CreditNoteEditorInner() {
   const [saving, setSaving] = useState(false);
   const [banks, setBanks] = useState<{ id: string; bank_name: string; account_name: string; account_number: string; ifsc: string; branch: string; is_default: number }[]>([]);
   const [selectedBankId, setSelectedBankId] = useState('');
+  const [igstRate, setIgstRate] = useState(18);
+  const [cgstRate, setCgstRate] = useState(9);
+  const [sgstRate, setSgstRate] = useState(5);
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+
+  function applyGstRatesCN(ig: number, cg: number, sg: number) {
+    const paper = paperRef.current; if (!paper) return;
+    const fmtN = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const rows = paper.querySelectorAll('#cn-data-body tr');
+    let taxable = 0;
+    rows.forEach(row => { const cells = row.querySelectorAll('[contenteditable]'); if (cells.length >= 2) { taxable += parseFloat((cells[cells.length-1] as HTMLElement).textContent?.replace(/,/g,'') || '0') || 0; } });
+    const igstAmt = parseFloat((taxable * ig / 100).toFixed(2));
+    const cgstAmt = parseFloat((taxable * cg / 100).toFixed(2));
+    const sgstAmt = parseFloat((taxable * sg / 100).toFixed(2));
+    const net = parseFloat((taxable + igstAmt + cgstAmt + sgstAmt).toFixed(2));
+    const set = (key: string, val: string) => { const el = paper.querySelector(`[data-cn-key="${key}"]`) as HTMLElement | null; if (el) el.textContent = val; };
+    set('cn-taxable', fmtN(taxable));
+    set('cn-igst', fmtN(igstAmt));
+    set('cn-net', fmtN(net));
+    // Update SGST/CGST labels and values in the table
+    const trs = paper.querySelectorAll('[data-cn-key]');
+    trs.forEach(el => {
+      const key = (el as HTMLElement).dataset.cnKey;
+      if (key === 'cn-sgst') (el as HTMLElement).textContent = fmtN(sgstAmt);
+      if (key === 'cn-cgst') (el as HTMLElement).textContent = fmtN(cgstAmt);
+    });
+  }
 
   useEffect(() => { fetch('/api/banks').then(r => r.json()).then(d => { setBanks(d); const def = d.find((b: { is_default: number }) => b.is_default === 1); if (def) setSelectedBankId(def.id); }).catch(() => {}); }, []);
   useEffect(() => {
@@ -379,6 +405,14 @@ function CreditNoteEditorInner() {
           <span style={{ fontWeight: 700, fontSize: 14 }}>Credit Note Editor</span>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
             {banks.length > 0 && <select value={selectedBankId} onChange={e => setSelectedBankId(e.target.value)} style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff' }}>{banks.map(b => <option key={b.id} value={b.id}>{b.bank_name}{b.is_default ? '★' : ''}</option>)}</select>}
+            {[{label:'IGST',val:igstRate,set:(v:number)=>{setIgstRate(v);applyGstRatesCN(v,cgstRate,sgstRate);}},{label:'CGST',val:cgstRate,set:(v:number)=>{setCgstRate(v);applyGstRatesCN(igstRate,v,sgstRate);}},{label:'SGST',val:sgstRate,set:(v:number)=>{setSgstRate(v);applyGstRatesCN(igstRate,cgstRate,v);}}].map(({label,val,set})=>(
+              <span key={label} style={{display:'flex',alignItems:'center',gap:3,fontSize:11}}>
+                <span style={{fontWeight:600,color:'#374151'}}>{label}:</span>
+                <select value={val} onChange={e=>set(parseFloat(e.target.value))} style={{fontSize:11,padding:'3px 5px',borderRadius:5,border:'1px solid #d1d5db',background:'#fff',width:55}}>
+                  {[0,5,9,10,12,18,28].map(r=><option key={r} value={r}>{r}%</option>)}
+                </select>
+              </span>
+            ))}
             <span style={{ fontSize: 11, color: '#6b7280' }}>💡 Click any field to edit</span>
             <button onClick={handleBlankSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: saving ? '#6b7280' : '#059669', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer' }}>{saving ? '⏳ Saving…' : '💾 Save'}</button>
             <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}><Printer size={14} /> Print / Download</button>
@@ -403,6 +437,14 @@ function CreditNoteEditorInner() {
         <span style={{ fontSize: 12, color: '#6b7280' }}>{inv.partyName}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {banks.length > 0 && <select value={selectedBankId} onChange={e => setSelectedBankId(e.target.value)} style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff' }}>{banks.map(b => <option key={b.id} value={b.id}>{b.bank_name}{b.is_default ? '★' : ''}</option>)}</select>}
+          {[{label:'IGST',val:igstRate,set:(v:number)=>{setIgstRate(v);applyGstRatesCN(v,cgstRate,sgstRate);}},{label:'CGST',val:cgstRate,set:(v:number)=>{setCgstRate(v);applyGstRatesCN(igstRate,v,sgstRate);}},{label:'SGST',val:sgstRate,set:(v:number)=>{setSgstRate(v);applyGstRatesCN(igstRate,cgstRate,v);}}].map(({label,val,set})=>(
+            <span key={label} style={{display:'flex',alignItems:'center',gap:3,fontSize:11}}>
+              <span style={{fontWeight:600,color:'#374151'}}>{label}:</span>
+              <select value={val} onChange={e=>set(parseFloat(e.target.value))} style={{fontSize:11,padding:'3px 5px',borderRadius:5,border:'1px solid #d1d5db',background:'#fff',width:55}}>
+                {[0,5,9,10,12,18,28].map(r=><option key={r} value={r}>{r}%</option>)}
+              </select>
+            </span>
+          ))}
           <span style={{ fontSize: 11, color: '#6b7280' }}>💡 Click any field to edit</span>
           <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: saving ? '#6b7280' : '#059669', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer' }}>{saving ? '⏳ Saving…' : '💾 Save'}</button>
           <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}><Printer size={14} /> Print / Download</button>
