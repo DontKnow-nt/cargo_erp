@@ -271,26 +271,61 @@ function InvoiceEditorInner() {
   const party = inv ? parties.find(p => p.id === inv.partyId) : undefined;
   const bank = banks.find(b => b.id === selectedBankId) ?? banks[0];
 
-  // ── Update bank cells in paper whenever bank selection changes ──
+  // ── Helper: write bank into paper DOM ────────────────────────────────────
+  const applyBankToPaper = useCallback((b: typeof banks[number] | undefined, paper: HTMLElement) => {
+    if (!b) return;
+    const bankText = `Bank           : ${b.bank_name}\nA/c Name     : ${b.account_name}\nAccount No.  : ${b.account_number}\nIFSC Code    : ${b.ifsc}\nBranch         : ${b.branch}`;
+    const bankFooter = `${b.bank_name}, A/c Name: ${b.account_name}, A/C No. - ${b.account_number}, IFSC Code - ${b.ifsc}, Branch - ${b.branch}`;
+
+    // Try data-attribute selectors first (new HTML)
+    const bankDiv = paper.querySelector<HTMLElement>('[data-bank-detail]');
+    const footerDiv = paper.querySelector<HTMLElement>('[data-bank-footer]');
+
+    if (bankDiv) {
+      bankDiv.innerText = bankText;
+    } else {
+      // Fallback: find the contentEditable div containing "Bank" and "IFSC"
+      paper.querySelectorAll<HTMLElement>('[contenteditable]').forEach(el => {
+        const t = el.innerText;
+        if (t.includes('Bank') && t.includes('IFSC') && !t.includes('A/C No.')) {
+          el.innerText = bankText;
+        }
+      });
+    }
+
+    if (footerDiv) {
+      footerDiv.innerText = bankFooter;
+    } else {
+      // Fallback: find the footer line containing "A/C No."
+      paper.querySelectorAll<HTMLElement>('[contenteditable]').forEach(el => {
+        const t = el.innerText;
+        if (t.includes('A/C No.') && t.includes('IFSC Code')) {
+          el.innerText = bankFooter;
+        }
+      });
+    }
+  }, []);
+
+  // ── Update bank cells whenever bank selection changes ─────────────────────
   useEffect(() => {
     const paper = paperRef.current;
     if (!paper || !bank) return;
-    const bankText = `Bank           : ${bank.bank_name}\nA/c Name     : ${bank.account_name}\nAccount No.  : ${bank.account_number}\nIFSC Code    : ${bank.ifsc}\nBranch         : ${bank.branch}`;
-    const bankFooter = `${bank.bank_name}, A/c Name: ${bank.account_name}, A/C No. - ${bank.account_number}, IFSC Code - ${bank.ifsc}, Branch - ${bank.branch}`;
+    applyBankToPaper(bank, paper);
+  }, [selectedBankId, bank, applyBankToPaper]);
 
-    // Find the bank detail div (data-bank-detail) and footer (data-bank-footer)
-    const bankDiv = paper.querySelector<HTMLElement>('[data-bank-detail]');
-    const footerDiv = paper.querySelector<HTMLElement>('[data-bank-footer]');
-    if (bankDiv) bankDiv.innerText = bankText;
-    if (footerDiv) footerDiv.innerText = bankFooter;
-  }, [selectedBankId, bank]);
-
-  // Load saved HTML from DB when inv becomes available
+  // ── Load saved HTML, then re-apply current bank on top ───────────────────
   useEffect(() => {
     if (!inv || !paperRef.current) return;
     fetch(`/api/invoices/${inv.id}/editor-html`)
       .then(r => r.json())
-      .then(data => { if (data.html && paperRef.current) paperRef.current.innerHTML = data.html; })
+      .then(data => {
+        if (data.html && paperRef.current) {
+          paperRef.current.innerHTML = data.html;
+          // Re-apply the currently selected bank AFTER html is restored
+          const currentBank = banks.find(b => b.id === selectedBankId) ?? banks[0];
+          if (currentBank) applyBankToPaper(currentBank, paperRef.current);
+        }
+      })
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inv?.id]);
