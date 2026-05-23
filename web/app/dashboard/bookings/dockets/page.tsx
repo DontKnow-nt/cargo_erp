@@ -78,7 +78,7 @@ export default function DocketBookingsPage() {
     });
   }
 
-  const init = { docketNo:'', partyId:'', bookingDate:new Date().toISOString().split('T')[0], origin:'', destination:'', description:'', weight:0, rateFittedAmount:0, markupAmount:0, gstRate:18, dueDatePolicy:30, notes:'', wayBillNo:'', consignee:'', value:0, methodOfPacking:'' };
+  const init = { docketNo:'', partyId:'', bookingDate:new Date().toISOString().split('T')[0], origin:'', destination:'', description:'', weight:0, rateFittedAmount:0, markupAmount:0, gstRate:18, dueDatePolicy:30, notes:'', wayBillNo:'', consignee:'', value:0, methodOfPacking:'', shipperId:'', consigneePartyId:'' };
   const [form, setForm] = useState(init);
 
   const activeParties = parties.filter(p => p.status==='ACTIVE');
@@ -374,20 +374,27 @@ export default function DocketBookingsPage() {
             </div>
             <form onSubmit={handleSubmit}>
               {/* Row 1: Docket No + Party */}
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:8}}>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="label" style={{fontSize:11}}>Docket No. *</label>
                   <input className="input" style={{height:32,fontSize:12}} placeholder="e.g. DKT-2026-0010" value={form.docketNo} onChange={e=>setForm(f=>({...f,docketNo:e.target.value}))} required/>
                 </div>
                 <div className="form-group" style={{marginBottom:0}}>
-                  <label className="label" style={{fontSize:11}}>Party *</label>
+                  <label className="label" style={{fontSize:11}}>Shipper *</label>
                   <div style={{display:'flex',gap:5}}>
-                    <select className="input" style={{flex:1,height:32,fontSize:12}} value={form.partyId} onChange={e=>setForm(f=>({...f,partyId:e.target.value}))} required>
-                      <option value="">Select party…</option>
+                    <select className="input" style={{flex:1,height:32,fontSize:12}} value={form.shipperId||form.partyId} onChange={e=>{const p=activeParties.find(x=>x.id===e.target.value);setForm(f=>({...f,shipperId:e.target.value,partyId:e.target.value,notes:p?`Shipper: ${p.partyName}\n${p.billingAddress||''}\nPhone: ${p.phone||''}`:f.notes}));}} required>
+                      <option value="">Select shipper…</option>
                       {activeParties.map(p=><option key={p.id} value={p.id}>{p.partyName}</option>)}
                     </select>
-                    <button type="button" className="btn btn-secondary btn-sm" style={{whiteSpace:'nowrap',height:32,fontSize:11}} onClick={()=>setShowAddParty(true)}><Plus size={11}/> Party</button>
+                    <button type="button" className="btn btn-secondary btn-sm" style={{whiteSpace:'nowrap',height:32,fontSize:11}} onClick={()=>setShowAddParty(true)}><Plus size={11}/></button>
                   </div>
+                </div>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Consignee</label>
+                  <select className="input" style={{height:32,fontSize:12}} value={form.consigneePartyId} onChange={e=>{const p=activeParties.find(x=>x.id===e.target.value);setForm(f=>({...f,consigneePartyId:e.target.value,consignee:p?`${p.partyName}\n${p.billingAddress||''}`:f.consignee}));}}>
+                    <option value="">Select consignee…</option>
+                    {activeParties.map(p=><option key={p.id} value={p.id}>{p.partyName}</option>)}
+                  </select>
                 </div>
               </div>
               {/* Row 2: Origin + Destination + Date + Description */}
