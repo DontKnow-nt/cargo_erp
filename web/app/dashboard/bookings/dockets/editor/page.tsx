@@ -300,9 +300,13 @@ img{max-width:100%;object-fit:contain}
             {/* Conditions + Receiver + Delivery Challan + Invoice copies */}
             <tr>
               <td rowSpan={5} colSpan={2} style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 8, lineHeight: 1.6 }}>
-                We agree to the conditions of carriage set forth on the reverse of this way bill and the details given by us on this bill are true &amp; correct.
+                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', fontSize: 8, fontFamily: 'Arial, sans-serif', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                  We agree to the conditions of carriage set forth on the reverse of this way bill and the details given by us on this bill are true &amp; correct.
+                </div>
               </td>
-              <td colSpan={3} style={{ border: '1px solid #000', padding: '3px 5px', textAlign: 'center', fontSize: 9, fontWeight: 600 }}>Received in good condition</td>
+              <td colSpan={3} style={{ border: '1px solid #000', padding: '3px 5px', textAlign: 'center', fontSize: 9, fontWeight: 600 }}>
+                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', textAlign: 'center', fontSize: 9, fontFamily: 'Arial, sans-serif', fontWeight: 600 }}>Received in good condition</div>
+              </td>
               <td rowSpan={5} colSpan={2} style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 9, textAlign: 'center' }}>
                 <div style={{ marginBottom: 4 }}>Delivery Challan Copy</div>
                 {[0,1,2].map(i => <div key={i} contentEditable suppressContentEditableWarning style={{ border: '1px solid #ccc', minHeight: 20, marginBottom: 3, outline: 'none', fontSize: 10, fontFamily: 'Arial, sans-serif' }}></div>)}
