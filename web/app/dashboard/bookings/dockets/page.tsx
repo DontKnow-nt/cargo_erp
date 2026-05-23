@@ -611,6 +611,22 @@ function DocketEditModal({ booking, parties, editForm, setEditForm, onSave, onCl
         </div>
         <div className="form-row form-row-2" style={{marginBottom:12}}>
           <div className="form-group">
+            <label className="label">Shipper</label>
+            <select className="input" value={editForm.partyId||''} onChange={e=>{const p=parties.find((x:any)=>x.id===e.target.value);setEditForm((f:any)=>({...f,partyId:e.target.value,notes:p?`Shipper: ${p.partyName}\n${p.billingAddress||''}\nPhone: ${p.phone||''}`:f.notes}));}}>
+              <option value="">Select shipper…</option>
+              {parties.map((p:any)=><option key={p.id} value={p.id}>{p.partyName}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="label">Consignee</label>
+            <select className="input" value={editForm._consigneePartyId||''} onChange={e=>{const p=parties.find((x:any)=>x.id===e.target.value);setEditForm((f:any)=>({...f,_consigneePartyId:e.target.value,consignee:p?`${p.partyName}\n${p.billingAddress||''}`:f.consignee}));}}>
+              <option value="">Select consignee…</option>
+              {parties.map((p:any)=><option key={p.id} value={p.id}>{p.partyName}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="form-row form-row-2" style={{marginBottom:12}}>
+          <div className="form-group">
             <label className="label">Origin</label>
             <select className="input" value={editForm.origin||''} onChange={e=>setEditForm((f:any)=>({...f,origin:e.target.value}))}>
               <option value="">—</option>
