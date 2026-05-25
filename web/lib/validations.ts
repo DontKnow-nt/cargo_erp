@@ -112,7 +112,7 @@ export const UpdateInvoiceLineSchema = InvoiceLineSchema.partial();
 export const PaymentReceiptSchema = z.object({
   partyId: z.string().min(1),
   partyName: z.string().min(1).max(200).trim(),
-  invoiceId: z.string().min(1),
+  invoiceId: z.string().optional().default(''),
   invoiceNo: z.string().min(1).max(50),
   paymentDate: dateStr,
   paymentAmount: positiveNum.max(100_000_000),

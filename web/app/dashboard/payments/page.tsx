@@ -43,7 +43,7 @@ export default function PaymentsPage() {
         if (res && 'error' in res) { toast.error(res.error as string); return; }
         toast.success('Payment updated');
       } else {
-        const autoInv = partyInvoices.sort((a,b) => b.outstandingTotal - a.outstandingTotal)[0];
+        const autoInv = partyInvoices.sort((a,b) => (b.outstandingTotal||0) - (a.outstandingTotal||0))[0];
         const res = await addPaymentReceipt({
           partyId:form.partyId, partyName:selParty?.partyName||'',
           invoiceId:form.invoiceId || autoInv?.id || '',
