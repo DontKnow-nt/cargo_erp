@@ -631,13 +631,13 @@ img{max-width:100%;object-fit:contain}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <img src="/logo.png" alt="Triveni" style={{ width: 64, height: 64, objectFit: 'contain', flexShrink: 0 }} />
                   <div style={{ flex: 1, textAlign: 'center' }}>
-                    <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: 0.5 }}>TRIVENI CARGO EXPRESS INDIA PVT LTD</div>
-                    <div style={{ fontSize: 10 }}>Domestic Air Cargo &amp; Rail Agent</div>
-                    <div style={{ fontSize: 10 }}>Plot no-319/2/2, Badam Singh Market, NH-8 Rangpuri, New Delhi-110037</div>
-                    <div style={{ fontSize: 10 }}>Tel. : 011-65809456, 9311389456</div>
-                    <div style={{ fontSize: 10, fontWeight: 700 }}>GSTIN: 07AAGCT2294N2ZR , CIN: U74999DL2017PTC316659</div>
-                    <div style={{ fontSize: 9, color: '#c00' }}>Regd. Office: Plot no 480, Flat no 301, First Floor, Gali no 15, L Block Mahipalpur Extn. New Delhi 110037</div>
-                    <div style={{ fontSize: 10 }}>Email : info@tceipl.com</div>
+                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 20, fontWeight: 900, letterSpacing: 0.5, fontFamily:'Arial,sans-serif' }}>TRIVENI CARGO EXPRESS INDIA PVT LTD</div>
+                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontFamily:'Arial,sans-serif' }}>Domestic Air Cargo &amp; Rail Agent</div>
+                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontFamily:'Arial,sans-serif' }}>Plot no-319/2/2, Badam Singh Market, NH-8 Rangpuri, New Delhi-110037</div>
+                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontFamily:'Arial,sans-serif' }}>Tel. : 011-65809456, 9311389456</div>
+                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontWeight: 700, fontFamily:'Arial,sans-serif' }}>GSTIN: 07AAGCT2294N2ZR , CIN: U74999DL2017PTC316659</div>
+                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 9, color: '#c00', fontFamily:'Arial,sans-serif' }}>Regd. Office: Plot no 480, Flat no 301, First Floor, Gali no 15, L Block Mahipalpur Extn. New Delhi 110037</div>
+                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontFamily:'Arial,sans-serif' }}>Email : info@tceipl.com</div>
                   </div>
                 </div>
               </td>
@@ -646,7 +646,7 @@ img{max-width:100%;object-fit:contain}
             {/* ── TAX INVOICE title ── */}
             <tr>
               <td colSpan={14} style={{ border: '1px solid #000', padding: '4px', textAlign: 'center', fontWeight: 700, fontSize: 13, textDecoration: 'underline' }}>
-                TAX INVOICE
+                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', textAlign: 'center', fontWeight: 700, fontSize: 13, textDecoration: 'underline', fontFamily: 'Arial, sans-serif' }}>TAX INVOICE</div>
               </td>
             </tr>
 
@@ -667,7 +667,7 @@ img{max-width:100%;object-fit:contain}
             {/* ── SAC Code ── */}
             <tr>
               <td colSpan={14} style={{ border: '1px solid #000', padding: '3px 7px', fontSize: 10, fontWeight: 700, textAlign: 'center' }}>
-                SAC Code : 996531
+                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', textAlign: 'center', fontWeight: 700, fontFamily: 'Arial, sans-serif', fontSize: 10 }}>SAC Code : 996531</div>
               </td>
             </tr>
 
@@ -705,7 +705,7 @@ img{max-width:100%;object-fit:contain}
                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
-                <td style={{ border: '1px solid #000', padding: '4px 6px', textAlign: 'right', fontWeight: 700, fontSize: 10, background: '#f8f8f8' }}>Grand Total</td>
+                <td style={{ border: '1px solid #000', padding: '4px 6px', textAlign: 'right', fontWeight: 700, fontSize: 10, background: '#f8f8f8' }}><div contentEditable suppressContentEditableWarning style={{ outline:'none', fontFamily:'Arial,sans-serif', fontSize:10, fontWeight:700, textAlign:'right' }}>Grand Total</div></td>
                 <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
                 <EC style={{ textAlign: 'center', background: '#f8f8f8', fontWeight: 700 }}>{totalBoxes}</EC>
                 <EC style={{ textAlign: 'center', background: '#f8f8f8', fontWeight: 700 }}>{totalChgWt}</EC>
