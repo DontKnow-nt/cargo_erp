@@ -531,9 +531,10 @@ img{max-width:100%;object-fit:contain}
     const booking = awbBk ?? dktBk;
 
     const boxes  = booking ? String(awbBk ? awbBk.pieces : 1) : String(Math.round(line.qty));
+    const dktWeight = dktBk?.weight;
     const chgWt  = booking
-      ? String(awbBk ? awbBk.weight : ((dktBk?.weight ?? 0) > 0 ? dktBk!.weight : (line.description.match(/(\d+(?:\.\d+)?)\s*kg/i)?.[1] ?? String(line.qty))))
-      : (line.description.match(/(\d+(?:\.\d+)?)\s*kg/i)?.[1] ?? String(Math.round(line.qty)));
+      ? String(awbBk ? awbBk.weight : (dktWeight && dktWeight > 0 ? dktWeight : ''))
+      : (line.description.match(/(\d+(?:\.\d+)?)\s*kg/i)?.[1] ?? '');
     const rate   = rm?.[1] ?? (dktBk ? String(dktBk.rateFittedAmount) : String(line.rate));
 
     const myMarkup = markupLines.find(ml => ml.description.includes(ref));

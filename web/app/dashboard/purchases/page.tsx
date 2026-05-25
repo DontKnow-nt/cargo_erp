@@ -50,7 +50,7 @@ export default function PurchasesPage() {
         subtotal: form.totalAmount, gstAmount: isNaN(form.gstAmount) ? 0 : (form.gstAmount || 0), totalAmount: isNaN(form.netPayable) ? form.totalAmount : (form.netPayable || form.totalAmount),
         description: descWithPeriod || undefined, category: form.category || undefined,
       });
-      if (res && 'error' in res) { toast.error(typeof res.error === 'string' ? res.error : 'Validation error'); return; }
+      if (res && 'error' in res) { toast.error('Validation error'); return; }
       toast.success('Bill added');
       setShowForm(false); setForm(emptyForm); refresh();
     });
