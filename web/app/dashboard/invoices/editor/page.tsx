@@ -530,9 +530,11 @@ img{max-width:100%;object-fit:contain}
     const dktBk = docketBookings.find(d => d.docketNo === ref || d.docketNo === dktM?.[1]);
     const booking = awbBk ?? dktBk;
 
-    const boxes  = booking ? String(awbBk ? awbBk.pieces : Math.round(line.qty)) : String(Math.round(line.qty));
-    const chgWt  = booking ? String(awbBk ? awbBk.weight : ((dktBk as any)?.weight ?? Math.round(line.qty))) : (line.description.match(/(\d+(?:\.\d+)?)\s*kg/i)?.[1] ?? String(Math.round(line.qty)));
-    const rate   = rm?.[1] ?? String(line.rate);
+    const boxes  = booking ? String(awbBk ? awbBk.pieces : 1) : String(Math.round(line.qty));
+    const chgWt  = booking
+      ? String(awbBk ? awbBk.weight : ((dktBk?.weight ?? 0) > 0 ? dktBk!.weight : (line.description.match(/(\d+(?:\.\d+)?)\s*kg/i)?.[1] ?? String(line.qty))))
+      : (line.description.match(/(\d+(?:\.\d+)?)\s*kg/i)?.[1] ?? String(Math.round(line.qty)));
+    const rate   = rm?.[1] ?? (dktBk ? String(dktBk.rateFittedAmount) : String(line.rate));
 
     const myMarkup = markupLines.find(ml => ml.description.includes(ref));
     const tspAmt = myMarkup?.amount ?? 0;
