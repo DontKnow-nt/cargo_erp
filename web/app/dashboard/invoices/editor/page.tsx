@@ -339,6 +339,8 @@ function InvoiceEditorInner() {
           // Re-apply the currently selected bank AFTER html is restored
           const currentBank = banks.find(b => b.id === selectedBankId) ?? banks[0];
           if (currentBank) applyBankToPaper(currentBank, paperRef.current);
+          // Trigger recalc so Grand Total & Tax Summary sync with saved data
+          paperRef.current.querySelector('#awb-body')?.dispatchEvent(new Event('input', { bubbles: true }));
         }
       })
       .catch(() => {});
@@ -441,6 +443,7 @@ function InvoiceEditorInner() {
     const awbTable = paper.querySelector('#awb-body');
     if (!awbTable) return;
     awbTable.addEventListener('input', recalc);
+    recalc(); // sync on initial load / after HTML restore
     return () => awbTable.removeEventListener('input', recalc);
   }, [inv?.id]); // re-attach when invoice changes
 
@@ -536,7 +539,7 @@ img{max-width:100%;object-fit:contain}
       boxes, chgWt, rate,
       freight: fmt(line.amount),
       awbNo: ref,
-      date: inv.invoiceDate.replace(/^\d{4}-/, '').replace('-', '/'),
+      date: (() => { const [y,m,d] = inv.invoiceDate.split('-'); return `${d}/${m}/${y.slice(-2)}`; })(),
       tsp: tspAmt > 0 ? fmt(tspAmt) : '0.00',
       taxable: fmt(line.amount + tspAmt),
     });
