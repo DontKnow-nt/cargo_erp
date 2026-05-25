@@ -535,7 +535,8 @@ img{max-width:100%;object-fit:contain}
     const chgWt  = booking
       ? String(awbBk ? awbBk.weight : (dktWeight && dktWeight > 0 ? dktWeight : ''))
       : (line.description.match(/(\d+(?:\.\d+)?)\s*kg/i)?.[1] ?? '');
-    const rate   = rm?.[1] ?? (dktBk ? String(dktBk.rateFittedAmount) : String(line.rate));
+    // For dockets: rate is per-kg rate from AWB, blank for dockets (rateFittedAmount is flat total)
+    const rate   = awbBk ? (rm?.[1] ?? String(awbBk.baseRate)) : (dktBk ? '' : (rm?.[1] ?? String(line.rate)));
 
     const myMarkup = markupLines.find(ml => ml.description.includes(ref));
     const tspAmt = myMarkup?.amount ?? 0;
