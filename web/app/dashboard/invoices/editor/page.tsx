@@ -270,6 +270,9 @@ function InvoiceEditorInner() {
     const sgstAmt = parseFloat((taxable * sg / 100).toFixed(2));
     const net = parseFloat((taxable + igstAmt + cgstAmt + sgstAmt).toFixed(2));
     taxEl.innerText = `Total Taxable Amount : ${fmtN(taxable)}\nSGST @ ${sg}%              : ${fmtN(sgstAmt)}\nCGST @ ${cg}%              : ${fmtN(cgstAmt)}\nIGST @ ${ig}%             : ${fmtN(igstAmt)}\nNet Payable Amount  : ${fmtN(net)}`;
+    // Update Amount in Words
+    const wordsEl = paperRef.current?.querySelector<HTMLElement>('[data-words]');
+    if (wordsEl && net > 0) wordsEl.innerText = `Rupees ${numberToWords(Math.round(net))}`;
   }
 
   useEffect(() => {
@@ -437,6 +440,8 @@ function InvoiceEditorInner() {
 
         const fmtN = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         taxSummaryEl.innerText = `Total Taxable Amount : ${fmtN(totalTaxable)}\nSGST @ ${sgstRate}%              : ${fmtN(sgstAmt)}\nCGST @ ${cgstRate}%              : ${fmtN(cgstAmt)}\nIGST @ ${igstRateVal}%             : ${fmtN(igstAmt)}\nNet Payable Amount  : ${fmtN(netPayable)}`;
+        const wordsEl2 = paper!.querySelector<HTMLElement>('[data-words]');
+        if (wordsEl2 && netPayable > 0) wordsEl2.innerText = `Rupees ${numberToWords(Math.round(netPayable))}`;
       }
     }
 
@@ -719,7 +724,7 @@ img{max-width:100%;object-fit:contain}
             {/* ── Bank (left) + Tax Summary (right) ── */}
             <tr>
               <td colSpan={9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
-                <div style={{ fontSize: 10, marginBottom: 4 }}><strong>Amount in Words :</strong> Rupees {amtWords}</div>
+                <div style={{ fontSize: 10, marginBottom: 4 }}><strong>Amount in Words :</strong> <span data-words contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>Rupees {amtWords}</span></div>
                 <div contentEditable suppressContentEditableWarning data-bank-detail style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap', marginTop: 6 }}>
                   {bankText}
                 </div>
