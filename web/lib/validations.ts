@@ -91,6 +91,7 @@ export const DocketBookingSchema = z.object({
   consignee: z.string().max(200).trim().optional(),
   value: nonNegNum.optional(),
   methodOfPacking: z.string().max(200).trim().optional(),
+  pieces: z.number().int().min(1).optional(),
 });
 
 export const UpdateDocketBookingSchema = DocketBookingSchema.partial().omit({ partyId: true });

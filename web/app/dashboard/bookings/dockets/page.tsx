@@ -139,7 +139,7 @@ export default function DocketBookingsPage() {
         bookingDate:form.bookingDate, origin:form.origin, destination:form.destination,
         description:form.description, rateFittedAmount:form.rateFittedAmount, markupAmount:form.markupAmount,
         gstRate:form.gstRate, gstAmount, totalAmount, dueDatePolicy:form.dueDatePolicy, status:'BOOKED', notes:form.notes,
-        wayBillNo:form.wayBillNo||undefined, consignee:form.consignee||undefined, value:form.value||undefined, methodOfPacking:form.methodOfPacking||undefined,
+        wayBillNo:form.wayBillNo||undefined, consignee:form.consignee||undefined, value:form.value||undefined, methodOfPacking:form.methodOfPacking||undefined, pieces:(form as any).pieces||1,
       });
       if (res && 'error' in res) { toast.error('Validation error'); return; }
       toast.success(`Docket ${form.docketNo} saved`);
@@ -419,11 +419,15 @@ export default function DocketBookingsPage() {
                   <input className="input" style={{height:32,fontSize:12}} placeholder="e.g. Packaging materials…" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))}/>
                 </div>
               </div>
-              {/* Row 3: Weight + Markup + Due Date */}
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:8}}>
+              {/* Row 3: Weight + Packets + Markup + Due Date */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8,marginBottom:8}}>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="label" style={{fontSize:11}}>Weight (kg)</label>
                   <input className="input" style={{height:32,fontSize:12}} type="number" min="0" step="0.1" placeholder="0" value={form.weight||''} onChange={e=>setForm(f=>({...f,weight:parseFloat(e.target.value)||0}))}/>
+                </div>
+                <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Packets / Boxes</label>
+                  <input className="input" style={{height:32,fontSize:12}} type="number" min="1" step="1" placeholder="1" value={(form as any).pieces||''} onChange={e=>setForm(f=>({...f,pieces:parseInt(e.target.value)||1} as any))}/>
                 </div>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="label" style={{fontSize:11}}>Markup (₹)</label>

@@ -530,7 +530,7 @@ img{max-width:100%;object-fit:contain}
     const dktBk = docketBookings.find(d => d.docketNo === ref || d.docketNo === dktM?.[1]);
     const booking = awbBk ?? dktBk;
 
-    const boxes  = booking ? String(awbBk ? awbBk.pieces : 1) : String(Math.round(line.qty));
+    const boxes  = booking ? String(awbBk ? awbBk.pieces : (dktBk?.pieces ?? 1)) : String(Math.round(line.qty));
     const dktWeight = dktBk?.weight;
     const chgWt  = booking
       ? String(awbBk ? awbBk.weight : (dktWeight && dktWeight > 0 ? dktWeight : ''))

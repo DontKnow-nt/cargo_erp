@@ -145,6 +145,7 @@ model DocketBooking {
   consignee        String?
   value            Float?   @default(0)
   methodOfPacking  String?  @map("method_of_packing")
+  pieces           Int?     @default(1)
   createdBy        String?  @map("created_by")
   createdAt        DateTime @default(now()) @map("created_at")
 

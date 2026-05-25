@@ -26,7 +26,7 @@ export type DbDocketBooking = {
   dueDatePolicy: number; status: string; notes?: string | null;
   linkedAwbId?: string | null; wayBillNo?: string | null;
   consignee?: string | null; value?: number | null; weight?: number | null;
-  methodOfPacking?: string | null; createdBy?: string | null; createdAt: string | Date;
+  methodOfPacking?: string | null; pieces?: number | null; createdBy?: string | null; createdAt: string | Date;
 };
 
 export type DbInvoiceLine = {
