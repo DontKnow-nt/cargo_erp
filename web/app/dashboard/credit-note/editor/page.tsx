@@ -195,28 +195,33 @@ function CreditNoteTemplate({ inv, party, bank, today, amtWords }: {
             </div>
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <tbody>
-                {[['Bank', bankText], ['Account No.', acctNo], ['IFSC Code', ifsc], ['Branch', branch]].map(([label, value]) => (
+                {([
+                  ['Bank', bankText, 'cn-bank-name'],
+                  ['Account No.', acctNo, 'cn-bank-acct'],
+                  ['IFSC Code', ifsc, 'cn-bank-ifsc'],
+                  ['Branch', branch, 'cn-bank-branch'],
+                ] as [string,string,string][]).map(([label, value, key]) => (
                   <tr key={label}>
                     <td style={{ fontSize: 10, fontWeight: 600, padding: '2px 0', width: '30%', verticalAlign: 'top' }}><span contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>{label}</span></td>
                     <td style={{ fontSize: 10, padding: '2px 4px', width: '4%' }}>:</td>
-                    <td style={{ fontSize: 10, padding: '2px 0', verticalAlign: 'top' }}><span contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>{value}</span></td>
+                    <td style={{ fontSize: 10, padding: '2px 0', verticalAlign: 'top' }}><span data-cn-key={key} contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>{value}</span></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </td>
           <td colSpan={3} style={{ border: B, padding: '6px 10px', verticalAlign: 'top' }}>
-            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <table id="cn-tax-summary" style={{ borderCollapse: 'collapse', width: '100%' }}>
               <tbody>
                 {[
-                  ['Total Taxable Amount', fmt(inv.subtotal), 'cn-taxable'],
-                  [`SGST @ 0%`, '0', ''],
-                  [`CGST @ 0%`, '0', ''],
-                  [`IGST @ ${igstRate}%`, fmt(inv.gstTotal), 'cn-igst'],
-                  ['Net Payable Amount', fmt(inv.grandTotal), 'cn-net'],
-                ].map(([label, value, dataKey]) => (
+                  ['Total Taxable Amount', fmt(inv.subtotal), 'cn-taxable', ''],
+                  [`SGST @ 0%`, '0.00', 'cn-sgst', 'cn-sgst-label'],
+                  [`CGST @ 0%`, '0.00', 'cn-cgst', 'cn-cgst-label'],
+                  [`IGST @ ${igstRate}%`, fmt(inv.gstTotal), 'cn-igst', 'cn-igst-label'],
+                  ['Net Payable Amount', fmt(inv.grandTotal), 'cn-net', ''],
+                ].map(([label, value, dataKey, labelKey]) => (
                   <tr key={label}>
-                    <td style={{ fontSize: 10, fontWeight: ['Total Taxable Amount','Net Payable Amount'].includes(label) ? 700 : 400, padding: '2px 0', width: '60%' }}><span contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>{label}</span></td>
+                    <td style={{ fontSize: 10, fontWeight: ['Total Taxable Amount','Net Payable Amount'].includes(label) ? 700 : 400, padding: '2px 0', width: '60%' }}><span {...(labelKey ? { 'data-cn-key': labelKey } : {})} contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>{label}</span></td>
                     <td style={{ fontSize: 10, padding: '2px 4px', textAlign: 'center' }}>:</td>
                     <td style={{ fontSize: 10, fontWeight: ['Total Taxable Amount','Net Payable Amount'].includes(label) ? 700 : 400, padding: '2px 0', textAlign: 'right' }}>
                       <span {...(dataKey ? { 'data-cn-key': dataKey } : {})} contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>{value}</span>
@@ -267,75 +272,191 @@ function CreditNoteEditorInner() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  function applyGstRatesCN(ig: number, cg: number, sg: number) {
-    const paper = paperRef.current; if (!paper) return;
+  function applyBankToPaperCN(b: typeof banks[number] | undefined, paper: HTMLElement) {
+    if (!b) return;
+    // Try data-cn-key first (new saved HTML), fall back to row-label scanning (old saved HTML)
+    const setByKey = (key: string, val: string) => {
+      const el = paper.querySelector(`[data-cn-key="${key}"]`) as HTMLElement | null;
+      if (el) { el.textContent = val; return true; }
+      return false;
+    };
+    const bankUpdated = setByKey('cn-bank-name', b.bank_name);
+    setByKey('cn-bank-acct', b.account_number);
+    setByKey('cn-bank-ifsc', b.ifsc);
+    setByKey('cn-bank-branch', b.branch);
+    if (!bankUpdated) {
+      // Fallback: scan all rows for label text and update value cell
+      const patterns: [RegExp, string][] = [
+        [/^bank$/i, b.bank_name],
+        [/account\s*no/i, b.account_number],
+        [/ifsc/i, b.ifsc],
+        [/branch/i, b.branch],
+      ];
+      paper.querySelectorAll('tr').forEach(row => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length < 2) return;
+        const labelText = cells[0].textContent?.trim() ?? '';
+        for (const [pat, val] of patterns) {
+          if (pat.test(labelText)) {
+            const valCell = cells[cells.length - 1];
+            const span = valCell.querySelector('[contenteditable]') as HTMLElement | null;
+            if (span) span.textContent = val; else valCell.textContent = val;
+            break;
+          }
+        }
+      });
+    }
+  }
+
+  function applyGstRatesCN(ig: number, cg: number, sg: number, paper?: HTMLElement | null) {
+    const p = paper ?? paperRef.current; if (!p) return;
     const fmtN = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const rows = paper.querySelectorAll('#cn-data-body tr');
+    const setKey = (key: string, val: string) => { const el = p.querySelector(`[data-cn-key="${key}"]`) as HTMLElement | null; if (el) { el.textContent = val; return true; } return false; };
+
+    // Get taxable: prefer data-cn-key, fallback to data rows sum
     let taxable = 0;
-    rows.forEach(row => { const cells = row.querySelectorAll('[contenteditable]'); if (cells.length >= 2) { taxable += parseFloat((cells[cells.length-1] as HTMLElement).textContent?.replace(/,/g,'') || '0') || 0; } });
+    const taxableEl = p.querySelector('[data-cn-key="cn-taxable"]') as HTMLElement | null;
+    if (taxableEl) {
+      taxable = parseFloat(taxableEl.textContent?.replace(/,/g,'') || '0') || 0;
+    } else {
+      p.querySelectorAll('#cn-data-body tr').forEach(row => {
+        const cells = row.querySelectorAll('[contenteditable]');
+        if (cells.length >= 2) taxable += parseFloat((cells[cells.length-1] as HTMLElement).textContent?.replace(/,/g,'') || '0') || 0;
+      });
+    }
+
     const igstAmt = parseFloat((taxable * ig / 100).toFixed(2));
     const cgstAmt = parseFloat((taxable * cg / 100).toFixed(2));
     const sgstAmt = parseFloat((taxable * sg / 100).toFixed(2));
     const net = parseFloat((taxable + igstAmt + cgstAmt + sgstAmt).toFixed(2));
-    const set = (key: string, val: string) => { const el = paper.querySelector(`[data-cn-key="${key}"]`) as HTMLElement | null; if (el) el.textContent = val; };
-    set('cn-taxable', fmtN(taxable));
-    set('cn-igst', fmtN(igstAmt));
-    set('cn-net', fmtN(net));
-    // Update SGST/CGST labels and values in the table
-    const trs = paper.querySelectorAll('[data-cn-key]');
-    trs.forEach(el => {
-      const key = (el as HTMLElement).dataset.cnKey;
-      if (key === 'cn-sgst') (el as HTMLElement).textContent = fmtN(sgstAmt);
-      if (key === 'cn-cgst') (el as HTMLElement).textContent = fmtN(cgstAmt);
+
+    // Primary: use data-cn-key attributes (always present in rendered template)
+    if (setKey('cn-igst-label', `IGST @ ${ig}%`) || setKey('cn-igst', fmtN(igstAmt))) {
+      setKey('cn-igst-label', `IGST @ ${ig}%`);
+      setKey('cn-cgst-label', `CGST @ ${cg}%`);
+      setKey('cn-sgst-label', `SGST @ ${sg}%`);
+      setKey('cn-igst', fmtN(igstAmt));
+      setKey('cn-cgst', fmtN(cgstAmt));
+      setKey('cn-sgst', fmtN(sgstAmt));
+      setKey('cn-taxable', fmtN(taxable));
+      setKey('cn-net', fmtN(net));
+      return;
+    }
+
+    // Row order: 0=Total Taxable, 1=SGST, 2=CGST, 3=IGST, 4=Net Payable
+    const updates = [
+      { val: fmtN(taxable), label: '' },
+      { val: fmtN(sgstAmt), label: `SGST @ ${sg}%` },
+      { val: fmtN(cgstAmt), label: `CGST @ ${cg}%` },
+      { val: fmtN(igstAmt), label: `IGST @ ${ig}%` },
+      { val: fmtN(net),     label: '' },
+    ];
+
+    // Try #cn-tax-summary by row index first (works for new HTML or loaded HTML with id preserved)
+    const taxTable = p.querySelector<HTMLTableElement>('#cn-tax-summary');
+    if (taxTable) {
+      const trs = taxTable.querySelectorAll('tr');
+      trs.forEach((tr, i) => {
+        if (i >= updates.length) return;
+        const tds = tr.querySelectorAll('td');
+        // Value is in last td
+        const valTd = tds[tds.length - 1];
+        const valSpan = valTd?.querySelector('[contenteditable]') as HTMLElement | null;
+        if (valSpan) valSpan.textContent = updates[i].val;
+        else if (valTd) (valTd as HTMLElement).textContent = updates[i].val;
+        // Label is in first td (skip empty label)
+        if (updates[i].label) {
+          const labelSpan = tds[0]?.querySelector('[contenteditable]') as HTMLElement | null;
+          if (labelSpan) labelSpan.textContent = updates[i].label;
+          else if (tds[0]) (tds[0] as HTMLElement).textContent = updates[i].label;
+        }
+      });
+      return;
+    }
+
+    // Fallback: scan all rows by text pattern (for very old saved HTML without id)
+    const patterns: [RegExp, string, string][] = [
+      [/total\s*taxable/i, fmtN(taxable), ''],
+      [/sgst/i, fmtN(sgstAmt), `SGST @ ${sg}%`],
+      [/cgst/i, fmtN(cgstAmt), `CGST @ ${cg}%`],
+      [/igst/i, fmtN(igstAmt), `IGST @ ${ig}%`],
+      [/net\s*payable/i, fmtN(net), ''],
+    ];
+    const matched = new Set<number>();
+    p.querySelectorAll('tr').forEach(row => {
+      const cells = row.querySelectorAll('td');
+      if (cells.length < 2) return;
+      const labelText = cells[0].textContent?.trim() ?? '';
+      patterns.forEach(([pat, val, newLabel], idx) => {
+        if (matched.has(idx) || !pat.test(labelText)) return;
+        matched.add(idx);
+        const valCell = cells[cells.length - 1];
+        const valSpan = valCell.querySelector('[contenteditable]') as HTMLElement | null;
+        if (valSpan) valSpan.textContent = val; else (valCell as HTMLElement).textContent = val;
+        if (newLabel) {
+          const labelSpan = cells[0].querySelector('[contenteditable]') as HTMLElement | null;
+          if (labelSpan) labelSpan.textContent = newLabel; else (cells[0] as HTMLElement).textContent = newLabel;
+        }
+      });
     });
   }
 
-  useEffect(() => { fetch('/api/banks').then(r => r.json()).then(d => { setBanks(d); const def = d.find((b: { is_default: number }) => b.is_default === 1); if (def) setSelectedBankId(def.id); }).catch(() => {}); }, []);
   useEffect(() => {
-    if (!id || !paperRef.current) return;
-    fetch(`/api/invoices/${id}/editor-html`).then(r => r.json()).then(data => { if (data.html && paperRef.current) paperRef.current.innerHTML = data.html; }).catch(() => {});
+    fetch('/api/banks').then(r => r.json()).then(d => {
+      setBanks(d);
+      const def = d.find((b: { is_default: number }) => b.is_default === 1);
+      const chosen = def ?? d[0];
+      if (chosen) {
+        setSelectedBankId(chosen.id);
+        // Apply immediately since HTML may already be in DOM
+        if (paperRef.current) applyBankToPaperCN(chosen, paperRef.current);
+      }
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    fetch(`/api/invoices/${id}/editor-html`).then(r => r.json()).then(data => {
+      if (data.html && paperRef.current) {
+        paperRef.current.innerHTML = data.html;
+        // Re-apply current bank and GST rates after HTML restore
+        const currentBank = banks.find(b => b.id === selectedBankId) ?? banks[0];
+        if (currentBank) applyBankToPaperCN(currentBank, paperRef.current);
+        applyGstRatesCN(igstRate, cgstRate, sgstRate, paperRef.current);
+      }
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // Auto-recalc tax summary when data rows change
+  // Keep rate refs fresh so recalcCN always uses current rates
+  const ratesRef = useRef({ ig: igstRate, cg: cgstRate, sg: sgstRate });
+  useEffect(() => { ratesRef.current = { ig: igstRate, cg: cgstRate, sg: sgstRate }; }, [igstRate, cgstRate, sgstRate]);
+
+  // Auto-recalc tax summary when data rows change — use event delegation on paper so it survives innerHTML replacement
   useEffect(() => {
     const paper = paperRef.current;
     if (!paper) return;
-    function recalcCN() {
-      const rows = paper!.querySelectorAll('#cn-data-body tr');
-      let total = 0;
-      rows.forEach(row => {
-        const cells = row.querySelectorAll('[contenteditable]');
-        if (cells.length >= 2) {
-          const amtText = (cells[cells.length - 1] as HTMLElement).textContent?.replace(/,/g, '').trim() || '0';
-          total += parseFloat(amtText) || 0;
-        }
-      });
-      // Detect IGST rate from label span
-      const igstLabel = paper!.querySelector('[data-cn-key="cn-igst"]');
-      let igstRate = 18;
-      if (igstLabel) {
-        // Look at sibling td before it for "IGST @ X%"
-        const tr = igstLabel.closest('tr');
-        const labelSpan = tr?.querySelector('td:first-child span');
-        const m = labelSpan?.textContent?.match(/(\d+)/);
-        if (m) igstRate = parseFloat(m[1]);
-      }
-      const igstAmt = parseFloat((total * igstRate / 100).toFixed(2));
-      const net = parseFloat((total + igstAmt).toFixed(2));
-      const set = (key: string, val: string) => { const el = paper!.querySelector(`[data-cn-key="${key}"]`) as HTMLElement | null; if (el) el.textContent = val; };
-      set('cn-taxable', total.toFixed(2));
-      set('cn-igst', igstAmt.toFixed(2));
-      set('cn-net', net.toFixed(2));
+    function recalcCN(e: Event) {
+      if (!(e.target as HTMLElement)?.closest?.('#cn-data-body')) return;
+      const { ig, cg, sg } = ratesRef.current;
+      applyGstRatesCN(ig, cg, sg, paper);
     }
-    const body = paper.querySelector('#cn-data-body');
-    if (!body) return;
-    body.addEventListener('input', recalcCN);
-    return () => body.removeEventListener('input', recalcCN);
-  }, [id]);
+    paper.addEventListener('input', recalcCN);
+    return () => paper.removeEventListener('input', recalcCN);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const inv = invoices.find(i => i.id === id);
   const party = inv ? parties.find(p => p.id === inv.partyId) : undefined;
   const bank = banks.find(b => b.id === selectedBankId) ?? banks[0];
+
+  // Apply bank to paper whenever bank selection changes
+  useEffect(() => {
+    const paper = paperRef.current;
+    if (!paper || !bank) return;
+    applyBankToPaperCN(bank, paper);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBankId, bank]);
 
   const handlePrint = useCallback(async () => {
     const el = paperRef.current; if (!el) return;
