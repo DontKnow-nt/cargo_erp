@@ -905,7 +905,14 @@ export default function AwbBookingsPage() {
         <ConnectDocketModal
           awb={connectDocketAwb}
           docketBookings={docketBookings}
-          onConnect={(docketId)=>{ startTransition(async()=>{ const res = await linkAwbToDocket(docketId, connectDocketAwb.id); if (res && 'error' in res) { toast.error(res.error as string); return; } toast.success('Docket linked'); setConnectDocketAwb(null); refresh(); }); }}
+          onConnect={(docketIds)=>{ startTransition(async()=>{
+            for (const id of docketIds) {
+              const res = await linkAwbToDocket(id, connectDocketAwb.id);
+              if (res && 'error' in res) { toast.error(res.error as string); return; }
+            }
+            toast.success(`${docketIds.length} docket${docketIds.length>1?'s':''} linked`);
+            setConnectDocketAwb(null); refresh();
+          }); }}
           onClose={()=>setConnectDocketAwb(null)}
         />
       )}
@@ -1209,31 +1216,53 @@ function AddDocketFromAwbModal({ awb, parties, onSave, onClose }: {
 // ── Connect Existing Docket Modal (from AWB) ──────────────────────────────────
 function ConnectDocketModal({ awb, docketBookings, onConnect, onClose }: {
   awb: any; docketBookings: any[];
-  onConnect: (docketId: string) => void; onClose: () => void;
+  onConnect: (docketIds: string[]) => void; onClose: () => void;
 }) {
-  const [selId, setSelId] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const unlinked = docketBookings.filter((d:any) => !d.linkedAwbId);
+
+  function toggle(id: string) {
+    setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+
   return (
     <div className="modal-overlay">
-      <div className="modal-box" style={{maxWidth:460}}>
+      <div className="modal-box" style={{maxWidth:500}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
           <div>
-            <h2 style={{fontSize:16,fontWeight:800}}>Connect Existing Docket</h2>
+            <h2 style={{fontSize:16,fontWeight:800}}>Connect Docket(s)</h2>
             <div style={{fontSize:11,color:'var(--text-muted)'}}>AWB: <span style={{fontFamily:'var(--font-mono)',fontWeight:700,color:'var(--accent-dark)'}}>{awb.awbNo}</span></div>
           </div>
           <button className="btn btn-ghost btn-icon" onClick={onClose}><X size={16}/></button>
         </div>
-        <div className="form-group" style={{marginBottom:16}}>
-          <label className="label">Select Unlinked Docket</label>
-          <select className="input" value={selId} onChange={e=>setSelId(e.target.value)}>
-            <option value="">Choose docket…</option>
-            {unlinked.map((d:any)=><option key={d.id} value={d.id}>{d.docketNo} · {d.partyName} · {d.origin||''}→{d.destination||''} · {d.status}</option>)}
-          </select>
-          {unlinked.length===0 && <div style={{fontSize:11,color:'var(--text-muted)',marginTop:4}}>No unlinked dockets available</div>}
-        </div>
-        <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+
+        {unlinked.length === 0 ? (
+          <div style={{fontSize:12,color:'var(--text-muted)',textAlign:'center',padding:'24px 0'}}>No unlinked dockets available</div>
+        ) : (
+          <div style={{maxHeight:320,overflowY:'auto',border:'1px solid var(--border)',borderRadius:8,marginBottom:16}}>
+            {unlinked.map((d:any) => (
+              <div key={d.id} onClick={()=>toggle(d.id)}
+                style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderBottom:'1px solid var(--border)',cursor:'pointer',background:selected.has(d.id)?'rgba(245,158,11,0.06)':'var(--surface-base)',transition:'background 120ms'}}>
+                <input type="checkbox" checked={selected.has(d.id)} onChange={()=>toggle(d.id)} onClick={e=>e.stopPropagation()}
+                  style={{width:16,height:16,cursor:'pointer',accentColor:'var(--accent)',flexShrink:0}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontFamily:'var(--font-mono)',fontSize:12,fontWeight:700}}>{d.docketNo}</div>
+                  <div style={{fontSize:11,color:'var(--text-muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {d.partyName} · {d.origin||'—'}→{d.destination||'—'} · {d.description||'—'}
+                  </div>
+                </div>
+                <span style={{fontSize:10,fontWeight:600,color:'#2563eb',background:'#eff6ff',padding:'2px 7px',borderRadius:99,flexShrink:0,fontFamily:'var(--font-mono)'}}>{d.status}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{display:'flex',gap:10,justifyContent:'flex-end',alignItems:'center'}}>
+          {selected.size > 0 && <span style={{fontSize:12,color:'var(--text-muted)',marginRight:'auto'}}>{selected.size} docket{selected.size>1?'s':''} selected</span>}
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" disabled={!selId} onClick={()=>{if(selId)onConnect(selId);}}><CheckCircle size={13}/> Link Docket</button>
+          <button className="btn btn-primary" disabled={selected.size===0} onClick={()=>{if(selected.size>0)onConnect([...selected]);}}>
+            <CheckCircle size={13}/> Link {selected.size>0?`${selected.size} `:''}Docket{selected.size>1?'s':''}
+          </button>
         </div>
       </div>
     </div>
