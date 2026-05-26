@@ -759,6 +759,14 @@ img{max-width:100%;object-fit:contain}
 
   const notesText = `NOTES :\n1. DIFFERENCE, IF ANY, MAY BE NOTIFIED WITHIN 3 DAYS OF RECEIPT.\n2. PLEASE PAY YOUR BILL AMOUNT WITHIN 15 DAYS OF RECEIPT.\n3. INTEREST AT 24% P.A. WILL BE CHARGED IF THE BILL IS NOT PAID WITHIN THE STIPULATED TIME.\n4. PAYMENT SHOULD BE MADE BY A/C PAYEE CHEQUE OR DD IN FAVOUR OF TRIVENI CARGO EXPRESS INDIA PVT LTD.\n5. JURISDICTION: ALL DISPUTES ARISING UNDER THIS BILL SHALL BE SUBJECT TO BE UNDER NEW DELHI JURISDICTION.`;
 
+  // ── Keep refs in sync with latest render data (read by format-switch effect) ──
+  _lineRowsRef.current   = lineRows;
+  _invRef.current        = inv;
+  _awbBkRef.current      = awbBookings;
+  _dktBkRef.current      = docketBookings;
+  _runningTSPRef.current = runningTSP;
+  _markupAmtRef.current  = markupLines.reduce((s, l) => s + l.amount, 0);
+
   return (
     <div style={{ minHeight: '100vh', background: '#e5e7eb', fontFamily: 'Arial, sans-serif' }}>
       {/* Toolbar */}
