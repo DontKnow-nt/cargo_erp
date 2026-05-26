@@ -702,34 +702,63 @@ img{max-width:100%;object-fit:contain}
     const m = line.description.match(/([A-Z]{3})[→\->]([A-Z]{3})/i);
     const rm = line.description.match(/@\s*₹?([\d.]+)/i);
     const awbM = line.description.match(/\b(\d{3}-\d{7,8})\b/);
-    const dktM = line.description.match(/Docket\s+([\w\-]+)/i);
     const refs = inv.bookingRef.split(',');
-    const ref = (awbM?.[1] ?? dktM?.[1] ?? refs[i]?.trim() ?? refs[0]?.trim() ?? '').trim();
+    const ref = (awbM?.[1] ?? refs[i]?.trim() ?? refs[0]?.trim() ?? '').trim();
 
     // Look up actual booking to get weight & pieces
     const awbBk = awbBookings.find(a => a.awbNo === ref || a.awbNo === awbM?.[1]);
-    const dktBk = docketBookings.find(d => d.docketNo === ref || d.docketNo === dktM?.[1]);
+    // For dockets: match by docketNo from bookingRef
+    const dktRef = refs[i]?.trim() ?? refs[0]?.trim() ?? '';
+    const dktBk = !awbBk ? docketBookings.find(d => d.docketNo === dktRef || d.docketNo === ref) : undefined;
     const booking = awbBk ?? dktBk;
 
-    const boxes  = booking ? String(awbBk ? awbBk.pieces : (dktBk?.pieces ?? 1)) : String(Math.round(line.qty));
-    const dktWeight = dktBk?.weight;
-    const chgWt  = booking
-      ? String(awbBk ? awbBk.weight : (dktWeight && dktWeight > 0 ? dktWeight : ''))
-      : (line.description.match(/(\d+(?:\.\d+)?)\s*kg/i)?.[1] ?? '');
-    // For dockets: rate is per-kg rate from AWB, blank for dockets (rateFittedAmount is flat total)
-    const rate   = awbBk ? (rm?.[1] ?? String(awbBk.baseRate)) : (dktBk ? '' : (rm?.[1] ?? String(line.rate)));
+    const boxes  = booking
+      ? String(awbBk ? awbBk.pieces : (dktBk?.pieces ?? 1))
+      : String(Math.round(line.qty));
 
-    const myMarkup = markupLines.find(ml => ml.description.includes(ref));
+    const dktWeight = dktBk?.weight ?? 0;
+    const awbWeight = awbBk?.weight ?? 0;
+    const chgWt  = booking
+      ? String(awbBk ? awbWeight : (dktWeight > 0 ? dktWeight : ''))
+      : (line.description.match(/(\d+(?:\.\d+)?)\s*kg/i)?.[1] ?? '');
+
+    // Rate: for AWB use baseRate or regex; for docket compute rateFittedAmount/weight if weight>0
+    let rate: string;
+    if (awbBk) {
+      rate = rm?.[1] ?? String(awbBk.baseRate);
+    } else if (dktBk) {
+      const dktRate = dktWeight > 0
+        ? parseFloat((dktBk.rateFittedAmount / dktWeight).toFixed(2))
+        : 0;
+      // Also check description for embedded rate (@ ₹XX/kg)
+      rate = rm?.[1] ?? (dktRate > 0 ? String(dktRate) : '');
+    } else {
+      rate = rm?.[1] ?? String(line.rate);
+    }
+
+    const myMarkup = markupLines.find(ml => ml.description.includes(ref) || ml.description.includes(dktRef));
     const tspAmt = myMarkup?.amount ?? 0;
     if (mainLines.length > 0) runningTSP += tspAmt;
 
+    // Origin / destination: prefer direct booking fields, then regex from description
+    const originVal = awbBk?.origin ?? dktBk?.origin ?? m?.[1] ?? '';
+    const destVal   = awbBk?.destination ?? dktBk?.destination ?? m?.[2] ?? '';
+
+    // Date: use bookingDate from docket/AWB if available, else invoiceDate
+    const rawDate = dktBk?.bookingDate ?? awbBk?.bookingDate ?? inv.invoiceDate;
+    const [dy, dm, dd] = rawDate.split('-');
+    const fmtDate = `${dd}/${dm}/${dy.slice(-2)}`;
+
+    // Display ref: docket shows docketNo, AWB shows awbNo
+    const displayRef = dktBk?.docketNo ?? awbBk?.awbNo ?? ref;
+
     lineRows.push({
-      origin: m?.[1] ?? (booking ? (awbBk?.origin ?? dktBk?.origin ?? '') : ''),
-      dest:   m?.[2] ?? (booking ? (awbBk?.destination ?? dktBk?.destination ?? '') : ''),
+      origin: originVal,
+      dest:   destVal,
       boxes, chgWt, rate,
       freight: fmt(line.amount),
-      awbNo: ref,
-      date: (() => { const [y,m,d] = inv.invoiceDate.split('-'); return `${d}/${m}/${y.slice(-2)}`; })(),
+      awbNo: displayRef,
+      date: fmtDate,
       tsp: tspAmt > 0 ? fmt(tspAmt) : '0.00',
       taxable: fmt(line.amount + tspAmt),
     });

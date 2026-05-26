@@ -102,9 +102,30 @@ export async function generateInvoiceFromDocket(docketId: string) {
   const gstTotal = subtotal * bk.gstRate / 100;
   const grandTotal = subtotal + gstTotal;
 
+  const weight    = bk.weight ?? 0;
+  const pieces    = bk.pieces ?? 1;
+  // Compute per-kg rate: if weight > 0 use rateFittedAmount / weight, else treat rateFittedAmount as flat
+  const perKgRate = weight > 0 ? parseFloat((baseAmt / weight).toFixed(4)) : 0;
+
+  const freightDesc = weight > 0
+    ? `Docket freight ${bk.origin || ''}→${bk.destination || ''} · ${bk.description || ''} · ${pieces} pcs · ${weight} kg @ ₹${perKgRate}/kg`
+    : `Docket freight ${bk.origin || ''}→${bk.destination || ''} · ${bk.description || ''}${pieces > 1 ? ` · ${pieces} pcs` : ''}`;
+
   const lines = [
-    { description: `Docket freight ${bk.origin || ''}→${bk.destination || ''} · ${bk.description || ''}`, qty: 1, rate: baseAmt, amount: baseAmt, taxRate: bk.gstRate, taxAmount: baseAmt * bk.gstRate / 100, lineTotal: baseAmt * (1 + bk.gstRate / 100) },
-    ...(markupAmt > 0 ? [{ description: 'Handling markup', qty: 1, rate: markupAmt, amount: markupAmt, taxRate: bk.gstRate, taxAmount: markupAmt * bk.gstRate / 100, lineTotal: markupAmt * (1 + bk.gstRate / 100) }] : []),
+    {
+      description: freightDesc,
+      qty:    weight > 0 ? weight : 1,
+      rate:   weight > 0 ? perKgRate : baseAmt,
+      amount: baseAmt,
+      taxRate: bk.gstRate,
+      taxAmount: baseAmt * bk.gstRate / 100,
+      lineTotal: baseAmt * (1 + bk.gstRate / 100),
+    },
+    ...(markupAmt > 0 ? [{
+      description: `Handling markup · Docket ${bk.docketNo}`,
+      qty: 1, rate: markupAmt, amount: markupAmt,
+      taxRate: bk.gstRate, taxAmount: markupAmt * bk.gstRate / 100, lineTotal: markupAmt * (1 + bk.gstRate / 100),
+    }] : []),
   ];
 
   const [invoice] = await prisma.$transaction([
