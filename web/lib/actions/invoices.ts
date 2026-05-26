@@ -104,12 +104,28 @@ export async function generateInvoiceFromDocket(docketId: string) {
 
   const weight    = bk.weight ?? 0;
   const pieces    = bk.pieces ?? 1;
-  // Compute per-kg rate: if weight > 0 use rateFittedAmount / weight, else treat rateFittedAmount as flat
+  // Compute per-kg rate: if weight > 0 use rateFittedAmount / weight, else treat as flat
   const perKgRate = weight > 0 ? parseFloat((baseAmt / weight).toFixed(4)) : 0;
 
+  // Embed all fields as JSON metadata so the invoice editor can parse them without a DB lookup
+  const meta = JSON.stringify({
+    docketNo:    bk.docketNo,
+    origin:      bk.origin      ?? '',
+    destination: bk.destination ?? '',
+    weight:      weight,
+    pieces:      pieces,
+    rate:        perKgRate,
+    freight:     baseAmt,
+    bookingDate: bk.bookingDate,
+    description: bk.description ?? '',
+    consignee:   bk.consignee   ?? '',
+    wayBillNo:   bk.wayBillNo   ?? '',
+    methodOfPacking: bk.methodOfPacking ?? '',
+  });
+
   const freightDesc = weight > 0
-    ? `Docket freight ${bk.origin || ''}→${bk.destination || ''} · ${bk.description || ''} · ${pieces} pcs · ${weight} kg @ ₹${perKgRate}/kg`
-    : `Docket freight ${bk.origin || ''}→${bk.destination || ''} · ${bk.description || ''}${pieces > 1 ? ` · ${pieces} pcs` : ''}`;
+    ? `Docket freight ${bk.origin || ''}→${bk.destination || ''} · ${bk.description || ''} · ${pieces} pcs · ${weight} kg @ ₹${perKgRate}/kg ||META||${meta}`
+    : `Docket freight ${bk.origin || ''}→${bk.destination || ''} · ${bk.description || ''}${pieces > 1 ? ` · ${pieces} pcs` : ''} ||META||${meta}`;
 
   const lines = [
     {
@@ -365,13 +381,80 @@ export async function deleteInvoices(ids: string[]) {
   const session = await requireAuth();
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };
   if (!ids.every(id => typeof id === 'string' && id.length > 0)) return { error: 'Invalid IDs' };
-  await prisma.$transaction([
-    prisma.outstandingEntry.deleteMany({ where: { invoiceId: { in: ids } } }),
-    prisma.invoice.deleteMany({ where: { id: { in: ids }, status: { notIn: ['PAID', 'FINALIZED'] } } }),
-  ]);
-  serverLog('info', 'invoice.deleted', { userId: session.user.id, count: ids.length });
+
+  // Fetch invoice metadata BEFORE deletion so we can unlink bookings
+  const invoicesToDelete = await prisma.invoice.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, invoiceNo: true, bookingRef: true, bookingType: true, status: true },
+  });
+
+  // Block deletion of PAID invoices (they have receipts linked)
+  const paid = invoicesToDelete.filter(i => i.status === 'PAID');
+  if (paid.length > 0) {
+    return { error: `Cannot delete PAID invoices: ${paid.map(i => i.invoiceNo).join(', ')}. Reverse payments first.` };
+  }
+
+  // Collect deletable IDs (exclude PAID — FINALIZED can be deleted but warns user via UI)
+  const deletableIds = invoicesToDelete.map(i => i.id);
+  if (deletableIds.length === 0) return { error: 'No deletable invoices selected' };
+
+  // Collect AWB refs and Docket refs to reset to BOOKED
+  const awbRefsToReset: string[] = [];
+  const docketRefsToReset: string[] = [];
+
+  for (const inv of invoicesToDelete) {
+    // bookingRef for COMBINED is a comma-separated list of refs mixed AWB + docket
+    const refs = inv.bookingRef.split(',').map((r: string) => r.trim()).filter(Boolean);
+    if (inv.bookingType === 'AWB') {
+      awbRefsToReset.push(...refs);
+    } else if (inv.bookingType === 'DOCKET') {
+      docketRefsToReset.push(...refs);
+    } else if (inv.bookingType === 'COMBINED') {
+      // For combined, push all refs to both arrays — DB will only update matches
+      awbRefsToReset.push(...refs);
+      docketRefsToReset.push(...refs);
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // Delete outstanding entries and invoices
+    await tx.outstandingEntry.deleteMany({ where: { invoiceId: { in: deletableIds } } });
+    await tx.invoice.deleteMany({ where: { id: { in: deletableIds } } });
+
+    // Reset AWB bookings: INVOICED → BOOKED
+    if (awbRefsToReset.length > 0) {
+      await tx.awbBooking.updateMany({
+        where: { awbNo: { in: awbRefsToReset }, status: 'INVOICED' },
+        data: { status: 'BOOKED' },
+      });
+    }
+
+    // Reset Docket bookings: INVOICED → BOOKED
+    if (docketRefsToReset.length > 0) {
+      await tx.docketBooking.updateMany({
+        where: { docketNo: { in: docketRefsToReset }, status: 'INVOICED' },
+        data: { status: 'BOOKED' },
+      });
+    }
+  });
+
+  serverLog('info', 'invoice.deleted', { userId: session.user.id, ids: deletableIds, awbReset: awbRefsToReset, docketReset: docketRefsToReset });
+  await recordAuditLog({
+    userId: session.user.id,
+    userEmail: session.user.email ?? null,
+    action: 'INVOICE_DELETED',
+    resource: 'INVOICE',
+    resourceId: deletableIds.join(','),
+    details: `${deletableIds.length} invoice(s) deleted; AWB reset: [${awbRefsToReset.join(', ')}]; Docket reset: [${docketRefsToReset.join(', ')}]`,
+  });
+
+  // Revalidate all affected pages so the generate-invoice dropdown refreshes
   revalidatePath('/dashboard/invoices');
-  return { success: true };
+  revalidatePath('/dashboard/bookings/awb');
+  revalidatePath('/dashboard/bookings/dockets');
+  revalidatePath('/dashboard/outstanding');
+
+  return { success: true, deleted: deletableIds.length, awbReset: awbRefsToReset.length, docketReset: docketRefsToReset.length };
 }
 
 export async function uninvoiceAwb(awbId: string) {

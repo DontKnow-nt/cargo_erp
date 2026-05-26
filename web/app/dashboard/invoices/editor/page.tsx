@@ -699,30 +699,61 @@ img{max-width:100%;object-fit:contain}
   const useLines = mainLines.length > 0 ? mainLines : inv.lines;
 
   useLines.forEach((line, i) => {
-    const m = line.description.match(/([A-Z]{3})[→\->]([A-Z]{3})/i);
-    const rm = line.description.match(/@\s*₹?([\d.]+)/i);
+    // ── 1. Try to extract embedded ||META|| JSON (new docket invoices) ────────
+    const metaMatch = line.description.match(/\|\|META\|\|(.+)$/);
+    if (metaMatch) {
+      try {
+        const meta = JSON.parse(metaMatch[1]) as {
+          docketNo: string; origin: string; destination: string;
+          weight: number; pieces: number; rate: number; freight: number;
+          bookingDate: string; description: string;
+          consignee: string; wayBillNo: string; methodOfPacking: string;
+        };
+        const markupLine = markupLines.find(ml =>
+          ml.description.includes(meta.docketNo) ||
+          ml.description.includes(inv.bookingRef.split(',')[i]?.trim() ?? '')
+        );
+        const tspAmt = markupLine?.amount ?? 0;
+        if (mainLines.length > 0) runningTSP += tspAmt;
+        const [dy, dm, dd] = (meta.bookingDate || inv.invoiceDate).split('-');
+        lineRows.push({
+          origin:  meta.origin,
+          dest:    meta.destination,
+          boxes:   String(meta.pieces || 1),
+          chgWt:   meta.weight > 0 ? String(meta.weight) : '',
+          rate:    meta.rate > 0    ? String(meta.rate)   : '',
+          freight: fmt(line.amount),
+          awbNo:   meta.docketNo,
+          date:    `${dd}/${dm}/${dy.slice(-2)}`,
+          tsp:     tspAmt > 0 ? fmt(tspAmt) : '0.00',
+          taxable: fmt(line.amount + tspAmt),
+        });
+        return; // skip fallback logic
+      } catch { /* fall through to legacy path */ }
+    }
+
+    // ── 2. Legacy path: regex + booking lookup ────────────────────────────────
+    const m    = line.description.match(/([A-Z]{3})[→\->]([A-Z]{3})/i);
+    const rm   = line.description.match(/@\s*₹?([\d.]+)/i);
     const awbM = line.description.match(/\b(\d{3}-\d{7,8})\b/);
     const refs = inv.bookingRef.split(',');
-    const ref = (awbM?.[1] ?? refs[i]?.trim() ?? refs[0]?.trim() ?? '').trim();
+    const ref  = (awbM?.[1] ?? refs[i]?.trim() ?? refs[0]?.trim() ?? '').trim();
 
-    // Look up actual booking to get weight & pieces
-    const awbBk = awbBookings.find(a => a.awbNo === ref || a.awbNo === awbM?.[1]);
-    // For dockets: match by docketNo from bookingRef
+    const awbBk  = awbBookings.find(a => a.awbNo === ref || a.awbNo === awbM?.[1]);
     const dktRef = refs[i]?.trim() ?? refs[0]?.trim() ?? '';
-    const dktBk = !awbBk ? docketBookings.find(d => d.docketNo === dktRef || d.docketNo === ref) : undefined;
+    const dktBk  = !awbBk ? docketBookings.find(d => d.docketNo === dktRef || d.docketNo === ref) : undefined;
     const booking = awbBk ?? dktBk;
 
-    const boxes  = booking
+    const boxes   = booking
       ? String(awbBk ? awbBk.pieces : (dktBk?.pieces ?? 1))
       : String(Math.round(line.qty));
 
     const dktWeight = dktBk?.weight ?? 0;
     const awbWeight = awbBk?.weight ?? 0;
-    const chgWt  = booking
+    const chgWt = booking
       ? String(awbBk ? awbWeight : (dktWeight > 0 ? dktWeight : ''))
       : (line.description.match(/(\d+(?:\.\d+)?)\s*kg/i)?.[1] ?? '');
 
-    // Rate: for AWB use baseRate or regex; for docket compute rateFittedAmount/weight if weight>0
     let rate: string;
     if (awbBk) {
       rate = rm?.[1] ?? String(awbBk.baseRate);
@@ -730,24 +761,17 @@ img{max-width:100%;object-fit:contain}
       const dktRate = dktWeight > 0
         ? parseFloat((dktBk.rateFittedAmount / dktWeight).toFixed(2))
         : 0;
-      // Also check description for embedded rate (@ ₹XX/kg)
       rate = rm?.[1] ?? (dktRate > 0 ? String(dktRate) : '');
     } else {
       rate = rm?.[1] ?? String(line.rate);
     }
 
     const myMarkup = markupLines.find(ml => ml.description.includes(ref) || ml.description.includes(dktRef));
-    const tspAmt = myMarkup?.amount ?? 0;
+    const tspAmt   = myMarkup?.amount ?? 0;
     if (mainLines.length > 0) runningTSP += tspAmt;
 
-    // Origin / destination: prefer direct booking fields, then regex from description
     const originVal = awbBk?.origin ?? dktBk?.origin ?? m?.[1] ?? '';
     const destVal   = awbBk?.destination ?? dktBk?.destination ?? m?.[2] ?? '';
-
-    // Date: use bookingDate from docket/AWB if available, else invoiceDate
-    const rawDate = dktBk?.bookingDate ?? awbBk?.bookingDate ?? inv.invoiceDate;
-    const [dy, dm, dd] = rawDate.split('-');
-    const fmtDate = `${dd}/${dm}/${dy.slice(-2)}`;
 
     // Display ref: docket shows docketNo, AWB shows awbNo
     const displayRef = dktBk?.docketNo ?? awbBk?.awbNo ?? ref;
@@ -758,7 +782,7 @@ img{max-width:100%;object-fit:contain}
       boxes, chgWt, rate,
       freight: fmt(line.amount),
       awbNo: displayRef,
-      date: fmtDate,
+      date: (() => { const rawDate = dktBk?.bookingDate ?? awbBk?.bookingDate ?? inv.invoiceDate; const [ry,rm2,rd] = rawDate.split('-'); return `${rd}/${rm2}/${ry.slice(-2)}`; })(),
       tsp: tspAmt > 0 ? fmt(tspAmt) : '0.00',
       taxable: fmt(line.amount + tspAmt),
     });
