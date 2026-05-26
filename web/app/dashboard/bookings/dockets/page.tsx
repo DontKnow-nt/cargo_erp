@@ -773,7 +773,7 @@ function DocketEditModal({ booking, parties, editForm, setEditForm, onSave, onCl
         </div>
         {inp('Notes','notes')}
         <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,margin:'16px 0'}}>
-          {[{l:'Rate',v:`₹${rate.toFixed(0)}`},{l:'Markup',v:`₹${m.toFixed(0)}`},{l:`GST ${g}%`,v:`₹${gstAmt.toFixed(0)}`},{l:'Total',v:`₹${total.toFixed(0)}`,hi:true}].map(s=>(
+          {[{l:'Freight',v:`₹${freight.toFixed(0)}`},{l:'Markup',v:`₹${m.toFixed(0)}`},{l:`GST ${g}%`,v:`₹${gstAmt.toFixed(0)}`},{l:'Total',v:`₹${total.toFixed(0)}`,hi:true}].map(s=>(
             <div key={s.l} style={{padding:'8px 12px',background:s.hi?'var(--accent-subtle)':'var(--surface-sunken)',border:`1px solid ${s.hi?'var(--warning-border)':'var(--border)'}`,borderRadius:8}}>
               <div style={{fontSize:10,color:'var(--text-muted)',textTransform:'uppercase'}}>{s.l}</div>
               <div style={{fontSize:14,fontWeight:800,fontFamily:'var(--font-mono)',color:s.hi?'var(--accent-dark)':'var(--text-primary)'}}>{s.v}</div>
