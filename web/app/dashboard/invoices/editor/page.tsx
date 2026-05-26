@@ -252,6 +252,7 @@ function InvoiceEditorInner() {
   const paperRef = useRef<HTMLDivElement>(null);
 
   const [saving, setSaving] = useState(false);
+  const [invoiceFormat, setInvoiceFormat] = useState<'format1'|'format2'>('format1');
 
   const [banks, setBanks] = useState<{id:string;bank_name:string;account_name:string;account_number:string;ifsc:string;branch:string;is_default:number}[]>([]);
   const [selectedBankId, setSelectedBankId] = useState('');
@@ -355,7 +356,7 @@ function InvoiceEditorInner() {
     const paper = paperRef.current;
     if (!paper) return;
 
-    function recalc() {
+    function recalcFormat1() {
       const awbBody = paper!.querySelector<HTMLTableSectionElement>('#awb-body tbody');
       if (!awbBody) return;
       const rows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')].filter(r => !r.dataset.grandTotal);
@@ -422,6 +423,73 @@ function InvoiceEditorInner() {
         setGT(13, totalTaxable.toFixed(2));
       }
 
+      return totalTaxable;
+    }
+
+    function recalcFormat2() {
+      const awbBody = paper!.querySelector<HTMLTableSectionElement>('#awb-body tbody');
+      if (!awbBody) return;
+      const rows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')].filter(r => !r.dataset.grandTotal);
+
+      // Format 2 columns: 0=S.No, 1=Date, 2=Docket No, 3=Invoice no, 4=Origin, 5=Origin Airport, 6=Dest, 7=Dest Airport, 8=Box, 9=Weight, 10=Rate, 11=Freight, 12=ODA, 13=Docket chg, 14=Amount
+      let totalFreight = 0, totalODA = 0, totalDocketChg = 0, totalAmount = 0;
+
+      rows.forEach(row => {
+        const cells = row.querySelectorAll<HTMLTableCellElement>('td');
+        if (cells.length < 15) return;
+        const getCellText = (idx: number) => cells[idx]?.querySelector('[contenteditable]')?.textContent?.trim() ?? cells[idx]?.textContent?.trim() ?? '';
+        const parseNum = (s: string) => { const n = parseFloat(s.replace(/,/g,'')); return isNaN(n) ? null : n; };
+        const setCellText = (idx: number, val: string) => {
+          const ce = cells[idx]?.querySelector('[contenteditable]') as HTMLElement | null;
+          if (ce) ce.textContent = val;
+        };
+
+        const weight = parseNum(getCellText(9)) ?? 0;
+        const rateRaw = getCellText(10);
+        const rateNum = parseNum(rateRaw);
+
+        // Freight = Weight × Rate
+        let freight = parseNum(getCellText(11)) ?? 0;
+        if (rateNum !== null && weight > 0) {
+          freight = parseFloat((weight * rateNum).toFixed(2));
+          setCellText(11, freight.toFixed(2));
+        }
+
+        const oda = parseNum(getCellText(12)) ?? 0;
+        const docketChg = parseNum(getCellText(13)) ?? 0;
+
+        // Amount = Freight + ODA + Docket chg
+        const amount = parseFloat((freight + oda + docketChg).toFixed(2));
+        setCellText(14, amount.toFixed(2));
+
+        totalFreight   += freight;
+        totalODA       += oda;
+        totalDocketChg += docketChg;
+        totalAmount    += amount;
+      });
+
+      // Update grand total row
+      const gtRow = awbBody.querySelector<HTMLTableRowElement>('[data-grand-total]');
+      if (gtRow) {
+        const gcells = gtRow.querySelectorAll<HTMLTableCellElement>('td');
+        const setGT = (idx: number, val: string) => {
+          const ce = gcells[idx]?.querySelector('[contenteditable]') as HTMLElement | null;
+          if (ce) ce.textContent = val;
+          else if (gcells[idx]) gcells[idx].textContent = val;
+        };
+        setGT(11, totalFreight.toFixed(2));
+        setGT(12, totalODA.toFixed(2));
+        setGT(13, totalDocketChg.toFixed(2));
+        setGT(14, totalAmount.toFixed(2));
+      }
+
+      return totalAmount;
+    }
+
+    function recalc() {
+      const isF2 = !!paper!.querySelector('[data-format2]');
+      const totalTaxable = isF2 ? (recalcFormat2() ?? 0) : (recalcFormat1() ?? 0);
+
       // Update tax summary — detect GST structure from existing content
       const taxSummaryEl = paper!.querySelector<HTMLElement>('[data-tax-summary]');
       if (taxSummaryEl) {
@@ -450,7 +518,7 @@ function InvoiceEditorInner() {
     awbTable.addEventListener('input', recalc);
     recalc(); // sync on initial load / after HTML restore
     return () => awbTable.removeEventListener('input', recalc);
-  }, [inv?.id]); // re-attach when invoice changes
+  }, [inv?.id, invoiceFormat]); // re-attach when invoice or format changes
 
   async function handleSave() {
     if (!paperRef.current || !inv) return;
@@ -585,6 +653,14 @@ img{max-width:100%;object-fit:contain}
         <span style={{ fontWeight: 700, fontSize: 14 }}>Invoice Editor — <span style={{ fontFamily: 'monospace', color: '#2563eb' }}>{inv.invoiceNo}</span></span>
         <span style={{ fontSize: 12, color: '#6b7280' }}>{inv.partyName}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            <span style={{ fontWeight: 600, color: '#374151' }}>📋 Format:</span>
+            <select value={invoiceFormat} onChange={e => setInvoiceFormat(e.target.value as 'format1'|'format2')}
+              style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>
+              <option value="format1">Format 1 (Default)</option>
+              <option value="format2">Format 2 (Docket)</option>
+            </select>
+          </span>
           {banks.length > 0 && (
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
               <span style={{ fontWeight: 600, color: '#374151' }}>🏦 Bank:</span>
@@ -631,7 +707,7 @@ img{max-width:100%;object-fit:contain}
 
             {/* ── HEADER: Logo + Company Info ── */}
             <tr>
-              <td colSpan={14} style={{ border: '1px solid #000', padding: '6px 10px' }}>
+              <td colSpan={invoiceFormat === 'format2' ? 15 : 14} style={{ border: '1px solid #000', padding: '6px 10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <img src="/logo.png" alt="Triveni" style={{ width: 64, height: 64, objectFit: 'contain', flexShrink: 0 }} />
                   <div style={{ flex: 1, textAlign: 'center' }}>
@@ -649,14 +725,14 @@ img{max-width:100%;object-fit:contain}
 
             {/* ── TAX INVOICE title ── */}
             <tr>
-              <td colSpan={14} style={{ border: '1px solid #000', padding: '4px', textAlign: 'center', fontWeight: 700, fontSize: 13, textDecoration: 'underline' }}>
+              <td colSpan={invoiceFormat === 'format2' ? 15 : 14} style={{ border: '1px solid #000', padding: '4px', textAlign: 'center', fontWeight: 700, fontSize: 13, textDecoration: 'underline' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline: 'none', textAlign: 'center', fontWeight: 700, fontSize: 13, textDecoration: 'underline', fontFamily: 'Arial, sans-serif' }}>TAX INVOICE</div>
               </td>
             </tr>
 
             {/* ── Party Info (left) + Bill Info (right) ── */}
             <tr>
-              <td colSpan={9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
+              <td colSpan={invoiceFormat === 'format2' ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
                   {`M/s : ${inv.partyName}\nGSTIN : ${party?.gstin || '—'}\nAddress : ${party?.billingAddress || '—'}`}
                 </div>
@@ -670,13 +746,15 @@ img{max-width:100%;object-fit:contain}
 
             {/* ── SAC Code ── */}
             <tr>
-              <td colSpan={14} style={{ border: '1px solid #000', padding: '3px 7px', fontSize: 10, fontWeight: 700, textAlign: 'center' }}>
+              <td colSpan={invoiceFormat === 'format2' ? 15 : 14} style={{ border: '1px solid #000', padding: '3px 7px', fontSize: 10, fontWeight: 700, textAlign: 'center' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline: 'none', textAlign: 'center', fontWeight: 700, fontFamily: 'Arial, sans-serif', fontSize: 10 }}>SAC Code : 996531</div>
               </td>
             </tr>
 
             {/* ── AWB Table (own full-width table so columns always fill width) ── */}
             </tbody></table>
+
+            {invoiceFormat === 'format1' ? (
             <table id="awb-body" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
               <tbody>
               <tr style={{ background: '#f0f0f0' }}>
@@ -723,17 +801,90 @@ img{max-width:100%;object-fit:contain}
               </tr>
               </tbody>
             </table>
+            ) : (
+            /* ── FORMAT 2: Docket-style table ── */
+            <table id="awb-body" data-format2="1" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+              <tbody>
+              <tr style={{ background: '#f0f0f0' }}>
+                {['S.No','Date','Docket No.','Invoice no','Origin','Origin\nAirport','Dest','Destination\nAirport','Box','Weight','Rate','Freight','ODA','Docket\nchg','Amount'].map((h, i) => (
+                  <td key={i} style={{ border: '1px solid #000', padding: '4px 5px', fontSize: 9.5, textAlign: 'center', fontWeight: 700, whiteSpace: 'pre-wrap', background: '#f0f0f0' }}>
+                    <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 14, fontFamily: 'Arial, sans-serif', fontSize: 9.5, fontWeight: 700, textAlign: 'center', whiteSpace: 'pre-wrap' }}>{h}</div>
+                  </td>
+                ))}
+              </tr>
+              {lineRows.map((row, i) => {
+                // For Format 2: find linked docket if available
+                const awbBk = awbBookings.find(a => a.awbNo === row.awbNo);
+                const linkedDkt = awbBk ? docketBookings.find(d => d.linkedAwbId === awbBk.id) : docketBookings.find(d => d.docketNo === row.awbNo);
+                const docketNo = linkedDkt?.docketNo ?? '';
+                // Origin airport / Destination airport from the booking route (city names)
+                const originCity = row.origin;
+                const destCity = row.dest;
+                // Find airport names from the bookings
+                const originAirport = linkedDkt?.origin ?? row.origin;
+                const destAirport = linkedDkt?.destination ?? row.dest;
+                return (
+                <tr key={i}>
+                  <EC style={{ textAlign: 'center' }}>{i + 1}</EC>
+                  <EC style={{ textAlign: 'center' }}>{row.date}</EC>
+                  <EC style={{ textAlign: 'center' }}>{docketNo}</EC>
+                  <EC style={{ textAlign: 'center' }}>{row.awbNo}</EC>
+                  <EC style={{ textAlign: 'center' }}>{originCity}</EC>
+                  <EC style={{ textAlign: 'center' }}>{originAirport}</EC>
+                  <EC style={{ textAlign: 'center' }}>{destCity}</EC>
+                  <EC style={{ textAlign: 'center' }}>{destAirport}</EC>
+                  <EC style={{ textAlign: 'center' }}>{row.boxes}</EC>
+                  <EC style={{ textAlign: 'right' }}>{row.chgWt}</EC>
+                  <EC style={{ textAlign: 'right' }}>{row.rate}</EC>
+                  <EC style={{ textAlign: 'right' }}>{row.freight}</EC>
+                  <EC style={{ textAlign: 'right' }}>0.00</EC>
+                  <EC style={{ textAlign: 'right' }}>0.00</EC>
+                  <EC style={{ textAlign: 'right' }}>{row.taxable}</EC>
+                </tr>
+                );
+              })}
+              {/* ── Empty rows for manual entry ── */}
+              {Array.from({ length: Math.max(0, 5 - lineRows.length) }).map((_, i) => (
+                <tr key={`empty-${i}`}>
+                  {Array.from({ length: 15 }).map((_, j) => (
+                    <EC key={j} style={{ textAlign: j >= 9 ? 'right' : 'center' }}>{''}</EC>
+                  ))}
+                </tr>
+              ))}
+              {/* ── TOTAL Row ── */}
+              <tr style={{ background: '#f8f8f8', fontWeight: 700 }} data-grand-total="1">
+                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
+                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
+                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8', fontWeight: 700 }}>
+                  <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontFamily:'Arial,sans-serif', fontSize:10, fontWeight:700 }}>TOTAL</div>
+                </td>
+                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
+                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
+                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
+                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
+                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
+                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
+                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
+                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
+                <EC style={{ textAlign: 'right', background: '#f8f8f8', fontWeight: 700 }}>{totalFreight}</EC>
+                <EC style={{ textAlign: 'right', background: '#f8f8f8', fontWeight: 700 }}>0.00</EC>
+                <EC style={{ textAlign: 'right', background: '#f8f8f8', fontWeight: 700 }}>0.00</EC>
+                <EC style={{ textAlign: 'right', background: '#f8f8f8', fontWeight: 700 }}>{fmt(inv.subtotal)}</EC>
+              </tr>
+              </tbody>
+            </table>
+            )}
             <table style={{ borderCollapse: 'collapse', width: '100%' }}><tbody>
 
             {/* ── Bank (left) + Tax Summary (right) ── */}
             <tr>
-              <td colSpan={9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
+              <td colSpan={invoiceFormat === 'format2' ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
                 <div style={{ fontSize: 10, marginBottom: 4 }}><strong>Amount in Words :</strong> <span data-words contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>Rupees {amtWords}</span></div>
                 <div contentEditable suppressContentEditableWarning data-bank-detail style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap', marginTop: 6 }}>
                   {bankText}
                 </div>
               </td>
-              <td colSpan={5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
+              <td colSpan={invoiceFormat === 'format2' ? 5 : 5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
                 <div data-tax-summary="1" contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
                   {taxSummary}
                 </div>
@@ -742,7 +893,7 @@ img{max-width:100%;object-fit:contain}
 
             {/* ── Bank footer line ── */}
             <tr>
-              <td colSpan={14} style={{ border: '1px solid #000', padding: '3px 7px', fontSize: 9, textAlign: 'center' }}>
+              <td colSpan={invoiceFormat === 'format2' ? 15 : 14} style={{ border: '1px solid #000', padding: '3px 7px', fontSize: 9, textAlign: 'center' }}>
                 <div contentEditable suppressContentEditableWarning data-bank-footer style={{ outline: 'none', fontFamily: 'Arial, sans-serif', fontSize: 9, whiteSpace: 'pre-wrap' }}>
                   {bankFooter}
                 </div>
@@ -751,12 +902,12 @@ img{max-width:100%;object-fit:contain}
 
             {/* ── Notes (left) + Signature (right) ── */}
             <tr>
-              <td colSpan={9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
+              <td colSpan={invoiceFormat === 'format2' ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 9, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
                   {notesText}
                 </div>
               </td>
-              <td colSpan={5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'bottom', textAlign: 'right' }}>
+              <td colSpan={invoiceFormat === 'format2' ? 5 : 5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'bottom', textAlign: 'right' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline: 'none', fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap', textAlign: 'right' }}>
                   {`For TRIVENI CARGO EXPRESS INDIA PVT LTD\n\n\n\nAuthorised Signatory`}
                 </div>
