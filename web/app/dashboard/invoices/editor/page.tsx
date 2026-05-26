@@ -413,7 +413,7 @@ function InvoiceEditorInner() {
     function recalcFormat1() {
       const awbBody = paper!.querySelector<HTMLTableSectionElement>('#awb-body tbody');
       if (!awbBody) return;
-      const rows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')].filter(r => !r.dataset.grandTotal);
+      const rows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')].filter(r => !r.dataset.grandTotal && r !== awbBody.firstElementChild);
 
       let totalBoxes = 0, totalChgWt = 0, totalFreight = 0, totalAwbDo = 0, totalCarrier = 0, totalForwrd = 0, totalTsp = 0, totalTaxable = 0;
 
@@ -426,8 +426,19 @@ function InvoiceEditorInner() {
           if (ce) ce.textContent = val;
         };
 
-        const boxes = parseNum(getCellText(5)) ?? 0;
-        const chgWt = parseNum(getCellText(6)) ?? 0;
+        const awbNo = getCellText(2);
+        const boxesText = getCellText(5);
+        const chgWtText = getCellText(6);
+
+        // Skip completely blank padded rows
+        if (!awbNo && !boxesText && !chgWtText) {
+          setCellText(8, '');
+          setCellText(13, '');
+          return;
+        }
+
+        const boxes = parseNum(boxesText) ?? 0;
+        const chgWt = parseNum(chgWtText) ?? 0;
         const rateRaw = getCellText(7);
         const rateNum = parseNum(rateRaw); // null if 'na' or empty
 
@@ -482,10 +493,10 @@ function InvoiceEditorInner() {
     function recalcFormat2() {
       const awbBody = paper!.querySelector<HTMLTableSectionElement>('#awb-body tbody');
       if (!awbBody) return;
-      const rows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')].filter(r => !r.dataset.grandTotal);
+      const rows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')].filter(r => !r.dataset.grandTotal && r !== awbBody.firstElementChild);
 
       // Format 2 columns: 0=S.No, 1=Date, 2=Docket No, 3=Invoice no, 4=Origin, 5=Origin Airport, 6=Dest, 7=Dest Airport, 8=Box, 9=Weight, 10=Rate, 11=Freight, 12=ODA, 13=Docket chg, 14=Amount
-      let totalFreight = 0, totalODA = 0, totalDocketChg = 0, totalAmount = 0;
+      let totalBox = 0, totalWeight = 0, totalFreight = 0, totalODA = 0, totalDocketChg = 0, totalAmount = 0;
 
       rows.forEach(row => {
         const cells = row.querySelectorAll<HTMLTableCellElement>('td');
@@ -496,7 +507,19 @@ function InvoiceEditorInner() {
           if (ce) ce.textContent = val;
         };
 
-        const weight = parseNum(getCellText(9)) ?? 0;
+        const docketNo = getCellText(2);
+        const weightText = getCellText(9);
+        const rateText = getCellText(10);
+
+        // Skip completely blank padded rows
+        if (!docketNo && !weightText && !rateText) {
+          setCellText(11, '');
+          setCellText(14, '');
+          return;
+        }
+
+        const box = parseNum(getCellText(8)) ?? 0;
+        const weight = parseNum(weightText) ?? 0;
         const rateRaw = getCellText(10);
         const rateNum = parseNum(rateRaw);
 
@@ -514,6 +537,8 @@ function InvoiceEditorInner() {
         const amount = parseFloat((freight + oda + docketChg).toFixed(2));
         setCellText(14, amount.toFixed(2));
 
+        totalBox       += box;
+        totalWeight    += weight;
         totalFreight   += freight;
         totalODA       += oda;
         totalDocketChg += docketChg;
@@ -529,6 +554,8 @@ function InvoiceEditorInner() {
           if (ce) ce.textContent = val;
           else if (gcells[idx]) gcells[idx].textContent = val;
         };
+        setGT(8,  totalBox.toString());
+        setGT(9,  totalWeight.toFixed(2));
         setGT(11, totalFreight.toFixed(2));
         setGT(12, totalODA.toFixed(2));
         setGT(13, totalDocketChg.toFixed(2));
@@ -541,7 +568,7 @@ function InvoiceEditorInner() {
     function recalcFormat3() {
       const awbBody = paper!.querySelector<HTMLTableSectionElement>('#awb-body tbody');
       if (!awbBody) return;
-      const rows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')].filter(r => !r.dataset.grandTotal);
+      const rows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')].filter(r => !r.dataset.grandTotal && r !== awbBody.firstElementChild);
       // Cols: 0=S.No, 1=Date, 2=AWB NO, 3=Invoice, 4=Sector, 5=Pkt, 6=Wt, 7=Freight, 8=F/C, 9=GMR, 10=TSP, 11=Clearance, 12=Awb Fees, 13=H Chge, 14=Amount
       let totalPkt=0, totalWt=0, totalFreight=0, totalFC=0, totalGMR=0, totalTSP=0, totalClearance=0, totalAwbFees=0, totalHChge=0, totalAmount=0;
 
@@ -554,8 +581,18 @@ function InvoiceEditorInner() {
           if (ce) ce.textContent = val;
         };
 
-        const pkt       = parseNum(getCellText(5))  ?? 0;
-        const wt        = parseNum(getCellText(6))  ?? 0;
+        const awbNo = getCellText(2);
+        const pktText = getCellText(5);
+        const wtText = getCellText(6);
+
+        // Skip completely blank padded rows
+        if (!awbNo && !pktText && !wtText) {
+          setCellText(14, '');
+          return;
+        }
+
+        const pkt       = parseNum(pktText)  ?? 0;
+        const wt        = parseNum(wtText)  ?? 0;
         const freight   = parseNum(getCellText(7))  ?? 0;
         const fc        = parseNum(getCellText(8))  ?? 0;
         const gmr       = parseNum(getCellText(9))  ?? 0;
