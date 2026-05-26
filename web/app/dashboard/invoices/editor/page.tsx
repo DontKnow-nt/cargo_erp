@@ -365,6 +365,51 @@ function InvoiceEditorInner() {
     const paper = paperRef.current;
     if (!paper) return;
 
+    function isNumericCell(td: HTMLTableCellElement): boolean {
+      const tr = td.parentElement;
+      if (!tr) return false;
+      const tbody = tr.parentElement;
+      if (!tbody || tbody.tagName.toLowerCase() !== 'tbody') return false;
+      
+      // Skip header row
+      if (tr === tbody.firstElementChild) return false;
+      
+      // Skip grand total row
+      if (tr.hasAttribute('data-grand-total')) return false;
+      
+      const table = tbody.closest('table');
+      if (!table) return false;
+      
+      const colIdx = Array.from(tr.children).indexOf(td);
+      
+      if (table.hasAttribute('data-format2')) {
+        // Format 2: Box (8), Weight (9), Rate (10), Freight (11), ODA (12), Docket chg (13), Amount (14)
+        return [8, 9, 10, 11, 12, 13, 14].includes(colIdx);
+      } else if (table.hasAttribute('data-format3')) {
+        // Format 3: Pkt (5), Wt (6), Freight (7), F/C (8), GMR (9), TSP (10), Clearance (11), Awb Fees (12), H Chge (13), Amount (14)
+        return [5, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(colIdx);
+      } else {
+        // Format 1: Boxes (5), Charg. Weight (6), Rate (7), Freight (8), AWB & DO (9), Due Carrier (10), Forwrd & Others (11), TSP & Others (12), Taxable Amount (13)
+        return [5, 6, 7, 8, 9, 10, 11, 12, 13].includes(colIdx);
+      }
+    }
+
+    const parseNum = (s: string) => {
+      const clean = s.replace(/,/g, '').trim();
+      if (!clean) return null;
+      // Evaluate mathematical formulas (BODMAS + %)
+      if (/[+\-*/%]/.test(clean) && /^[\d\s+\-*/().%]+$/.test(clean)) {
+        try {
+          const normalized = clean.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');
+          // eslint-disable-next-line no-new-func
+          const result = Function('"use strict"; return (' + normalized + ')')() as number;
+          if (isFinite(result)) return result;
+        } catch {}
+      }
+      const n = parseFloat(clean);
+      return isNaN(n) ? null : n;
+    };
+
     function recalcFormat1() {
       const awbBody = paper!.querySelector<HTMLTableSectionElement>('#awb-body tbody');
       if (!awbBody) return;
@@ -376,7 +421,6 @@ function InvoiceEditorInner() {
         const cells = row.querySelectorAll<HTMLTableCellElement>('td');
         if (cells.length < 14) return;
         const getCellText = (idx: number) => cells[idx]?.querySelector('[contenteditable]')?.textContent?.trim() ?? cells[idx]?.textContent?.trim() ?? '';
-        const parseNum = (s: string) => { const n = parseFloat(s.replace(/,/g,'')); return isNaN(n) ? null : n; };
         const setCellText = (idx: number, val: string) => {
           const ce = cells[idx]?.querySelector('[contenteditable]') as HTMLElement | null;
           if (ce) ce.textContent = val;
@@ -447,7 +491,6 @@ function InvoiceEditorInner() {
         const cells = row.querySelectorAll<HTMLTableCellElement>('td');
         if (cells.length < 15) return;
         const getCellText = (idx: number) => cells[idx]?.querySelector('[contenteditable]')?.textContent?.trim() ?? cells[idx]?.textContent?.trim() ?? '';
-        const parseNum = (s: string) => { const n = parseFloat(s.replace(/,/g,'')); return isNaN(n) ? null : n; };
         const setCellText = (idx: number, val: string) => {
           const ce = cells[idx]?.querySelector('[contenteditable]') as HTMLElement | null;
           if (ce) ce.textContent = val;
@@ -506,7 +549,6 @@ function InvoiceEditorInner() {
         const cells = row.querySelectorAll<HTMLTableCellElement>('td');
         if (cells.length < 15) return;
         const getCellText = (idx: number) => cells[idx]?.querySelector('[contenteditable]')?.textContent?.trim() ?? cells[idx]?.textContent?.trim() ?? '';
-        const parseNum = (s: string) => { const n = parseFloat(s.replace(/,/g,'')); return isNaN(n) ? null : n; };
         const setCellText = (idx: number, val: string) => {
           const ce = cells[idx]?.querySelector('[contenteditable]') as HTMLElement | null;
           if (ce) ce.textContent = val;
@@ -589,12 +631,75 @@ function InvoiceEditorInner() {
       }
     }
 
+    function handlePaperKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Enter') return;
+      const target = e.target as HTMLElement;
+      if (!target || !target.hasAttribute('contenteditable')) return;
+
+      const td = target.closest('td');
+      if (!td) return;
+
+      if (!isNumericCell(td)) return;
+
+      const text = target.innerText.trim();
+      // Only evaluate if it contains mathematical operators to avoid modifying plain text/integers
+      if (!/[+\-*/%]/.test(text)) {
+        e.preventDefault();
+        target.blur();
+        return;
+      }
+
+      const result = evalFormula(text);
+      if (result !== null) {
+        e.preventDefault();
+        target.innerText = result;
+        // Move caret to end
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+      } else {
+        e.preventDefault();
+        target.blur();
+      }
+    }
+
+    function handlePaperFocusOut(e: FocusEvent) {
+      const target = e.target as HTMLElement;
+      if (!target || !target.hasAttribute('contenteditable')) return;
+
+      const td = target.closest('td');
+      if (!td) return;
+
+      if (!isNumericCell(td)) return;
+
+      const text = target.innerText.trim();
+      // Only evaluate if it contains mathematical operators
+      if (!/[+\-*/%]/.test(text)) return;
+
+      const result = evalFormula(text);
+      if (result !== null) {
+        target.innerText = result;
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
+
     if (!paper.querySelector('#awb-body')) return;
-    // Attach to stable `paper` parent — not awbTable — so format-switch replacement
-    // doesn't orphan the listener. Bubbled input from any child table reaches here.
+
     paper.addEventListener('input', recalc);
+    paper.addEventListener('keydown', handlePaperKeyDown);
+    paper.addEventListener('focusout', handlePaperFocusOut);
+
     recalc(); // sync on initial load / after HTML restore
-    return () => paper.removeEventListener('input', recalc);
+
+    return () => {
+      paper.removeEventListener('input', recalc);
+      paper.removeEventListener('keydown', handlePaperKeyDown);
+      paper.removeEventListener('focusout', handlePaperFocusOut);
+    };
   }, [inv?.id, invoiceFormat]); // re-attach when invoice or format changes
 
   // ── Imperative format-switcher: replaces #awb-body directly in the DOM ────
