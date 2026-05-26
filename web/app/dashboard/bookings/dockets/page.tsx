@@ -80,6 +80,8 @@ export default function DocketBookingsPage() {
 
   const init = { docketNo:'', partyId:'', bookingDate:new Date().toISOString().split('T')[0], origin:'', destination:'', description:'', weight:0, rateFittedAmount:0, markupAmount:0, gstRate:0, dueDatePolicy:30, notes:'', wayBillNo:'', consignee:'', value:0, methodOfPacking:'', shipperId:'', consigneePartyId:'' };
   const [form, setForm] = useState(init);
+  // Rate per kg (UI-only, not persisted — freight = weight × rate)
+  const [newDocketRate, setNewDocketRate] = useState<number>(0);
   // GST manual override: when user types a custom GST amount, gstManualMode = true
   const [gstManualMode, setGstManualMode] = useState(false);
   const [gstAmountInput, setGstAmountInput] = useState('');
@@ -425,27 +427,40 @@ export default function DocketBookingsPage() {
                   <input className="input" style={{height:32,fontSize:12}} placeholder="e.g. Packaging materials…" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))}/>
                 </div>
               </div>
-              {/* Row 3: Weight + Packets + Markup + Due Date */}
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8,marginBottom:8}}>
+              {/* Row 3: Weight + Packets + Rate + Freight + Markup + Due Date */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr',gap:8,marginBottom:8}}>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="label" style={{fontSize:11}}>Weight (kg)</label>
-                  <input className="input" style={{height:32,fontSize:12}} type="number" min="0" step="0.1" placeholder="0" value={form.weight||''} onChange={e=>setForm(f=>({...f,weight:parseFloat(e.target.value)||0}))}/>
+                  <input className="input" style={{height:32,fontSize:12}} type="number" min="0" step="0.1" placeholder="0" value={form.weight||''} onChange={e=>{
+                    const w = parseFloat(e.target.value)||0;
+                    setForm(f=>({...f, weight:w, rateFittedAmount: parseFloat((w * newDocketRate).toFixed(2))}));
+                  }}/>
                 </div>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="label" style={{fontSize:11}}>Packets / Boxes</label>
                   <input className="input" style={{height:32,fontSize:12}} type="number" min="1" step="1" placeholder="1" value={(form as any).pieces||''} onChange={e=>setForm(f=>({...f,pieces:parseInt(e.target.value)||1} as any))}/>
                 </div>
                 <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Rate (₹/kg)</label>
+                  <input className="input" style={{height:32,fontSize:12,fontFamily:'var(--font-mono)',borderColor:'var(--accent)',fontWeight:700}} type="number" min="0" step="0.01" placeholder="0" value={newDocketRate||''} onChange={e=>{
+                    const r = parseFloat(e.target.value)||0;
+                    setNewDocketRate(r);
+                    setForm(f=>({...f, rateFittedAmount: parseFloat((f.weight * r).toFixed(2))}));
+                  }}/>
+                </div>
+                <div className="form-group" style={{marginBottom:0}}>
                   <label className="label" style={{fontSize:11}}>Freight Charge (₹)</label>
-                  <input className="input" style={{height:32,fontSize:12,fontFamily:'var(--font-mono)'}} type="number" min="0" step="0.01" placeholder="0" value={form.rateFittedAmount||''} onChange={e=>setForm(f=>({...f,rateFittedAmount:parseFloat(e.target.value)||0}))}/>
+                  <input className="input" style={{height:32,fontSize:12,fontFamily:'var(--font-mono)',background:'var(--surface-sunken)',color:'var(--accent-dark)',fontWeight:700}} type="number" min="0" step="0.01" placeholder="Auto" value={form.rateFittedAmount||''} readOnly title={`Auto-calculated: ${form.weight} kg × ₹${newDocketRate}/kg`}/>
                 </div>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="label" style={{fontSize:11}}>Markup (₹)</label>
                   <input className="input" style={{height:32,fontSize:12,fontFamily:'var(--font-mono)'}} type="number" min="0" step="0.01" value={form.markupAmount||''} onChange={e=>setForm(f=>({...f,markupAmount:parseFloat(e.target.value)||0}))}/>
                 </div>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr',gap:8,marginBottom:8}}>
                 <div className="form-group" style={{marginBottom:0}}>
                   <label className="label" style={{fontSize:11}}>Due Date (days)</label>
-                  <input className="input" style={{height:32,fontSize:12}} type="number" min="0" value={form.dueDatePolicy} onChange={e=>setForm(f=>({...f,dueDatePolicy:parseInt(e.target.value)||30}))}/>
+                  <input className="input" style={{height:32,fontSize:12,maxWidth:160}} type="number" min="0" value={form.dueDatePolicy} onChange={e=>setForm(f=>({...f,dueDatePolicy:parseInt(e.target.value)||30}))}/>
                 </div>
               </div>
               {/* Totals summary */}
@@ -647,8 +662,9 @@ function DocketEditModal({ booking, parties, editForm, setEditForm, onSave, onCl
   editForm: any; setEditForm: (fn: (f: any) => any) => void;
   onSave: () => void; onClose: () => void;
 }) {
-  const rate = editForm.rateFittedAmount||0, m = editForm.markupAmount||0, g = editForm.gstRate||18;
-  const gstAmt = (rate+m)*g/100, total = rate+m+gstAmt;
+  const [editRate, setEditRate] = React.useState<number>(0);
+  const freight = editForm.rateFittedAmount||0, m = editForm.markupAmount||0, g = editForm.gstRate||18;
+  const gstAmt = parseFloat(((freight+m)*g/100).toFixed(2)), total = freight+m+gstAmt;
   const inp = (label: string, field: string, type = 'text', extra: any = {}) => (
     <div className="form-group">
       <label className="label">{label}</label>
@@ -659,7 +675,7 @@ function DocketEditModal({ booking, parties, editForm, setEditForm, onSave, onCl
   const CITIES = ['DEL','BOM','BLR','HYD','MAA','CCU','AMD','COK','JAI','PNQ','BHO','IXR'];
   return (
     <div className="modal-overlay">
-      <div className="modal-box" style={{maxWidth:620}}>
+      <div className="modal-box" style={{maxWidth:680}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
           <h2 style={{fontSize:16,fontWeight:800}}>Edit Docket — <span style={{fontFamily:'var(--font-mono)',color:'var(--accent-dark)'}}>{booking.docketNo}</span></h2>
           <button className="btn btn-ghost btn-icon" onClick={onClose}><X size={16}/></button>
@@ -701,10 +717,59 @@ function DocketEditModal({ booking, parties, editForm, setEditForm, onSave, onCl
           </div>
         </div>
         {inp('Description','description')}
-        <div className="form-row form-row-3" style={{marginBottom:12,marginTop:12}}>
-          {inp('Rate Fitted (₹)','rateFittedAmount','number',{min:0})}
-          {inp('Markup (₹)','markupAmount','number',{min:0})}
-          {inp('GST Rate (%)','gstRate','number',{min:0})}
+        {/* Weight + Rate + Freight auto-calc */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12,marginTop:12,padding:'10px 12px',background:'var(--surface-sunken)',border:'1px solid var(--border)',borderRadius:8}}>
+          <div className="form-group" style={{marginBottom:0}}>
+            <label className="label" style={{fontSize:11}}>Weight (kg)</label>
+            <input className="input" style={{height:32,fontSize:12}} type="number" min="0" step="0.1" placeholder="0"
+              value={editForm.weight??''}
+              onChange={e=>{
+                const w = parseFloat(e.target.value)||0;
+                setEditForm((f:any)=>({...f, weight:w, rateFittedAmount: editRate>0 ? parseFloat((w*editRate).toFixed(2)) : f.rateFittedAmount}));
+              }}/>
+          </div>
+          <div className="form-group" style={{marginBottom:0}}>
+            <label className="label" style={{fontSize:11}}>Rate (₹/kg)</label>
+            <input className="input" style={{height:32,fontSize:12,fontFamily:'var(--font-mono)',borderColor:'var(--accent)',fontWeight:700}} type="number" min="0" step="0.01" placeholder="Enter rate…"
+              value={editRate||''}
+              onChange={e=>{
+                const r = parseFloat(e.target.value)||0;
+                setEditRate(r);
+                setEditForm((f:any)=>({...f, rateFittedAmount: parseFloat(((f.weight||0)*r).toFixed(2))}));
+              }}/>
+          </div>
+          <div className="form-group" style={{marginBottom:0}}>
+            <label className="label" style={{fontSize:11}}>Freight Charge (₹)</label>
+            <input className="input" style={{height:32,fontSize:12,fontFamily:'var(--font-mono)',background:'var(--surface)',color:'var(--accent-dark)',fontWeight:700}} type="number" min="0" step="0.01"
+              value={editForm.rateFittedAmount??''}
+              onChange={e=>setEditForm((f:any)=>({...f,rateFittedAmount:parseFloat(e.target.value)||0}))}
+              title={editRate>0?`${editForm.weight||0} kg × ₹${editRate}/kg`:'Enter manually or set rate above'}/>
+            {editRate>0 && <div style={{fontSize:10,color:'var(--text-muted)',marginTop:2}}>= {editForm.weight||0} kg × ₹{editRate}/kg</div>}
+          </div>
+        </div>
+        {/* Markup + GST */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12,padding:'10px 12px',background:'var(--surface-sunken)',border:'1px solid var(--border)',borderRadius:8}}>
+          <div className="form-group" style={{marginBottom:0}}>
+            <label className="label" style={{fontSize:11}}>Markup (₹)</label>
+            <input className="input" style={{height:32,fontSize:12,fontFamily:'var(--font-mono)'}} type="number" min="0" step="0.01"
+              value={editForm.markupAmount??''}
+              onChange={e=>setEditForm((f:any)=>({...f,markupAmount:parseFloat(e.target.value)||0}))}/>
+          </div>
+          <div className="form-group" style={{marginBottom:0}}>
+            <label className="label" style={{fontSize:11}}>GST Rate (%)</label>
+            <select className="input" style={{height:32,fontSize:12,fontWeight:600}}
+              value={editForm.gstRate??18}
+              onChange={e=>setEditForm((f:any)=>({...f,gstRate:parseFloat(e.target.value)||0}))}>
+              {[0,1,5,9,12,18,28].map(pct=><option key={pct} value={pct}>{pct}%</option>)}
+            </select>
+          </div>
+          <div className="form-group" style={{marginBottom:0}}>
+            <label className="label" style={{fontSize:11}}>GST Amount (₹) — Auto</label>
+            <input className="input" style={{height:32,fontSize:12,fontFamily:'var(--font-mono)',background:'var(--surface-sunken)',color:'var(--text-secondary)'}} type="number" readOnly
+              value={gstAmt.toFixed(2)}
+              title={`(Freight ₹${freight} + Markup ₹${m}) × ${g}% = ₹${gstAmt.toFixed(2)}`}/>
+            <div style={{fontSize:10,color:'var(--text-muted)',marginTop:2}}>(₹{freight}+₹{m}) × {g}% = ₹{gstAmt.toFixed(2)}</div>
+          </div>
         </div>
         {inp('Notes','notes')}
         <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,margin:'16px 0'}}>
