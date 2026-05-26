@@ -339,11 +339,23 @@ export default function InvoicesPage() {
   function exitSelectMode() { setSelectMode(false); setSelected(new Set()); }
   function confirmDelete() {
     const deletedIds = new Set(selected);
-    exitSelectMode(); setShowDeleteConfirm(false);
-    toast.success(`${deletedIds.size} invoice${deletedIds.size > 1 ? 's' : ''} deleted`);
+    setShowDeleteConfirm(false);
     startTransition(async () => {
-      await deleteInvoices([...deletedIds]);
-      refresh();
+      const res = await deleteInvoices([...deletedIds]);
+      if (res && 'error' in res) {
+        toast.error(res.error as string);
+        // Don't exit select mode so user can adjust selection
+      } else {
+        exitSelectMode();
+        const r = res as { deleted?: number; awbReset?: number; docketReset?: number };
+        const bookingsReset = (r.awbReset ?? 0) + (r.docketReset ?? 0);
+        if (bookingsReset > 0) {
+          toast.success(`${r.deleted ?? deletedIds.size} invoice${(r.deleted ?? deletedIds.size) > 1 ? 's' : ''} deleted · ${bookingsReset} booking${bookingsReset > 1 ? 's' : ''} unlocked for re-invoicing`);
+        } else {
+          toast.success(`${r.deleted ?? deletedIds.size} invoice${(r.deleted ?? deletedIds.size) > 1 ? 's' : ''} deleted`);
+        }
+        refresh();
+      }
     });
   }
 
@@ -653,26 +665,43 @@ export default function InvoicesPage() {
       )}
       {showBulkInv && <InvoiceBulkDownloadModal invoices={invoices} companyInfo={companyInfo} onClose={()=>setShowBulkInv(false)}/>}
 
-      {/* Delete confirmation */}
-      {showDeleteConfirm && (
-        <div className="modal-overlay">
-          <div className="modal-box" style={{maxWidth:380}}>
-            <div style={{textAlign:'center',padding:'8px 0 20px'}}>
-              <div style={{width:52,height:52,borderRadius:'50%',background:'#fef2f2',border:'2px solid #fca5a5',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px'}}>
-                <Trash2 size={22} color="#dc2626"/>
-              </div>
-              <div style={{fontSize:16,fontWeight:800,marginBottom:8}}>Delete {selected.size} Invoice{selected.size>1?'s':''}?</div>
-              <div style={{fontSize:13,color:'var(--text-secondary)',marginBottom:20}}>
-                This will permanently remove the selected invoice{selected.size>1?'s':''} and outstanding entries. Cannot be undone.
-              </div>
-              <div style={{display:'flex',gap:10,justifyContent:'center'}}>
-                <button className="btn btn-secondary" onClick={()=>{setShowDeleteConfirm(false);if(!selectMode)setSelected(new Set());}}>Cancel</button>
-                <button className="btn btn-danger" onClick={confirmDelete}><Trash2 size={13}/> Delete</button>
+      {showDeleteConfirm && (() => {
+        const selectedInvs = invoices.filter(i => selected.has(i.id));
+        const paidInvs = selectedInvs.filter(i => i.status === 'PAID');
+        const deletableInvs = selectedInvs.filter(i => i.status !== 'PAID');
+        const hasBookings = deletableInvs.some(i => ['AWB','DOCKET','COMBINED'].includes(i.bookingType));
+        return (
+          <div className="modal-overlay">
+            <div className="modal-box" style={{maxWidth:420}}>
+              <div style={{textAlign:'center',padding:'8px 0 20px'}}>
+                <div style={{width:52,height:52,borderRadius:'50%',background:'#fef2f2',border:'2px solid #fca5a5',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px'}}>
+                  <Trash2 size={22} color="#dc2626"/>
+                </div>
+                <div style={{fontSize:16,fontWeight:800,marginBottom:8}}>Delete {selected.size} Invoice{selected.size>1?'s':''}?</div>
+                {paidInvs.length > 0 && (
+                  <div style={{fontSize:12,background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:8,padding:'8px 12px',marginBottom:12,color:'#dc2626',textAlign:'left'}}>
+                    ⚠️ <strong>{paidInvs.length} PAID invoice{paidInvs.length>1?'s':''} cannot be deleted</strong> ({paidInvs.map(i=>i.invoiceNo).join(', ')}). Reverse payments first.
+                  </div>
+                )}
+                <div style={{fontSize:13,color:'var(--text-secondary)',marginBottom:hasBookings?12:20}}>
+                  {deletableInvs.length > 0
+                    ? <>Permanently removes <strong>{deletableInvs.length}</strong> invoice{deletableInvs.length>1?'s':''} and their outstanding entries.</>
+                    : 'No deletable invoices in selection.'}
+                </div>
+                {hasBookings && deletableInvs.length > 0 && (
+                  <div style={{fontSize:12,background:'var(--info-bg)',border:'1px solid var(--info-border)',borderRadius:8,padding:'8px 12px',marginBottom:16,color:'var(--info)',textAlign:'left'}}>
+                    ✅ Linked AWB / Docket bookings will be <strong>unlocked</strong> and can be re-invoiced.
+                  </div>
+                )}
+                <div style={{display:'flex',gap:10,justifyContent:'center'}}>
+                  <button className="btn btn-secondary" onClick={()=>{setShowDeleteConfirm(false);if(!selectMode)setSelected(new Set());}}>Cancel</button>
+                  {deletableInvs.length > 0 && <button className="btn btn-danger" onClick={confirmDelete}><Trash2 size={13}/> Delete{paidInvs.length>0?` (${deletableInvs.length})`:''}</button>}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
