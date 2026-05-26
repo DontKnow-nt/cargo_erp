@@ -430,6 +430,10 @@ export default function DocketBookingsPage() {
                   <input className="input" style={{height:32,fontSize:12}} type="number" min="1" step="1" placeholder="1" value={(form as any).pieces||''} onChange={e=>setForm(f=>({...f,pieces:parseInt(e.target.value)||1} as any))}/>
                 </div>
                 <div className="form-group" style={{marginBottom:0}}>
+                  <label className="label" style={{fontSize:11}}>Freight Charge (₹)</label>
+                  <input className="input" style={{height:32,fontSize:12,fontFamily:'var(--font-mono)'}} type="number" min="0" step="0.01" placeholder="0" value={form.rateFittedAmount||''} onChange={e=>setForm(f=>({...f,rateFittedAmount:parseFloat(e.target.value)||0}))}/>
+                </div>
+                <div className="form-group" style={{marginBottom:0}}>
                   <label className="label" style={{fontSize:11}}>Markup (₹)</label>
                   <input className="input" style={{height:32,fontSize:12,fontFamily:'var(--font-mono)'}} type="number" min="0" step="0.01" value={form.markupAmount||''} onChange={e=>setForm(f=>({...f,markupAmount:parseFloat(e.target.value)||0}))}/>
                 </div>
@@ -439,12 +443,11 @@ export default function DocketBookingsPage() {
                 </div>
               </div>
               {/* Totals summary */}
-              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6,marginBottom:8}}>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:8}}>
                 {[
-                  { label:'Freight',val:`₹${form.rateFittedAmount.toFixed(0)}` },
-                  { label:'Markup', val:`₹${form.markupAmount.toFixed(0)}` },
-                  { label:`GST ${form.gstRate}%`, val:`₹${gstAmount.toFixed(0)}` },
-                  { label:'Total',  val:fmt(totalAmount), hi:true },
+                  { label:'Freight Charge', val:`₹${(form.rateFittedAmount||0).toFixed(0)}` },
+                  { label:'Markup', val:`₹${(form.markupAmount||0).toFixed(0)}` },
+                  { label:'Total Prepaid', val:fmt(totalAmount), hi:true },
                 ].map(s=>(
                   <div key={s.label} style={{padding:'6px 10px',background:s.hi?'var(--accent-subtle)':'var(--surface-sunken)',border:`1px solid ${s.hi?'var(--warning-border)':'var(--border)'}`,borderRadius:7}}>
                     <div style={{fontSize:9,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.07em'}}>{s.label}</div>
