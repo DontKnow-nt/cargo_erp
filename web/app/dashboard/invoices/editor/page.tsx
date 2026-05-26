@@ -254,6 +254,15 @@ function InvoiceEditorInner() {
   const [saving, setSaving] = useState(false);
   const [invoiceFormat, setInvoiceFormat] = useState<'format1'|'format2'>('format1');
 
+  // Refs so the format-switch effect can read latest rendered data without re-firing
+  const _lineRowsRef   = useRef<{origin:string;dest:string;boxes:string;chgWt:string;rate:string;freight:string;tsp:string;taxable:string;awbNo:string;date:string}[]>([]);
+  const _invRef        = useRef<typeof inv>(undefined);
+  const _awbBkRef      = useRef<typeof awbBookings>([]);
+  const _dktBkRef      = useRef<typeof docketBookings>([]);
+  const _runningTSPRef = useRef(0);
+  const _markupAmtRef  = useRef(0);
+  const _prevFmtRef    = useRef('format1'); // track last-applied format
+
   const [banks, setBanks] = useState<{id:string;bank_name:string;account_name:string;account_number:string;ifsc:string;branch:string;is_default:number}[]>([]);
   const [selectedBankId, setSelectedBankId] = useState('');
   const [igstRate, setIgstRate] = useState(18);
@@ -519,6 +528,110 @@ function InvoiceEditorInner() {
     recalc(); // sync on initial load / after HTML restore
     return () => awbTable.removeEventListener('input', recalc);
   }, [inv?.id, invoiceFormat]); // re-attach when invoice or format changes
+
+  // ── Imperative format-switcher: replaces #awb-body directly in the DOM ────
+  // (needed because saved-HTML loading via innerHTML breaks React reconciliation)
+  useEffect(() => {
+    if (_prevFmtRef.current === invoiceFormat) return; // no actual change
+    _prevFmtRef.current = invoiceFormat;
+
+    const paper = paperRef.current;
+    const currentInv = _invRef.current;
+    if (!paper || !currentInv) return;
+
+    const oldTable = paper.querySelector('#awb-body');
+    if (!oldTable) return;
+
+    const rows   = _lineRowsRef.current;
+    const awbBks = _awbBkRef.current;
+    const dktBks = _dktBkRef.current;
+    const tspTotal = _runningTSPRef.current || _markupAmtRef.current;
+
+    // Helper: content-editable <td>
+    const ce = (text: string | number, align: string, bold = false) => {
+      const t = String(text ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return `<td style="border:1px solid #000;padding:3px 5px;font-size:10px;vertical-align:top;text-align:${align}"><div contenteditable="true" style="outline:none;min-height:14px;font-family:Arial,sans-serif;font-size:10px;white-space:pre-wrap${bold?';font-weight:700':''}">${t}</div></td>`;
+    };
+    const emptyTd = () => `<td style="border:1px solid #000;padding:4px 6px;font-size:10px;background:#f8f8f8"></td>`;
+    const hdCell  = (h: string) => `<td style="border:1px solid #000;padding:4px 5px;font-size:9.5px;text-align:center;font-weight:700;white-space:pre-wrap;background:#f0f0f0"><div contenteditable="true" style="outline:none;min-height:14px;font-family:Arial,sans-serif;font-size:9.5px;font-weight:700;text-align:center;white-space:pre-wrap">${h}</div></td>`;
+
+    let tableHtml = '';
+
+    if (invoiceFormat === 'format2') {
+      const headers = ['S.No','Date','Docket No.','Invoice no','Origin','Origin Airport','Dest','Destination Airport','Box','Weight','Rate','Freight','ODA','Docket chg','Amount'];
+      let body = `<tr style="background:#f0f0f0">${headers.map(hdCell).join('')}</tr>`;
+
+      rows.forEach((row, i) => {
+        const awbBk: any = awbBks.find((a: any) => a.awbNo === row.awbNo);
+        const linkedDkt: any = awbBk
+          ? dktBks.find((d: any) => d.linkedAwbId === awbBk.id)
+          : dktBks.find((d: any) => d.docketNo === row.awbNo);
+        body += `<tr>
+          ${ce(i+1,'center')}${ce(row.date,'center')}${ce(linkedDkt?.docketNo??'','center')}
+          ${ce(row.awbNo,'center')}${ce(row.origin,'center')}${ce(linkedDkt?.origin??row.origin,'center')}
+          ${ce(row.dest,'center')}${ce(linkedDkt?.destination??row.dest,'center')}${ce(row.boxes,'center')}
+          ${ce(row.chgWt,'right')}${ce(row.rate,'right')}${ce(row.freight,'right')}
+          ${ce('0.00','right')}${ce('0.00','right')}${ce(row.taxable,'right')}
+        </tr>`;
+      });
+
+      // Pad to at least 5 rows
+      for (let i = 0; i < Math.max(0, 5 - rows.length); i++) {
+        body += '<tr>' + Array.from({length:15}).map((_,j) => ce('', j>=9?'right':'center')).join('') + '</tr>';
+      }
+
+      const tf = rows.reduce((s,r) => s+(parseFloat(r.freight.replace(/,/g,''))||0), 0);
+      body += `<tr style="background:#f8f8f8;font-weight:700" data-grand-total="1">
+        ${emptyTd()}${emptyTd()}
+        <td style="border:1px solid #000;padding:4px 6px;font-size:10px;background:#f8f8f8;font-weight:700"><div contenteditable="true" style="outline:none;font-family:Arial,sans-serif;font-size:10px;font-weight:700">TOTAL</div></td>
+        ${emptyTd()}${emptyTd()}${emptyTd()}${emptyTd()}${emptyTd()}${emptyTd()}${emptyTd()}${emptyTd()}
+        ${ce(tf.toFixed(2),'right',true)}${ce('0.00','right',true)}${ce('0.00','right',true)}${ce(fmt(currentInv.subtotal),'right',true)}
+      </tr>`;
+
+      tableHtml = `<table id="awb-body" data-format2="1" style="border-collapse:collapse;width:100%;table-layout:fixed"><tbody>${body}</tbody></table>`;
+
+    } else {
+      // Format 1
+      const headers = ['Sl#','Origin','AWB#/Ref.\nNumber','Date','Dest#','Boxes','Charg.\nWeight','Rate','Freight','AWB &\nDO','Due\nCarrier','Forwrd &\nOthers','TSP &\nOthers','Taxable\nAmount'];
+      let body = `<tr style="background:#f0f0f0">${headers.map(hdCell).join('')}</tr>`;
+
+      rows.forEach((row, i) => {
+        body += `<tr>
+          ${ce(i+1,'center')}${ce(row.origin,'center')}${ce(row.awbNo,'center')}
+          ${ce(row.date,'center')}${ce(row.dest,'center')}${ce(row.boxes,'center')}
+          ${ce(row.chgWt,'center')}${ce(row.rate,'right')}${ce(row.freight,'right')}
+          ${ce('0.00','right')}${ce('0.00','right')}${ce('0','right')}
+          ${ce(row.tsp,'right')}${ce(row.taxable,'right')}
+        </tr>`;
+      });
+
+      const tb  = rows.reduce((s,r) => s+(parseInt(r.boxes)||0), 0);
+      const tcw = rows.reduce((s,r) => s+(parseFloat(r.chgWt)||0), 0);
+      const tf  = rows.reduce((s,r) => s+(parseFloat(r.freight.replace(/,/g,''))||0), 0);
+
+      body += `<tr style="background:#f8f8f8;font-weight:700" data-grand-total="1">
+        ${emptyTd()}${emptyTd()}${emptyTd()}
+        <td style="border:1px solid #000;padding:4px 6px;text-align:right;font-weight:700;font-size:10px;background:#f8f8f8"><div contenteditable="true" style="outline:none;font-family:Arial,sans-serif;font-size:10px;font-weight:700;text-align:right">Grand Total</div></td>
+        ${emptyTd()}
+        ${ce(tb,'center',true)}${ce(tcw.toFixed(2),'center',true)}
+        ${emptyTd()}
+        ${ce(tf.toFixed(2),'right',true)}${ce('0.00','right',true)}${ce('0.00','right',true)}${ce('0','right',true)}
+        ${ce(fmt(tspTotal),'right',true)}${ce(fmt(currentInv.subtotal),'right',true)}
+      </tr>`;
+
+      tableHtml = `<table id="awb-body" style="border-collapse:collapse;width:100%;table-layout:fixed"><tbody>${body}</tbody></table>`;
+    }
+
+    // Inject into DOM
+    const temp = document.createElement('div');
+    temp.innerHTML = tableHtml;
+    const newTable = temp.firstElementChild!;
+    oldTable.replaceWith(newTable);
+
+    // Trigger recalc on the new table
+    newTable.dispatchEvent(new Event('input', { bubbles: true }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceFormat]);
 
   async function handleSave() {
     if (!paperRef.current || !inv) return;

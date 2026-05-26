@@ -78,13 +78,19 @@ export default function DocketBookingsPage() {
     });
   }
 
-  const init = { docketNo:'', partyId:'', bookingDate:new Date().toISOString().split('T')[0], origin:'', destination:'', description:'', weight:0, rateFittedAmount:0, markupAmount:0, gstRate:18, dueDatePolicy:30, notes:'', wayBillNo:'', consignee:'', value:0, methodOfPacking:'', shipperId:'', consigneePartyId:'' };
+  const init = { docketNo:'', partyId:'', bookingDate:new Date().toISOString().split('T')[0], origin:'', destination:'', description:'', weight:0, rateFittedAmount:0, markupAmount:0, gstRate:0, dueDatePolicy:30, notes:'', wayBillNo:'', consignee:'', value:0, methodOfPacking:'', shipperId:'', consigneePartyId:'' };
   const [form, setForm] = useState(init);
+  // GST manual override: when user types a custom GST amount, gstManualMode = true
+  const [gstManualMode, setGstManualMode] = useState(false);
+  const [gstAmountInput, setGstAmountInput] = useState('');
 
   const activeParties = parties.filter(p => p.status==='ACTIVE');
   const selParty      = parties.find(p => p.id===form.partyId);
-  const gstAmount     = (form.rateFittedAmount + form.markupAmount) * form.gstRate / 100;
-  const totalAmount   = form.rateFittedAmount + form.markupAmount + gstAmount;
+  // Auto-calculated GST based on percentage
+  const gstAutoAmount  = parseFloat(((form.rateFittedAmount + form.markupAmount) * form.gstRate / 100).toFixed(2));
+  // If in manual mode, use the typed value; otherwise use auto
+  const gstAmount      = gstManualMode ? (parseFloat(gstAmountInput) || 0) : gstAutoAmount;
+  const totalAmount    = form.rateFittedAmount + form.markupAmount + gstAmount;
 
   const checkCreditLimit = useCallback((partyId: string, newAmount: number) => {
     const party = parties.find(p => p.id === partyId);
@@ -447,13 +453,59 @@ export default function DocketBookingsPage() {
                 {[
                   { label:'Freight Charge', val:`₹${(form.rateFittedAmount||0).toFixed(0)}` },
                   { label:'Markup', val:`₹${(form.markupAmount||0).toFixed(0)}` },
-                  { label:'Total Prepaid', val:fmt(totalAmount), hi:true },
+                  { label:'Total Prepaid (incl. GST)', val:fmt(totalAmount), hi:true },
                 ].map(s=>(
                   <div key={s.label} style={{padding:'6px 10px',background:s.hi?'var(--accent-subtle)':'var(--surface-sunken)',border:`1px solid ${s.hi?'var(--warning-border)':'var(--border)'}`,borderRadius:7}}>
                     <div style={{fontSize:9,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.07em'}}>{s.label}</div>
                     <div style={{fontSize:13,fontWeight:800,fontFamily:'var(--font-mono)',color:s.hi?'var(--accent-dark)':'var(--text-primary)'}}>{s.val}</div>
                   </div>
                 ))}
+              </div>
+              {/* GST calculation row */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8,padding:'10px 12px',background:'var(--surface-sunken)',border:'1px solid var(--border)',borderRadius:8}}>
+                {/* Left: GST Amount input */}
+                <div>
+                  <label className="label" style={{fontSize:11,marginBottom:4}}>💰 GST Amount (₹)</label>
+                  <input
+                    id="gst-amount-input"
+                    className="input"
+                    style={{height:32,fontSize:12,fontFamily:'var(--font-mono)',fontWeight:700,color:'var(--accent-dark)',borderColor:'var(--accent)',background:'var(--surface)'}}
+                    type="number" min="0" step="0.01"
+                    value={gstManualMode ? gstAmountInput : gstAutoAmount.toFixed(2)}
+                    onChange={e => {
+                      setGstManualMode(true);
+                      setGstAmountInput(e.target.value);
+                    }}
+                    placeholder="Enter GST amount…"
+                  />
+                  {gstManualMode && (
+                    <button type="button" onClick={()=>{setGstManualMode(false);setGstAmountInput('');}} style={{marginTop:4,fontSize:10,color:'var(--accent)',background:'none',border:'none',cursor:'pointer',padding:0,textDecoration:'underline'}}>
+                      ↩ Reset to auto ({form.gstRate}%)
+                    </button>
+                  )}
+                </div>
+                {/* Right: % dropdown */}
+                <div>
+                  <label className="label" style={{fontSize:11,marginBottom:4}}>📊 GST % (auto-calculate)</label>
+                  <select
+                    className="input"
+                    style={{height:32,fontSize:12,fontWeight:600,color:'var(--text-primary)'}}
+                    value={gstManualMode ? '' : form.gstRate}
+                    onChange={e => {
+                      setForm(f => ({...f, gstRate: parseFloat(e.target.value)}));
+                      setGstManualMode(false);
+                      setGstAmountInput('');
+                    }}
+                  >
+                    {[0,1,5,9,12,18,28].map(pct => (
+                      <option key={pct} value={pct}>{pct}%</option>
+                    ))}
+                    {gstManualMode && <option value="">Custom (manual)</option>}
+                  </select>
+                  <div style={{fontSize:10,color:'var(--text-muted)',marginTop:4}}>
+                    Auto GST: ₹{gstAutoAmount.toFixed(2)}
+                  </div>
+                </div>
               </div>
               {/* Row 4: Way Bill + Consignee + Value + Packing */}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8,marginBottom:8}}>
