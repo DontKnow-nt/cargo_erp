@@ -31,7 +31,7 @@ const mockDb = {
   prepare: mockPrepare,
   transaction: jest.fn((fn: () => void) => fn),
 };
-jest.mock('@/lib/db', () => ({ getDb: () => mockDb }));
+jest.mock('@/lib/db', () => ({ getDb: () => mockDb }), { virtual: true });
 
 // ── Mock logger ───────────────────────────────────────────────────────────────
 jest.mock('@/lib/logger', () => ({ serverLog: jest.fn() }));

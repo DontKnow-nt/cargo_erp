@@ -388,13 +388,7 @@ export async function deleteInvoices(ids: string[]) {
     select: { id: true, invoiceNo: true, bookingRef: true, bookingType: true, status: true },
   });
 
-  // Block deletion of PAID invoices (they have receipts linked)
-  const paid = invoicesToDelete.filter(i => i.status === 'PAID');
-  if (paid.length > 0) {
-    return { error: `Cannot delete PAID invoices: ${paid.map(i => i.invoiceNo).join(', ')}. Reverse payments first.` };
-  }
-
-  // Collect deletable IDs (exclude PAID — FINALIZED can be deleted but warns user via UI)
+  // Collect deletable IDs
   const deletableIds = invoicesToDelete.map(i => i.id);
   if (deletableIds.length === 0) return { error: 'No deletable invoices selected' };
 
@@ -417,6 +411,9 @@ export async function deleteInvoices(ids: string[]) {
   }
 
   await prisma.$transaction(async (tx) => {
+    // Delete payment receipts first (due to foreign key constraint)
+    await tx.paymentReceipt.deleteMany({ where: { invoiceId: { in: deletableIds } } });
+
     // Delete outstanding entries and invoices
     await tx.outstandingEntry.deleteMany({ where: { invoiceId: { in: deletableIds } } });
     await tx.invoice.deleteMany({ where: { id: { in: deletableIds } } });

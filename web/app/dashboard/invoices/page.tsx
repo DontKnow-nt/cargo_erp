@@ -667,9 +667,8 @@ export default function InvoicesPage() {
 
       {showDeleteConfirm && (() => {
         const selectedInvs = invoices.filter(i => selected.has(i.id));
-        const paidInvs = selectedInvs.filter(i => i.status === 'PAID');
-        const deletableInvs = selectedInvs.filter(i => i.status !== 'PAID');
-        const hasBookings = deletableInvs.some(i => ['AWB','DOCKET','COMBINED'].includes(i.bookingType));
+        const paidOrPartial = selectedInvs.filter(i => ['PAID', 'PARTIALLY_PAID'].includes(i.status));
+        const hasBookings = selectedInvs.some(i => ['AWB','DOCKET','COMBINED'].includes(i.bookingType));
         return (
           <div className="modal-overlay">
             <div className="modal-box" style={{maxWidth:420}}>
@@ -678,24 +677,26 @@ export default function InvoicesPage() {
                   <Trash2 size={22} color="#dc2626"/>
                 </div>
                 <div style={{fontSize:16,fontWeight:800,marginBottom:8}}>Delete {selected.size} Invoice{selected.size>1?'s':''}?</div>
-                {paidInvs.length > 0 && (
-                  <div style={{fontSize:12,background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:8,padding:'8px 12px',marginBottom:12,color:'#dc2626',textAlign:'left'}}>
-                    ⚠️ <strong>{paidInvs.length} PAID invoice{paidInvs.length>1?'s':''} cannot be deleted</strong> ({paidInvs.map(i=>i.invoiceNo).join(', ')}). Reverse payments first.
+                
+                {paidOrPartial.length > 0 && (
+                  <div style={{fontSize:12,background:'#fffbeb',border:'1px solid #fde047',borderRadius:8,padding:'8px 12px',marginBottom:12,color:'#854d0e',textAlign:'left'}}>
+                    ⚠️ <strong>Warning:</strong> Deleting {paidOrPartial.length} paid/partially paid invoice{paidOrPartial.length>1?'s':''} will permanently remove their linked payment receipts and outstanding ledger entries.
                   </div>
                 )}
+                
                 <div style={{fontSize:13,color:'var(--text-secondary)',marginBottom:hasBookings?12:20}}>
-                  {deletableInvs.length > 0
-                    ? <>Permanently removes <strong>{deletableInvs.length}</strong> invoice{deletableInvs.length>1?'s':''} and their outstanding entries.</>
-                    : 'No deletable invoices in selection.'}
+                  Permanently removes <strong>{selected.size}</strong> invoice{selected.size>1?'s':''} and their ledger records. This action cannot be undone.
                 </div>
-                {hasBookings && deletableInvs.length > 0 && (
+                
+                {hasBookings && (
                   <div style={{fontSize:12,background:'var(--info-bg)',border:'1px solid var(--info-border)',borderRadius:8,padding:'8px 12px',marginBottom:16,color:'var(--info)',textAlign:'left'}}>
                     ✅ Linked AWB / Docket bookings will be <strong>unlocked</strong> and can be re-invoiced.
                   </div>
                 )}
+                
                 <div style={{display:'flex',gap:10,justifyContent:'center'}}>
                   <button className="btn btn-secondary" onClick={()=>{setShowDeleteConfirm(false);if(!selectMode)setSelected(new Set());}}>Cancel</button>
-                  {deletableInvs.length > 0 && <button className="btn btn-danger" onClick={confirmDelete}><Trash2 size={13}/> Delete{paidInvs.length>0?` (${deletableInvs.length})`:''}</button>}
+                  <button className="btn btn-danger" onClick={confirmDelete}><Trash2 size={13}/> Delete</button>
                 </div>
               </div>
             </div>
