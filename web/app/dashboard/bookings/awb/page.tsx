@@ -713,11 +713,10 @@ export default function AwbBookingsPage() {
               </div>
 
               {/* Total summary */}
-              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:16}}>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,marginBottom:16}}>
                 {[
-                  { label:'Freight', val:`₹${freightBase.toFixed(0)}` },
-                  { label:'Markup',  val:`₹${form.markupAmount.toFixed(0)}` },
-                  { label:'Total',   val:fmt(totalAmount), highlight:true },
+                  { label:'Total (Freight + Markup)', val:fmt(totalAmount) },
+                  { label:'Total Prepaid', val:fmt(form.totalPrepaid||0), highlight:true },
                 ].map(s=>(
                   <div key={s.label} style={{padding:'9px 12px',background:s.highlight?'var(--accent-subtle)':'var(--surface-sunken)',border:`1px solid ${s.highlight?'var(--warning-border)':'var(--border)'}`,borderRadius:8}}>
                     <div style={{fontSize:10,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.07em'}}>{s.label}</div>
