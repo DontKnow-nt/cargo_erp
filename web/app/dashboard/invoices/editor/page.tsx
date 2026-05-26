@@ -589,11 +589,12 @@ function InvoiceEditorInner() {
       }
     }
 
-    const awbTable = paper.querySelector('#awb-body');
-    if (!awbTable) return;
-    awbTable.addEventListener('input', recalc);
+    if (!paper.querySelector('#awb-body')) return;
+    // Attach to stable `paper` parent — not awbTable — so format-switch replacement
+    // doesn't orphan the listener. Bubbled input from any child table reaches here.
+    paper.addEventListener('input', recalc);
     recalc(); // sync on initial load / after HTML restore
-    return () => awbTable.removeEventListener('input', recalc);
+    return () => paper.removeEventListener('input', recalc);
   }, [inv?.id, invoiceFormat]); // re-attach when invoice or format changes
 
   // ── Imperative format-switcher: replaces #awb-body directly in the DOM ────
