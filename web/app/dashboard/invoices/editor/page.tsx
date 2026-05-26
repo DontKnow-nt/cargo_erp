@@ -252,7 +252,7 @@ function InvoiceEditorInner() {
   const paperRef = useRef<HTMLDivElement>(null);
 
   const [saving, setSaving] = useState(false);
-  const [invoiceFormat, setInvoiceFormat] = useState<'format1'|'format2'>('format1');
+  const [invoiceFormat, setInvoiceFormat] = useState<'format1'|'format2'|'format3'>('format1');
 
   // Refs so the format-switch effect can read latest rendered data without re-firing
   const _lineRowsRef   = useRef<{origin:string;dest:string;boxes:string;chgWt:string;rate:string;freight:string;tsp:string;taxable:string;awbNo:string;date:string}[]>([]);
@@ -495,9 +495,76 @@ function InvoiceEditorInner() {
       return totalAmount;
     }
 
+    function recalcFormat3() {
+      const awbBody = paper!.querySelector<HTMLTableSectionElement>('#awb-body tbody');
+      if (!awbBody) return;
+      const rows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')].filter(r => !r.dataset.grandTotal);
+      // Cols: 0=S.No, 1=Date, 2=AWB NO, 3=Invoice, 4=Sector, 5=Pkt, 6=Wt, 7=Freight, 8=F/C, 9=GMR, 10=TSP, 11=Clearance, 12=Awb Fees, 13=H Chge, 14=Amount
+      let totalPkt=0, totalWt=0, totalFreight=0, totalFC=0, totalGMR=0, totalTSP=0, totalClearance=0, totalAwbFees=0, totalHChge=0, totalAmount=0;
+
+      rows.forEach(row => {
+        const cells = row.querySelectorAll<HTMLTableCellElement>('td');
+        if (cells.length < 15) return;
+        const getCellText = (idx: number) => cells[idx]?.querySelector('[contenteditable]')?.textContent?.trim() ?? cells[idx]?.textContent?.trim() ?? '';
+        const parseNum = (s: string) => { const n = parseFloat(s.replace(/,/g,'')); return isNaN(n) ? null : n; };
+        const setCellText = (idx: number, val: string) => {
+          const ce = cells[idx]?.querySelector('[contenteditable]') as HTMLElement | null;
+          if (ce) ce.textContent = val;
+        };
+
+        const pkt       = parseNum(getCellText(5))  ?? 0;
+        const wt        = parseNum(getCellText(6))  ?? 0;
+        const freight   = parseNum(getCellText(7))  ?? 0;
+        const fc        = parseNum(getCellText(8))  ?? 0;
+        const gmr       = parseNum(getCellText(9))  ?? 0;
+        const tsp       = parseNum(getCellText(10)) ?? 0;
+        const clearance = parseNum(getCellText(11)) ?? 0;
+        const awbFees   = parseNum(getCellText(12)) ?? 0;
+        const hChge     = parseNum(getCellText(13)) ?? 0;
+
+        const amount = parseFloat((freight + fc + gmr + tsp + clearance + awbFees + hChge).toFixed(2));
+        setCellText(14, amount.toFixed(2));
+
+        totalPkt       += pkt;
+        totalWt        += wt;
+        totalFreight   += freight;
+        totalFC        += fc;
+        totalGMR       += gmr;
+        totalTSP       += tsp;
+        totalClearance += clearance;
+        totalAwbFees   += awbFees;
+        totalHChge     += hChge;
+        totalAmount    += amount;
+      });
+
+      // Update grand total row
+      const gtRow = awbBody.querySelector<HTMLTableRowElement>('[data-grand-total]');
+      if (gtRow) {
+        const gcells = gtRow.querySelectorAll<HTMLTableCellElement>('td');
+        const setGT = (idx: number, val: string) => {
+          const ce = gcells[idx]?.querySelector('[contenteditable]') as HTMLElement | null;
+          if (ce) ce.textContent = val;
+          else if (gcells[idx]) gcells[idx].textContent = val;
+        };
+        setGT(5,  totalPkt.toString());
+        setGT(6,  totalWt.toFixed(2));
+        setGT(7,  totalFreight.toFixed(2));
+        setGT(8,  totalFC.toFixed(2));
+        setGT(9,  totalGMR.toFixed(2));
+        setGT(10, totalTSP.toFixed(2));
+        setGT(11, totalClearance.toFixed(2));
+        setGT(12, totalAwbFees.toFixed(2));
+        setGT(13, totalHChge.toFixed(2));
+        setGT(14, totalAmount.toFixed(2));
+      }
+
+      return totalAmount;
+    }
+
     function recalc() {
       const isF2 = !!paper!.querySelector('[data-format2]');
-      const totalTaxable = isF2 ? (recalcFormat2() ?? 0) : (recalcFormat1() ?? 0);
+      const isF3 = !!paper!.querySelector('[data-format3]');
+      const totalTaxable = isF3 ? (recalcFormat3() ?? 0) : isF2 ? (recalcFormat2() ?? 0) : (recalcFormat1() ?? 0);
 
       // Update tax summary — detect GST structure from existing content
       const taxSummaryEl = paper!.querySelector<HTMLElement>('[data-tax-summary]');
@@ -589,6 +656,41 @@ function InvoiceEditorInner() {
       </tr>`;
 
       tableHtml = `<table id="awb-body" data-format2="1" style="border-collapse:collapse;width:100%;table-layout:fixed"><tbody>${body}</tbody></table>`;
+
+    } else if (invoiceFormat === 'format3') {
+      const headers = ['S.No','Date','AWB NO','Invoice','Sector','Pkt','Wt.','Freight','F/C','GMR','TSP','Clearance','Awb Fees','H Chge','Amount'];
+      let body = `<tr style="background:#f0f0f0">${headers.map(hdCell).join('')}</tr>`;
+
+      rows.forEach((row, i) => {
+        body += `<tr>
+          ${ce(i+1,'center')}${ce(row.date,'center')}${ce(row.awbNo,'center')}
+          ${ce(currentInv?.invoiceNo??'','center')}${ce(`${row.origin}-${row.dest}`,'center')}${ce(row.boxes,'center')}
+          ${ce(row.chgWt,'right')}${ce(row.freight,'right')}
+          ${ce('0.00','right')}${ce('0.00','right')}${ce(row.tsp,'right')}
+          ${ce('0.00','right')}${ce('0.00','right')}${ce('0.00','right')}${ce(row.taxable,'right')}
+        </tr>`;
+      });
+
+      // Pad to at least 5 rows
+      for (let i = 0; i < Math.max(0, 5 - rows.length); i++) {
+        body += '<tr>' + Array.from({length:15}).map((_,j) => ce('', j>=6?'right':'center')).join('') + '</tr>';
+      }
+
+      const tb3   = rows.reduce((s,r) => s+(parseInt(r.boxes)||0), 0);
+      const tcw3  = rows.reduce((s,r) => s+(parseFloat(r.chgWt)||0), 0);
+      const tf3   = rows.reduce((s,r) => s+(parseFloat(r.freight.replace(/,/g,''))||0), 0);
+      const ttsp3 = rows.reduce((s,r) => s+(parseFloat(r.tsp.replace(/,/g,''))||0), 0);
+      const ttax3 = rows.reduce((s,r) => s+(parseFloat(r.taxable.replace(/,/g,''))||0), 0);
+
+      body += `<tr style="background:#f8f8f8;font-weight:700" data-grand-total="1">
+        ${emptyTd()}${emptyTd()}${emptyTd()}${emptyTd()}
+        <td style="border:1px solid #000;padding:4px 6px;font-size:10px;background:#f8f8f8;font-weight:700"><div contenteditable="true" style="outline:none;font-family:Arial,sans-serif;font-size:10px;font-weight:700">TOTAL</div></td>
+        ${ce(tb3,'center',true)}${ce(tcw3.toFixed(2),'right',true)}${ce(tf3.toFixed(2),'right',true)}
+        ${ce('0.00','right',true)}${ce('0.00','right',true)}${ce(fmt(ttsp3),'right',true)}
+        ${ce('0.00','right',true)}${ce('0.00','right',true)}${ce('0.00','right',true)}${ce(fmt(ttax3),'right',true)}
+      </tr>`;
+
+      tableHtml = `<table id="awb-body" data-format3="1" style="border-collapse:collapse;width:100%;table-layout:fixed"><tbody>${body}</tbody></table>`;
 
     } else {
       // Format 1
@@ -829,10 +931,11 @@ img{max-width:100%;object-fit:contain}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
             <span style={{ fontWeight: 600, color: '#374151' }}>📋 Format:</span>
-            <select value={invoiceFormat} onChange={e => setInvoiceFormat(e.target.value as 'format1'|'format2')}
+            <select value={invoiceFormat} onChange={e => setInvoiceFormat(e.target.value as 'format1'|'format2'|'format3')}
               style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>
               <option value="format1">Format 1 (Default)</option>
               <option value="format2">Format 2 (Docket)</option>
+              <option value="format3">Format 3 (AWB+)</option>
             </select>
           </span>
           {banks.length > 0 && (
