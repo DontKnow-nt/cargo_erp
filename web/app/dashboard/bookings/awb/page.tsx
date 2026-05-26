@@ -713,9 +713,10 @@ export default function AwbBookingsPage() {
               </div>
 
               {/* Total summary */}
-              <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,marginBottom:16}}>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:16}}>
                 {[
-                  { label:'Total (Freight + Markup)', val:fmt(totalAmount) },
+                  { label:'Freight (Weight Charge)', val:fmt(form.weightCharge||0) },
+                  { label:'Markup', val:fmt(form.markupAmount||0) },
                   { label:'Total Prepaid', val:fmt(form.totalPrepaid||0), highlight:true },
                 ].map(s=>(
                   <div key={s.label} style={{padding:'9px 12px',background:s.highlight?'var(--accent-subtle)':'var(--surface-sunken)',border:`1px solid ${s.highlight?'var(--warning-border)':'var(--border)'}`,borderRadius:8}}>
@@ -1089,7 +1090,11 @@ function AwbEditModal({ booking, parties, airlines, cities, onSave, editForm, se
             onChange={e=>setEditForm((f:any)=>({...f,totalPrepaid:parseFloat(e.target.value)||0}))}/>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,margin:'16px 0'}}>
-          {[{l:'Freight',v:`₹${(w*r).toFixed(0)}`},{l:'Markup',v:`₹${m.toFixed(0)}`},{l:'Total',v:`₹${total.toFixed(0)}`,hi:true}].map(s=>(
+          {[
+            {l:'Freight (Weight Charge)',v:`₹${(editForm.weightCharge||0).toFixed(2)}`},
+            {l:'Markup',v:`₹${m.toFixed(0)}`},
+            {l:'Total Prepaid',v:`₹${(editForm.totalPrepaid||0).toFixed(2)}`,hi:true}
+          ].map(s=>(
             <div key={s.l} style={{padding:'8px 12px',background:s.hi?'var(--accent-subtle)':'var(--surface-sunken)',border:`1px solid ${s.hi?'var(--warning-border)':'var(--border)'}`,borderRadius:8}}>
               <div style={{fontSize:10,color:'var(--text-muted)',textTransform:'uppercase'}}>{s.l}</div>
               <div style={{fontSize:14,fontWeight:800,fontFamily:'var(--font-mono)',color:s.hi?'var(--accent-dark)':'var(--text-primary)'}}>{s.v}</div>
