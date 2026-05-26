@@ -106,7 +106,25 @@ export default function DocketBookingsPage() {
 
   function startEdit(b: typeof docketBookings[0]) {
     setEditingId(b.id);
-    setEditForm({ docketNo:b.docketNo, partyId:b.partyId, bookingDate:b.bookingDate, origin:b.origin, destination:b.destination, description:b.description, rateFittedAmount:b.rateFittedAmount, markupAmount:b.markupAmount, gstRate:b.gstRate, dueDatePolicy:b.dueDatePolicy, notes:b.notes });
+    setEditForm({
+      docketNo: b.docketNo,
+      partyId: b.partyId,
+      bookingDate: b.bookingDate,
+      origin: b.origin,
+      destination: b.destination,
+      description: b.description,
+      weight: b.weight,
+      rateFittedAmount: b.rateFittedAmount,
+      markupAmount: b.markupAmount,
+      gstRate: b.gstRate,
+      dueDatePolicy: b.dueDatePolicy,
+      notes: b.notes,
+      pieces: b.pieces,
+      wayBillNo: b.wayBillNo,
+      consignee: b.consignee,
+      value: b.value,
+      methodOfPacking: b.methodOfPacking,
+    });
     setShowEditModal(true);
   }
 
@@ -145,7 +163,7 @@ export default function DocketBookingsPage() {
       const res = await createDocketBooking({
         docketNo:form.docketNo, partyId:form.partyId, partyName:selParty?.partyName||'',
         bookingDate:form.bookingDate, origin:form.origin, destination:form.destination,
-        description:form.description, rateFittedAmount:form.rateFittedAmount, markupAmount:form.markupAmount,
+        description:form.description, weight:form.weight, rateFittedAmount:form.rateFittedAmount, markupAmount:form.markupAmount,
         gstRate:form.gstRate, gstAmount, totalAmount, dueDatePolicy:form.dueDatePolicy, status:'BOOKED', notes:form.notes,
         wayBillNo:form.wayBillNo||undefined, consignee:form.consignee||undefined, value:form.value||undefined, methodOfPacking:form.methodOfPacking||undefined, pieces:(form as any).pieces||1,
       });

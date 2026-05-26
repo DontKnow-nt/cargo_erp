@@ -112,7 +112,7 @@ export async function createDocketBooking(data: unknown) {
   const d = parsed.data;
   const partyId = await resolvePartyId(d.partyId, d.partyName);
   const booking = await prisma.docketBooking.create({
-    data: { docketNo: d.docketNo, partyId, partyName: d.partyName, bookingDate: d.bookingDate, origin: d.origin ?? null, destination: d.destination ?? null, description: d.description ?? null, rateFittedAmount: d.rateFittedAmount, markupAmount: d.markupAmount, gstRate: d.gstRate, gstAmount: d.gstAmount, totalAmount: d.totalAmount, dueDatePolicy: d.dueDatePolicy, status: d.status, notes: d.notes ?? null, linkedAwbId: d.linkedAwbId ?? null, wayBillNo: d.wayBillNo ?? null, consignee: d.consignee ?? null, value: d.value ?? 0, methodOfPacking: d.methodOfPacking ?? null, pieces: d.pieces ?? 1, createdBy: session.user.id },
+    data: { docketNo: d.docketNo, partyId, partyName: d.partyName, bookingDate: d.bookingDate, origin: d.origin ?? null, destination: d.destination ?? null, description: d.description ?? null, weight: d.weight ?? 0, rateFittedAmount: d.rateFittedAmount, markupAmount: d.markupAmount, gstRate: d.gstRate, gstAmount: d.gstAmount, totalAmount: d.totalAmount, dueDatePolicy: d.dueDatePolicy, status: d.status, notes: d.notes ?? null, linkedAwbId: d.linkedAwbId ?? null, wayBillNo: d.wayBillNo ?? null, consignee: d.consignee ?? null, value: d.value ?? 0, methodOfPacking: d.methodOfPacking ?? null, pieces: d.pieces ?? 1, createdBy: session.user.id },
   });
   serverLog('info', 'docket.created', { userId: session.user.id, bookingId: booking.id, docketNo: d.docketNo });
   await recordAuditLog({
