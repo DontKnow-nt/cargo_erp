@@ -132,8 +132,13 @@ export default function DocketBookingsPage() {
     const rate = editForm.rateFittedAmount||0; const markup = editForm.markupAmount||0;
     const gst = editForm.gstRate||18; const gstAmt = (rate+markup)*gst/100;
     startTransition(async () => {
-      await updateDocketBooking(id, { ...editForm, gstAmount:gstAmt, totalAmount:rate+markup+gstAmt });
-      setEditingId(null); setShowEditModal(false); toast.success('Docket updated');
+      const res = await updateDocketBooking(id, { ...editForm, gstAmount:gstAmt, totalAmount:rate+markup+gstAmt });
+      if (res && 'error' in res) {
+        toast.error(typeof res.error === 'string' ? res.error : 'Failed to update docket. Check inputs.');
+      } else {
+        setEditingId(null); setShowEditModal(false); toast.success('Docket updated');
+        refresh();
+      }
     });
   }
 
@@ -291,8 +296,8 @@ export default function DocketBookingsPage() {
                         <RecordActivityAvatars resource="DOCKET_BOOKING" resourceId={b.id} auditLogs={auditLogs} users={users} />
                       </td>
                       <td style={{fontWeight:500}} title={b.partyName}>{shortName(b.partyName)}</td>
-                      <td style={{fontSize:12,color:'var(--text-secondary)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={(b as any).consignee||''}>{(b as any).consignee||'—'}</td>
-                      <td><span style={{fontFamily:'var(--font-mono)',fontSize:11}}>{(b as any).way_bill_no||'—'}</span></td>
+                       <td style={{fontSize:12,color:'var(--text-secondary)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={(b as any).consignee||''}>{(b as any).consignee||'—'}</td>
+                      <td><span style={{fontFamily:'var(--font-mono)',fontSize:11}}>{b.wayBillNo||'—'}</span></td>
                       <td>{b.origin&&b.destination?<span style={{fontFamily:'var(--font-mono)',fontSize:11,background:'var(--surface-sunken)',padding:'2px 7px',borderRadius:5}}>{b.origin}→{b.destination}</span>:'—'}</td>
                       <td style={{fontSize:12,color:'var(--text-secondary)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{b.description||'—'}</td>
                       <td style={{fontSize:12,color:'var(--text-muted)'}}>{b.bookingDate}</td>
@@ -301,7 +306,7 @@ export default function DocketBookingsPage() {
                       <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:'var(--text-secondary)'}}>₹{b.markupAmount}</td>
                       <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:'var(--text-muted)'}}>₹{b.gstAmount.toFixed(0)}</td>
                       <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:800}}>{fmt(b.totalAmount)}</td>
-                      <td style={{fontSize:11,color:'var(--text-muted)',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={(b as any).method_of_packing||''}>{(b as any).method_of_packing||'—'}</td>
+                      <td style={{fontSize:11,color:'var(--text-muted)',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={b.methodOfPacking||''}>{b.methodOfPacking||'—'}</td>
                       <td><Badge status={b.status}/></td>
                       <td style={{textAlign:'center'}}><CreatorAvatar userId={(b as {createdBy?:string|null}).createdBy} createdAt={b.createdAt} /></td>
                       <td style={{display:'flex',gap:4,flexWrap:'nowrap'}}>

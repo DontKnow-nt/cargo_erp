@@ -67,7 +67,16 @@ export async function updateAwbBooking(id: string, data: unknown) {
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
   const existing = await prisma.awbBooking.findUnique({ where: { id } });
   if (!existing) return { error: 'Booking not found' };
-  await prisma.awbBooking.update({ where: { id }, data: parsed.data as Parameters<typeof prisma.awbBooking.update>[0]['data'] });
+
+  const updateData: any = { ...parsed.data };
+  if (updateData.partyId && updateData.partyId !== existing.partyId) {
+    const party = await prisma.party.findUnique({ where: { id: updateData.partyId } });
+    if (party) {
+      updateData.partyName = party.partyName;
+    }
+  }
+
+  await prisma.awbBooking.update({ where: { id }, data: updateData });
   serverLog('info', 'awb.updated', { userId: session.user.id, bookingId: id });
   await recordAuditLog({
     userId: session.user.id,
@@ -133,7 +142,16 @@ export async function updateDocketBooking(id: string, data: unknown) {
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
   const existing = await prisma.docketBooking.findUnique({ where: { id } });
   if (!existing) return { error: 'Booking not found' };
-  await prisma.docketBooking.update({ where: { id }, data: parsed.data as Parameters<typeof prisma.docketBooking.update>[0]['data'] });
+
+  const updateData: any = { ...parsed.data };
+  if (updateData.partyId && updateData.partyId !== existing.partyId) {
+    const party = await prisma.party.findUnique({ where: { id: updateData.partyId } });
+    if (party) {
+      updateData.partyName = party.partyName;
+    }
+  }
+
+  await prisma.docketBooking.update({ where: { id }, data: updateData });
   serverLog('info', 'docket.updated', { userId: session.user.id, bookingId: id });
   await recordAuditLog({
     userId: session.user.id,

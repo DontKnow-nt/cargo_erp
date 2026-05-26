@@ -311,8 +311,13 @@ export default function AwbBookingsPage() {
     const w = editForm.weight||0; const rate = editForm.baseRate||0;
     const markup = editForm.markupAmount||0;
     startTransition(async () => {
-      await updateAwbBooking(id, { ...editForm, gstAmount:0, gstRate:0, totalAmount:w*rate+markup });
-      setEditingId(null); setShowEditModal(false); toast.success('AWB updated');
+      const res = await updateAwbBooking(id, { ...editForm, gstAmount:0, gstRate:0, totalAmount:w*rate+markup });
+      if (res && 'error' in res) {
+        toast.error(typeof res.error === 'string' ? res.error : 'Failed to update AWB. Check inputs.');
+      } else {
+        setEditingId(null); setShowEditModal(false); toast.success('AWB updated');
+        refresh();
+      }
     });
   }
 

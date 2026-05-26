@@ -49,7 +49,7 @@ export const AwbBookingSchema = z.object({
   destination: z.string().length(3).toUpperCase(),
   airlineName: z.string().min(2).max(100).trim(),
   bookingDate: dateStr,
-  shipmentDate: dateStr.optional(),
+  shipmentDate: dateStr.optional().nullable(),
   weight: positiveNum.max(100_000, 'Weight too high'),
   pieces: z.number().int().positive().max(10_000),
   baseRate: positiveNum.max(100_000),
@@ -58,15 +58,15 @@ export const AwbBookingSchema = z.object({
   gstAmount: nonNegNum,
   totalAmount: nonNegNum,
   status: z.enum(['BOOKED', 'INVOICED', 'CANCELLED']).default('BOOKED'),
-  notes: z.string().max(1000).optional(),
-  weightCharge: nonNegNum.optional(),
-  valuationCharge: nonNegNum.optional(),
-  otherChargesDueAgent: nonNegNum.optional(),
-  otherChargesDueCarrier: nonNegNum.optional(),
-  totalPrepaid: nonNegNum.optional(),
+  notes: z.string().max(1000).optional().nullable(),
+  weightCharge: nonNegNum.optional().nullable(),
+  valuationCharge: nonNegNum.optional().nullable(),
+  otherChargesDueAgent: nonNegNum.optional().nullable(),
+  otherChargesDueCarrier: nonNegNum.optional().nullable(),
+  totalPrepaid: nonNegNum.optional().nullable(),
 });
 
-export const UpdateAwbBookingSchema = AwbBookingSchema.partial().omit({ partyId: true });
+export const UpdateAwbBookingSchema = AwbBookingSchema.partial();
 
 // ── Docket Booking ────────────────────────────────────────────────────────────
 export const DocketBookingSchema = z.object({
@@ -74,10 +74,10 @@ export const DocketBookingSchema = z.object({
   partyId: z.string().min(1),
   partyName: z.string().min(1).max(200).trim(),
   bookingDate: dateStr,
-  origin: z.string().max(100).trim().optional(),
-  destination: z.string().max(100).trim().optional(),
-  description: z.string().max(500).trim().optional(),
-  weight: nonNegNum.max(100_000, 'Weight too high').optional(),
+  origin: z.string().max(100).trim().optional().nullable(),
+  destination: z.string().max(100).trim().optional().nullable(),
+  description: z.string().max(500).trim().optional().nullable(),
+  weight: nonNegNum.max(100_000, 'Weight too high').optional().nullable(),
   rateFittedAmount: nonNegNum.max(10_000_000),
   markupAmount: nonNegNum.max(1_000_000),
   gstRate: gstRate,
@@ -85,16 +85,16 @@ export const DocketBookingSchema = z.object({
   totalAmount: nonNegNum,
   dueDatePolicy: creditDays,
   status: z.enum(['BOOKED', 'INVOICED', 'CANCELLED']).default('BOOKED'),
-  notes: z.string().max(1000).optional(),
-  linkedAwbId: z.string().optional(),
-  wayBillNo: z.string().max(50).trim().optional(),
-  consignee: z.string().max(200).trim().optional(),
-  value: nonNegNum.optional(),
-  methodOfPacking: z.string().max(200).trim().optional(),
-  pieces: z.number().int().min(1).optional(),
+  notes: z.string().max(1000).optional().nullable(),
+  linkedAwbId: z.string().optional().nullable(),
+  wayBillNo: z.string().max(50).trim().optional().nullable(),
+  consignee: z.string().max(200).trim().optional().nullable(),
+  value: nonNegNum.optional().nullable(),
+  methodOfPacking: z.string().max(200).trim().optional().nullable(),
+  pieces: z.number().int().min(1).optional().nullable(),
 });
 
-export const UpdateDocketBookingSchema = DocketBookingSchema.partial().omit({ partyId: true });
+export const UpdateDocketBookingSchema = DocketBookingSchema.partial();
 
 // ── Invoice ───────────────────────────────────────────────────────────────────
 export const InvoiceLineSchema = z.object({
