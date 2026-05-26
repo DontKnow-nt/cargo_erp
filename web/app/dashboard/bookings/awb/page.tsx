@@ -470,7 +470,7 @@ export default function AwbBookingsPage() {
                       <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{b.weight}</td>
                       <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:'var(--text-secondary)'}}>₹{b.baseRate}</td>
                       <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:'var(--text-secondary)'}}>₹{b.markupAmount}</td>
-                      <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:800}}>{fmt(b.totalAmount)}</td>
+                      <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:800}}>{fmt((b as any).totalPrepaid || b.totalAmount)}</td>
                       <td><Badge status={b.status}/></td>
                       <td style={{textAlign:'center'}}><CreatorAvatar userId={(b as {createdBy?:string|null}).createdBy} createdAt={b.createdAt} /></td>
                       <td style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
