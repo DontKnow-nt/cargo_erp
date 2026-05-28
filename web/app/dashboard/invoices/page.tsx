@@ -14,6 +14,13 @@ import { LiveIndicator } from '@/components/LiveIndicator';
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtN = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+function formatBookingRefList(ref: string) {
+  if (!ref) return '—';
+  const parts = ref.split(',').map(s => s.trim()).filter(Boolean);
+  if (parts.length <= 3) return ref;
+  return `${parts.slice(0, 3).join(', ')} ... (+${parts.length - 3} more)`;
+}
+
 // ── Number to words (Indian system) ──────────────────────────────────────────
 function numberToWords(num: number): string {
   const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
@@ -480,7 +487,7 @@ export default function InvoicesPage() {
                   )}
                   <td><span style={{fontFamily:'var(--font-mono)',fontSize:12,fontWeight:700,color:'var(--accent-dark)',cursor:'pointer'}} onClick={()=>setViewInvoice(inv)}>{inv.invoiceNo}</span></td>
                   <td style={{fontWeight:500}} title={inv.partyName}>{shortName(inv.partyName)}</td>
-                  <td><span style={{fontFamily:'var(--font-mono)',fontSize:11}}>{inv.bookingRef}</span></td>
+                  <td title={inv.bookingRef} style={{maxWidth:250,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}><span style={{fontFamily:'var(--font-mono)',fontSize:11}}>{formatBookingRefList(inv.bookingRef)}</span></td>
                   <td><span className={`badge ${inv.bookingType==='AWB'?'badge-blue':'badge-purple'}`}>{inv.bookingType}</span></td>
                   <td style={{fontSize:12,color:'var(--text-muted)'}}>{fmtDate(inv.invoiceDate)}</td>
                   <td style={{fontSize:12,color:new Date(inv.dueDate)<new Date()&&inv.status!=='PAID'?'#dc2626':'var(--text-muted)'}}>{inv.dueDate}</td>
