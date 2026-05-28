@@ -238,7 +238,15 @@ function CreditNoteTemplate({ inv, party, bank, today, amtWords }: {
         <tr>
           <td colSpan={4} style={{ border: B, padding: '5px 10px', verticalAlign: 'top' }}>
             <div contentEditable suppressContentEditableWarning style={{ outline: 'none', fontSize: 9, fontFamily: 'Arial, sans-serif', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-              {`NOTES :\n1.  DIFFERENCE, IF ANY, MAY BE NOTIFIED WITHIN 3 DAYS OF RECEIPT.\n2.  PLEASE PAY YOUR BILL AMOUNT WITHIN 15 DAYS OF RECEIPT.\n3.  INTEREST AT 24% P.A. WILL BE CHARGED IF THE BILL IS NOT PAID WITHIN THE STIPULATED TIME.\n4.  PAYMENT SHOULD BE MADE BY A/C PAYEE CHEQUE OR DD IN FAVOUR OF TRIVENI CARGO EXPRESS INDIA PVT LTD.\n5.  JURISDICTION: ALL DISPUTES ARISING UNDER THIS BILL SHALL BE SUBJECT TO BE UNDER NEW DELHI JURISDICTION.\n6.  PAN          AAGCT2294N\n7.  Tan NO   DELT14067E\n8.  S. Tax.      AAGCT2294NSD001`}
+              <div>NOTES :</div>
+              <div>1.  DIFFERENCE, IF ANY, MAY BE NOTIFIED WITHIN 3 DAYS OF RECEIPT.</div>
+              <div>2.  PLEASE PAY YOUR BILL AMOUNT WITHIN 15 DAYS OF RECEIPT.</div>
+              <div>3.  INTEREST AT 24% P.A. WILL BE CHARGED IF THE BILL IS NOT PAID WITHIN THE STIPULATED TIME.</div>
+              <div>4.  PAYMENT SHOULD BE MADE BY A/C PAYEE CHEQUE OR DD IN FAVOUR OF TRIVENI CARGO EXPRESS INDIA PVT LTD.</div>
+              <div>5.  JURISDICTION: ALL DISPUTES ARISING UNDER THIS BILL SHALL BE SUBJECT TO BE UNDER NEW DELHI JURISDICTION.</div>
+              <div><strong>6.  PAN          AAGCT2294N</strong></div>
+              <div><strong>7.  Tan NO   DELT14067E</strong></div>
+              <div><strong>8.  S. Tax.      AAGCT2294NSD001</strong></div>
             </div>
           </td>
           <td colSpan={2} style={{ border: B, padding: '5px 10px', verticalAlign: 'bottom', textAlign: 'right' }}>
