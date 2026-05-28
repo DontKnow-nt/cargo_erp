@@ -1147,7 +1147,7 @@ img{max-width:100%;object-fit:contain}
                     <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 9, color: '#c00', fontFamily:'Arial,sans-serif' }}>Regd. Office: Plot no 480, Flat no 301, First Floor, Gali no 15, L Block Mahipalpur Extn. New Delhi 110037</div>
                     <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontFamily:'Arial,sans-serif' }}>Email : info@tceipl.com</div>
                   </div>
-                  <img src="/iata.png" alt="IATA" style={{ width: 90, height: 90, objectFit: 'contain', flexShrink: 0 }} />
+                  <img src="/iata.png" alt="IATA" style={{ width: 130, height: 90, objectFit: 'contain', flexShrink: 0 }} />
                 </div>
               </td>
             </tr>

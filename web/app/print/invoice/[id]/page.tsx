@@ -157,7 +157,7 @@ export default async function InvoicePrintPage({ params, searchParams }: { param
                 <div className="co-sub">Web: www.tceipl.com  |  Email: info@tceipl.com</div>
               </td>
               <td style={{ width: '15%', border: 'none', textAlign: 'center', verticalAlign: 'middle' }}>
-                <img src="/iata.png" alt="IATA Logo" style={{ width: 90, height: 90, objectFit: 'contain' }} />
+                <img src="/iata.png" alt="IATA Logo" style={{ width: 130, height: 90, objectFit: 'contain' }} />
               </td>
             </tr>
           </tbody>

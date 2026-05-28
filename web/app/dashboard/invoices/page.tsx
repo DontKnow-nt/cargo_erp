@@ -117,7 +117,7 @@ function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo
       <div class="co-sub">${companyInfo.regdOffice}</div>
       <div class="co-sub">Email : ${companyInfo.email}</div>
     </div>
-    <img src="${window.location.origin}/iata.png" alt="IATA" style="width:90px;height:90px;object-fit:contain;flex-shrink:0" />
+    <img src="${window.location.origin}/iata.png" alt="IATA" style="width:130px;height:90px;object-fit:contain;flex-shrink:0" />
   </div>
 
   <div class="title">TAX INVOICE</div>

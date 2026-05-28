@@ -115,7 +115,7 @@ function CreditNoteTemplate({ inv, party, bank, today, amtWords }: {
                 <div style={{ fontSize: 8, color: '#c00' }}>Regd. Office: Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi 110037, near Hotel City Centre</div>
                 <div style={{ fontSize: 9 }}>Email : info@tceipl.com</div>
               </div>
-              <img src="/iata.png" alt="IATA" style={{ width: 90, height: 90, objectFit: 'contain', flexShrink: 0 }} />
+              <img src="/iata.png" alt="IATA" style={{ width: 130, height: 90, objectFit: 'contain', flexShrink: 0 }} />
             </div>
           </td>
         </tr>
