@@ -330,7 +330,7 @@ export default function AwbBookingsPage() {
   );
 
   function handleExport(fmt: 'csv'|'xlsx'|'pdf') {
-    const data = filtered.map(b => ({ 'AWB No':b.awbNo, Party:b.partyName, Route:`${b.origin}→${b.destination}`, Airline:b.airlineName, Date:fmtDate(b.bookingDate), 'Weight(kg)':b.weight, 'Rate(₹)':b.baseRate, 'Markup(₹)':b.markupAmount, 'Total(₹)':b.totalAmount.toFixed(2), Status:b.status }));
+    const data = filtered.map(b => ({ 'AWB No':b.awbNo, Party:b.partyName, Route:`${b.origin}→${b.destination}`, Airline:b.airlineName, Date:fmtDate(b.bookingDate), 'Weight(kg)':b.weight, 'Rate(₹)':b.baseRate, 'Markup(₹)':b.markupAmount, 'Total(₹)':((b as any).totalPrepaid || b.totalAmount).toFixed(2), Status:b.status }));
     const fname = `awb_bookings_${dateRange}`;
     if(fmt==='csv') exportToCSV(data,fname);
     else if(fmt==='xlsx') exportToXLSX(data,fname);
@@ -339,7 +339,7 @@ export default function AwbBookingsPage() {
 
   function handleBulkDownload(modules: ExportModule[], range: DateRange, format: ExportFormat) {
     // AWB page bulk download is AWB-only
-    const data = filterByDateRange(awbBookings,'bookingDate',range).map(b=>({ 'AWB No':b.awbNo, Party:b.partyName, Route:`${b.origin}→${b.destination}`, Airline:b.airlineName, Date:b.bookingDate, 'Weight(kg)':b.weight, 'Base Rate(₹)':b.baseRate, 'Markup(₹)':b.markupAmount, 'GST(₹)':b.gstAmount.toFixed(2), 'Total(₹)':b.totalAmount.toFixed(2), Status:b.status }));
+    const data = filterByDateRange(awbBookings,'bookingDate',range).map(b=>({ 'AWB No':b.awbNo, Party:b.partyName, Route:`${b.origin}→${b.destination}`, Airline:b.airlineName, Date:b.bookingDate, 'Weight(kg)':b.weight, 'Base Rate(₹)':b.baseRate, 'Markup(₹)':b.markupAmount, 'GST(₹)':b.gstAmount.toFixed(2), 'Total(₹)':((b as any).totalPrepaid || b.totalAmount).toFixed(2), Status:b.status }));
     const fname = `awb_bookings_${range}`;
     if(format==='csv') exportToCSV(data,fname);
     else if(format==='xlsx') exportToXLSX(data,fname);
@@ -938,7 +938,7 @@ export default function AwbBookingsPage() {
 }
 
 // ── AWB-only Bulk Download Modal ──────────────────────────────────────────
-function AwbBulkDownloadModal({ awbBookings, onClose }: { awbBookings: {id:string;awbNo:string;partyName:string;origin:string;destination:string;airlineName:string;bookingDate:string;weight:number;pieces:number;baseRate:number;markupAmount:number;gstAmount:number;totalAmount:number;status:string}[]; onClose: ()=>void }) {
+function AwbBulkDownloadModal({ awbBookings, onClose }: { awbBookings: {id:string;awbNo:string;partyName:string;origin:string;destination:string;airlineName:string;bookingDate:string;weight:number;pieces:number;baseRate:number;markupAmount:number;gstAmount:number;totalAmount:number;status:string;totalPrepaid?:number | null}[]; onClose: ()=>void }) {
   const [range, setRange] = useState<DateRange>('1m');
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -951,7 +951,7 @@ function AwbBulkDownloadModal({ awbBookings, onClose }: { awbBookings: {id:strin
   function doDownload() {
     let data = filterByDateRange(awbBookings,'bookingDate',range);
     if (statusFilter !== 'ALL') data = data.filter((b: any) => b.status === statusFilter);
-    const rows = data.map((b: any) => ({ 'AWB No':b.awbNo, Party:b.partyName, Origin:b.origin, Destination:b.destination, Airline:b.airlineName, Date:b.bookingDate, 'Weight(kg)':b.weight, Pieces:b.pieces, 'Base Rate(₹)':b.baseRate, 'Markup(₹)':b.markupAmount, 'Total(₹)':b.totalAmount.toFixed(2), Status:b.status }));
+    const rows = data.map((b: any) => ({ 'AWB No':b.awbNo, Party:b.partyName, Origin:b.origin, Destination:b.destination, Airline:b.airlineName, Date:b.bookingDate, 'Weight(kg)':b.weight, Pieces:b.pieces, 'Base Rate(₹)':b.baseRate, 'Markup(₹)':b.markupAmount, 'Total(₹)':((b as any).totalPrepaid || b.totalAmount).toFixed(2), Status:b.status }));
     const fname = `awb_bookings_${range}`;
     if(format==='csv') exportToCSV(rows,fname);
     else if(format==='xlsx') exportToXLSX(rows,fname);

@@ -16,6 +16,11 @@ export type DbAwbBooking = {
   weight: number; pieces: number; baseRate: number; markupAmount: number;
   gstRate: number; gstAmount: number; totalAmount: number;
   status: string; notes?: string | null; createdBy?: string | null; createdAt: string | Date;
+  weightCharge?: number | null;
+  valuationCharge?: number | null;
+  otherChargesDueAgent?: number | null;
+  otherChargesDueCarrier?: number | null;
+  totalPrepaid?: number | null;
 };
 
 export type DbDocketBooking = {
