@@ -895,14 +895,22 @@ function InvoiceEditorInner() {
     if (!el) return;
     const clone = el.cloneNode(true) as HTMLElement;
 
-    // Convert logo to base64 so it works in blob URL context
+    // Convert logos to base64 so they work in blob URL context
     try {
-      const resp = await fetch('/logo.png');
-      const blob2 = await resp.blob();
-      const b64 = await new Promise<string>(res => {
-        const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(blob2);
+      const [resp1, resp2] = await Promise.all([fetch('/logo.png'), fetch('/iata.png')]);
+      const [blob1, blob2] = await Promise.all([resp1.blob(), resp2.blob()]);
+      const [b64_triveni, b64_iata] = await Promise.all([
+        new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(blob1); }),
+        new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(blob2); }),
+      ]);
+      clone.querySelectorAll('img').forEach(img => {
+        const htmlImg = img as HTMLImageElement;
+        if (htmlImg.alt.toLowerCase().includes('iata') || htmlImg.src.includes('iata.png')) {
+          htmlImg.src = b64_iata;
+        } else {
+          htmlImg.src = b64_triveni;
+        }
       });
-      clone.querySelectorAll('img').forEach(img => { (img as HTMLImageElement).src = b64; });
     } catch { /* logo missing, skip */ }
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Tax Invoice - ${inv?.invoiceNo ?? ''}</title>
@@ -1129,7 +1137,7 @@ img{max-width:100%;object-fit:contain}
             <tr>
               <td colSpan={invoiceFormat === 'format2' ? 15 : 14} style={{ border: '1px solid #000', padding: '6px 10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <img src="/logo.png" alt="Triveni" style={{ width: 64, height: 64, objectFit: 'contain', flexShrink: 0 }} />
+                  <img src="/logo.png" alt="Triveni" style={{ width: 90, height: 90, objectFit: 'contain', flexShrink: 0 }} />
                   <div style={{ flex: 1, textAlign: 'center' }}>
                     <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 20, fontWeight: 900, letterSpacing: 0.5, fontFamily:'Arial,sans-serif' }}>TRIVENI CARGO EXPRESS INDIA PVT LTD</div>
                     <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontFamily:'Arial,sans-serif' }}>Domestic Air Cargo &amp; Rail Agent</div>
@@ -1139,6 +1147,7 @@ img{max-width:100%;object-fit:contain}
                     <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 9, color: '#c00', fontFamily:'Arial,sans-serif' }}>Regd. Office: Plot no 480, Flat no 301, First Floor, Gali no 15, L Block Mahipalpur Extn. New Delhi 110037</div>
                     <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontFamily:'Arial,sans-serif' }}>Email : info@tceipl.com</div>
                   </div>
+                  <img src="/iata.png" alt="IATA" style={{ width: 90, height: 90, objectFit: 'contain', flexShrink: 0 }} />
                 </div>
               </td>
             </tr>

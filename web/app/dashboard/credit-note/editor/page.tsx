@@ -106,7 +106,7 @@ function CreditNoteTemplate({ inv, party, bank, today, amtWords }: {
         <tr>
           <td colSpan={6} style={{ border: B, padding: '8px 10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <img src="/logo.png" alt="Triveni" style={{ width: 64, height: 64, objectFit: 'contain', flexShrink: 0 }} />
+              <img src="/logo.png" alt="Triveni" style={{ width: 90, height: 90, objectFit: 'contain', flexShrink: 0 }} />
               <div style={{ flex: 1, textAlign: 'center' }}>
                 <div style={{ fontSize: 17, fontWeight: 900, letterSpacing: 0.5 }}>TRIVENI CARGO EXPRESS INDIA PVT LTD</div>
                 <div style={{ fontSize: 9 }}>Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi, Delhi 110037</div>
@@ -115,6 +115,7 @@ function CreditNoteTemplate({ inv, party, bank, today, amtWords }: {
                 <div style={{ fontSize: 8, color: '#c00' }}>Regd. Office: Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi 110037, near Hotel City Centre</div>
                 <div style={{ fontSize: 9 }}>Email : info@tceipl.com</div>
               </div>
+              <img src="/iata.png" alt="IATA" style={{ width: 90, height: 90, objectFit: 'contain', flexShrink: 0 }} />
             </div>
           </td>
         </tr>
@@ -461,7 +462,22 @@ function CreditNoteEditorInner() {
   const handlePrint = useCallback(async () => {
     const el = paperRef.current; if (!el) return;
     const clone = el.cloneNode(true) as HTMLElement;
-    try { const resp = await fetch('/logo.png'); const blob2 = await resp.blob(); const b64 = await new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(blob2); }); clone.querySelectorAll('img').forEach(img => { (img as HTMLImageElement).src = b64; }); } catch {}
+    try {
+      const [resp1, resp2] = await Promise.all([fetch('/logo.png'), fetch('/iata.png')]);
+      const [blob1, blob2] = await Promise.all([resp1.blob(), resp2.blob()]);
+      const [b64_triveni, b64_iata] = await Promise.all([
+        new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(blob1); }),
+        new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(blob2); }),
+      ]);
+      clone.querySelectorAll('img').forEach(img => {
+        const htmlImg = img as HTMLImageElement;
+        if (htmlImg.alt.toLowerCase().includes('iata') || htmlImg.src.includes('iata.png')) {
+          htmlImg.src = b64_iata;
+        } else {
+          htmlImg.src = b64_triveni;
+        }
+      });
+    } catch {}
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Credit Note - ${inv?.invoiceNo ?? ''}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;padding:8px}table{border-collapse:collapse;width:100%}td{font-size:10px;vertical-align:top}[contenteditable],[contenteditable] span{outline:none;min-height:10px;white-space:pre-wrap}img{max-width:100%;object-fit:contain}@media print{@page{margin:6mm}body{padding:4px}}</style></head><body>${clone.innerHTML}<script>window.onload=function(){window.print();};<\/script></body></html>`;
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' }); const url = URL.createObjectURL(blob); const win = window.open(url, '_blank', 'width=1200,height=800'); if (win) setTimeout(() => URL.revokeObjectURL(url), 15000);
   }, [inv]);

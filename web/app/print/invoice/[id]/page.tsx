@@ -148,13 +148,16 @@ export default async function InvoicePrintPage({ params, searchParams }: { param
           <tbody>
             <tr>
               <td style={{ width: '15%', border: 'none', textAlign: 'center', verticalAlign: 'middle' }}>
-                <img src="/logo.png" alt="Triveni Logo" style={{ width: 70, height: 70, objectFit: 'contain' }} />
+                <img src="/logo.png" alt="Triveni Logo" style={{ width: 90, height: 90, objectFit: 'contain' }} />
               </td>
               <td style={{ border: 'none', verticalAlign: 'middle', textAlign: 'center' }}>
                 <div className="co-name">TRIVENI ENTERPRISES</div>
                 <div className="co-sub">Domestic Air Cargo &amp; Rail Agent</div>
                 <div className="co-sub">Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi 110037</div>
                 <div className="co-sub">Web: www.tceipl.com  |  Email: info@tceipl.com</div>
+              </td>
+              <td style={{ width: '15%', border: 'none', textAlign: 'center', verticalAlign: 'middle' }}>
+                <img src="/iata.png" alt="IATA Logo" style={{ width: 90, height: 90, objectFit: 'contain' }} />
               </td>
             </tr>
           </tbody>
