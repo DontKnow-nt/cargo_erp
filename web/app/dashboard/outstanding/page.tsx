@@ -1,6 +1,5 @@
 'use client';
 import { AlertTriangle, Download, Search, Trash2 } from 'lucide-react';
-import { useStore } from '@/lib/store';
 import { useState, useTransition } from 'react';
 import { useSharedData } from '@/lib/useSharedData';
 import { LiveIndicator } from '@/components/LiveIndicator';
@@ -20,8 +19,6 @@ const BUCKET_COLORS: Record<string,string> = {
 
 export default function OutstandingPage() {
   const { outstanding, parties, refresh } = useSharedData();
-  const getTotalOutstanding = useStore(s => s.getTotalOutstanding);
-  const getTotalOverdue     = useStore(s => s.getTotalOverdue);
 
   const [search, setSearch]     = useState('');
   const [partyFilter, setPartyFilter] = useState('ALL');
@@ -40,8 +37,11 @@ export default function OutstandingPage() {
     });
   }
 
-  const totalOut = getTotalOutstanding();
-  const totalOvd = getTotalOverdue();
+  const totalOut = outstanding.filter(o => o.outstandingAmount > 0).reduce((sum, o) => sum + o.outstandingAmount, 0);
+  const totalOvd = outstanding.filter(o => {
+    const isOverdue = new Date(o.dueDate) < new Date();
+    return isOverdue && o.outstandingAmount > 0;
+  }).reduce((sum, o) => sum + o.outstandingAmount, 0);
 
   // Bucket summary
   const bucketSummary = Object.keys(BUCKET_LABELS).map(b => ({
@@ -53,7 +53,9 @@ export default function OutstandingPage() {
   // Party wise summary
   const partyMap: Record<string,{name:string;amount:number;creditLimit:number}> = {};
   outstanding.forEach(o=>{
-    if(!partyMap[o.partyId]) partyMap[o.partyId]={name:o.partyName,amount:0,creditLimit:o.creditLimit};
+    const party = parties.find(p => p.id === o.partyId);
+    const creditLimit = party ? party.creditLimit : o.creditLimit;
+    if(!partyMap[o.partyId]) partyMap[o.partyId]={name:o.partyName,amount:0,creditLimit};
     partyMap[o.partyId].amount+=o.outstandingAmount;
   });
 
