@@ -253,6 +253,9 @@ function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo
           <li>3. INTEREST AT 24% P.A. WILL BE CHARGED IF THE BILL IS NOT PAID WITHIN THE STIPULATED TIME.</li>
           <li>4. PAYMENT SHOULD BE MADE BY A/C PAYEE CHEQUE OR DD IN FAVOUR OF <strong>TRIVENI CARGO EXPRESS INDIA PVT LTD.</strong></li>
           <li>5. JURISDICTION: ALL DISPUTES ARISING UNDER THIS BILL SHALL BE SUBJECT TO BE UNDER NEW DELHI JURISDICTION.</li>
+          <li>6. PAN          AAGCT2294N</li>
+          <li>7. Tan NO   DELT14067E</li>
+          <li>8. S. Tax.      AAGCT2294NSD001</li>
         </ul>
       </td>
       <td style="width:40%;border:none;vertical-align:bottom;text-align:right;padding-top:10px">
