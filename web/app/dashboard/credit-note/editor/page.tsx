@@ -244,9 +244,9 @@ function CreditNoteTemplate({ inv, party, bank, today, amtWords }: {
               <div>3.  INTEREST AT 24% P.A. WILL BE CHARGED IF THE BILL IS NOT PAID WITHIN THE STIPULATED TIME.</div>
               <div>4.  PAYMENT SHOULD BE MADE BY A/C PAYEE CHEQUE OR DD IN FAVOUR OF TRIVENI CARGO EXPRESS INDIA PVT LTD.</div>
               <div>5.  JURISDICTION: ALL DISPUTES ARISING UNDER THIS BILL SHALL BE SUBJECT TO BE UNDER NEW DELHI JURISDICTION.</div>
-              <div><strong>6.  PAN          AAGCT2294N</strong></div>
-              <div><strong>7.  Tan NO   DELT14067E</strong></div>
-              <div><strong>8.  S. Tax.      AAGCT2294NSD001</strong></div>
+              <div>6.  PAN          AAGCT2294N</div>
+              <div>7.  Tan NO   DELT14067E</div>
+              <div>8.  S. Tax.      AAGCT2294NSD001</div>
             </div>
           </td>
           <td colSpan={2} style={{ border: B, padding: '5px 10px', verticalAlign: 'bottom', textAlign: 'right' }}>
