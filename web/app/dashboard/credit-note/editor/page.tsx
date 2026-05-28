@@ -109,11 +109,11 @@ function CreditNoteTemplate({ inv, party, bank, today, amtWords }: {
               <img src="/logo.png" alt="Triveni" style={{ width: 90, height: 90, objectFit: 'contain', flexShrink: 0 }} />
               <div style={{ flex: 1, textAlign: 'center' }}>
                 <div style={{ fontSize: 17, fontWeight: 900, letterSpacing: 0.5 }}>TRIVENI CARGO EXPRESS INDIA PVT LTD</div>
-                <div style={{ fontSize: 9 }}>Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi, Delhi 110037</div>
-                <div style={{ fontSize: 9 }}>Tel. : 011-65809456, 9311389456</div>
+                <div style={{ fontSize: 9, fontWeight: 700 }}>Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi, Delhi 110037</div>
+                <div style={{ fontSize: 9, fontWeight: 700 }}>Tel. : 011-65809456, 9311389456</div>
                 <div style={{ fontSize: 10, fontWeight: 700 }}>GSTIN : 07AAGCT2294N2ZR , CIN: U74999DL2017PTC316659</div>
-                <div style={{ fontSize: 8, color: '#c00' }}>Regd. Office: Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi 110037, near Hotel City Centre</div>
-                <div style={{ fontSize: 9 }}>Email : info@tceipl.com</div>
+                <div style={{ fontSize: 8, color: '#c00', fontWeight: 700 }}>Regd. Office: Plot No 480, Flat No 301, 2nd Floor, L-Block, Gali No 15, Mahipalpur Extension, New Delhi 110037, near Hotel City Centre</div>
+                <div style={{ fontSize: 9, fontWeight: 700 }}>Email : info@tceipl.com</div>
               </div>
               <img src="/iata.png" alt="IATA" style={{ width: 130, height: 90, objectFit: 'contain', flexShrink: 0 }} />
             </div>

@@ -1140,12 +1140,12 @@ img{max-width:100%;object-fit:contain}
                   <img src="/logo.png" alt="Triveni" style={{ width: 90, height: 90, objectFit: 'contain', flexShrink: 0 }} />
                   <div style={{ flex: 1, textAlign: 'center' }}>
                     <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 20, fontWeight: 900, letterSpacing: 0.5, fontFamily:'Arial,sans-serif' }}>TRIVENI CARGO EXPRESS INDIA PVT LTD</div>
-                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontFamily:'Arial,sans-serif' }}>Domestic Air Cargo &amp; Rail Agent</div>
-                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontFamily:'Arial,sans-serif' }}>Plot no-319/2/2, Badam Singh Market, NH-8 Rangpuri, New Delhi-110037</div>
-                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontFamily:'Arial,sans-serif' }}>Tel. : 011-65809456, 9311389456</div>
+                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontWeight: 700, fontFamily:'Arial,sans-serif' }}>Domestic Air Cargo &amp; Rail Agent</div>
+                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontWeight: 700, fontFamily:'Arial,sans-serif' }}>Plot no-319/2/2, Badam Singh Market, NH-8 Rangpuri, New Delhi-110037</div>
+                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontWeight: 700, fontFamily:'Arial,sans-serif' }}>Tel. : 011-65809456, 9311389456</div>
                     <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontWeight: 700, fontFamily:'Arial,sans-serif' }}>GSTIN: 07AAGCT2294N2ZR , CIN: U74999DL2017PTC316659</div>
-                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 9, color: '#c00', fontFamily:'Arial,sans-serif' }}>Regd. Office: Plot no 480, Flat no 301, First Floor, Gali no 15, L Block Mahipalpur Extn. New Delhi 110037</div>
-                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontFamily:'Arial,sans-serif' }}>Email : info@tceipl.com</div>
+                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 9, color: '#c00', fontWeight: 700, fontFamily:'Arial,sans-serif' }}>Regd. Office: Plot no 480, Flat no 301, First Floor, Gali no 15, L Block Mahipalpur Extn. New Delhi 110037</div>
+                    <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontWeight: 700, fontFamily:'Arial,sans-serif' }}>Email : info@tceipl.com</div>
                   </div>
                   <img src="/iata.png" alt="IATA" style={{ width: 130, height: 90, objectFit: 'contain', flexShrink: 0 }} />
                 </div>

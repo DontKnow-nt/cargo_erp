@@ -102,7 +102,7 @@ function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,sans-serif;font-size:10.5px;color:#000;padding:18px;position:relative}
     .co-name{font-size:20px;font-weight:bold;text-align:center;letter-spacing:.5px}
-    .co-sub{font-size:10px;text-align:center;margin:1px 0}
+    .co-sub{font-size:10px;font-weight:bold;text-align:center;margin:1px 0}
     .co-bold{font-size:10.5px;font-weight:bold;text-align:center;margin:2px 0}
     .title{text-align:center;font-size:12px;font-weight:bold;text-decoration:underline;margin:6px 0 5px}
     table{width:100%;border-collapse:collapse}
