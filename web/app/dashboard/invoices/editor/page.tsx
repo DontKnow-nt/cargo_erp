@@ -1137,7 +1137,9 @@ img{max-width:100%;object-fit:contain}
             <tr>
               <td colSpan={invoiceFormat === 'format2' || invoiceFormat === 'format3' ? 15 : 14} style={{ border: '1px solid #000', padding: '6px 10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <img src="/logo.png" alt="Triveni" style={{ width: 90, height: 90, objectFit: 'contain', flexShrink: 0 }} />
+                  <div style={{ width: 130, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
+                    <img src="/logo.png" alt="Triveni" style={{ width: 90, height: 90, objectFit: 'contain' }} />
+                  </div>
                   <div style={{ flex: 1, textAlign: 'center' }}>
                     <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 20, fontWeight: 900, letterSpacing: 0.5, fontFamily:'Arial,sans-serif' }}>TRIVENI CARGO EXPRESS INDIA PVT LTD</div>
                     <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontWeight: 700, fontFamily:'Arial,sans-serif' }}>Domestic Air Cargo &amp; Rail Agent</div>
@@ -1147,7 +1149,9 @@ img{max-width:100%;object-fit:contain}
                     <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 9, color: '#c00', fontWeight: 700, fontFamily:'Arial,sans-serif' }}>Regd. Office: Plot no 480, Flat no 301, First Floor, Gali no 15, L Block Mahipalpur Extn. New Delhi 110037</div>
                     <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontSize: 10, fontWeight: 700, fontFamily:'Arial,sans-serif' }}>Email : info@tceipl.com</div>
                   </div>
-                  <img src="/iata.png" alt="IATA" style={{ width: 130, height: 90, objectFit: 'contain', flexShrink: 0 }} />
+                  <div style={{ width: 130, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
+                    <img src="/iata.png" alt="IATA" style={{ width: 130, height: 90, objectFit: 'contain' }} />
+                  </div>
                 </div>
               </td>
             </tr>

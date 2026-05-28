@@ -114,7 +114,9 @@ function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo
 <body>
   <!-- HEADER -->
   <div style="display:flex;align-items:center;margin-bottom:6px">
-    <img src="${logoUrl}" alt="Triveni" style="width:90px;height:90px;object-fit:contain;flex-shrink:0" />
+    <div style="width:130px;display:flex;justify-content:center;flex-shrink:0">
+      <img src="${logoUrl}" alt="Triveni" style="width:90px;height:90px;object-fit:contain" />
+    </div>
     <div style="flex:1;text-align:center">
       <div class="co-name">${companyInfo.name}</div>
       <div class="co-sub">Domestic Air Cargo &amp; Rail Agent</div>
@@ -124,7 +126,9 @@ function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo
       <div class="co-sub">${companyInfo.regdOffice}</div>
       <div class="co-sub">Email : ${companyInfo.email}</div>
     </div>
-    <img src="${window.location.origin}/iata.png" alt="IATA" style="width:130px;height:90px;object-fit:contain;flex-shrink:0" />
+    <div style="width:130px;display:flex;justify-content:center;flex-shrink:0">
+      <img src="${window.location.origin}/iata.png" alt="IATA" style="width:130px;height:90px;object-fit:contain" />
+    </div>
   </div>
 
   <div class="title" style="text-align:center">TAX INVOICE</div>
