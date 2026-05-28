@@ -1,9 +1,8 @@
 'use client';
 import { Suspense, useRef, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Printer, FileSpreadsheet } from 'lucide-react';
+import { Printer } from 'lucide-react';
 import { useSharedData } from '@/lib/useSharedData';
-import toast from 'react-hot-toast';
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 function Toolbar({ paperRef }: { paperRef: React.RefObject<HTMLDivElement | null> }) {
@@ -933,77 +932,7 @@ img{max-width:100%;object-fit:contain}
     if (win) setTimeout(() => URL.revokeObjectURL(url), 15000);
   }, [inv]);
 
-  const handleExportExcel = useCallback(async () => {
-    const el = paperRef.current; if (!el) return;
-    const clone = el.cloneNode(true) as HTMLElement;
 
-    try {
-      const [resp1, resp2] = await Promise.all([fetch('/logo.png'), fetch('/iata.png')]);
-      const [blob1, blob2] = await Promise.all([resp1.blob(), resp2.blob()]);
-      const [b64_triveni, b64_iata] = await Promise.all([
-        new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(blob1); }),
-        new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(blob2); }),
-      ]);
-      clone.querySelectorAll('img').forEach(img => {
-        const htmlImg = img as HTMLImageElement;
-        if (htmlImg.alt.toLowerCase().includes('iata') || htmlImg.src.includes('iata.png')) {
-          htmlImg.src = b64_iata;
-        } else {
-          htmlImg.src = b64_triveni;
-        }
-      });
-    } catch { /* logo missing, skip */ }
-
-    clone.querySelectorAll('[contenteditable]').forEach(node => {
-      node.removeAttribute('contenteditable');
-      (node as HTMLElement).style.outline = 'none';
-    });
-    clone.querySelectorAll('td, th').forEach(cell => {
-      (cell as HTMLElement).style.border = '1px solid #000000';
-    });
-
-    const htmlContent = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="utf-8">
-        <!--[if gte mso 9]>
-        <xml>
-          <x:ExcelWorkbook>
-            <x:ExcelWorksheets>
-              <x:ExcelWorksheet>
-                <x:Name>Invoice</x:Name>
-                <x:WorksheetOptions>
-                  <x:DisplayGridlines/>
-                </x:WorksheetOptions>
-              </x:ExcelWorksheet>
-            </x:ExcelWorksheets>
-          </x:ExcelWorkbook>
-        </xml>
-        <![endif]-->
-        <style>
-          table { border-collapse: collapse; width: 100%; }
-          td, th { border: 1px solid #000000; font-family: Arial, sans-serif; font-size: 10px; vertical-align: top; padding: 4px; }
-          .title { text-align: center; font-size: 13px; font-weight: bold; text-decoration: underline; }
-          .co-name { font-size: 18px; font-weight: bold; text-align: center; }
-          .co-sub { font-size: 10px; text-align: center; }
-        </style>
-      </head>
-      <body>
-        ${clone.innerHTML}
-      </body>
-      </html>
-    `;
-    const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Invoice-${inv?.invoiceNo ?? ''}.xls`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast.success('Excel export downloaded');
-  }, [inv]);
 
   if (!inv) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'Arial', fontSize: 16, color: '#6b7280' }}>
@@ -1194,9 +1123,6 @@ img{max-width:100%;object-fit:contain}
           </button>
           <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
             <Printer size={14} /> Print / Download
-          </button>
-          <button onClick={handleExportExcel} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: '#10b981', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-            <FileSpreadsheet size={14} /> Export to Excel
           </button>
         </div>
       </div>
