@@ -282,6 +282,9 @@ function CreditNoteEditorInner() {
   const [igstRate, setIgstRate] = useState(18);
   const [cgstRate, setCgstRate] = useState(9);
   const [sgstRate, setSgstRate] = useState(5);
+  const [isRounded, setIsRounded] = useState(false);
+  const isRoundedRef = useRef(isRounded);
+  useEffect(() => { isRoundedRef.current = isRounded; }, [isRounded]);
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -342,6 +345,18 @@ function CreditNoteEditorInner() {
     const cgstAmt = parseFloat((taxable * cg / 100).toFixed(2));
     const sgstAmt = parseFloat((taxable * sg / 100).toFixed(2));
     const net = parseFloat((taxable + igstAmt + cgstAmt + sgstAmt).toFixed(2));
+    const roundedNet = isRoundedRef.current ? Math.round(net) : net;
+
+    // Update Amount in Words dynamically if present
+    p.querySelectorAll('tr, div').forEach(node => {
+      const text = node.textContent ?? '';
+      if (text.toLowerCase().includes('amount in words')) {
+        const span = node.querySelector('span[contenteditable]') as HTMLElement | null;
+        if (span && roundedNet > 0) {
+          span.textContent = numberToWords(Math.round(roundedNet)) + ' Only';
+        }
+      }
+    });
 
     // Primary: use data-cn-key attributes (always present in rendered template)
     if (setKey('cn-igst-label', `IGST @ ${ig}%`) || setKey('cn-igst', fmtN(igstAmt))) {
@@ -352,7 +367,7 @@ function CreditNoteEditorInner() {
       setKey('cn-cgst', fmtN(cgstAmt));
       setKey('cn-sgst', fmtN(sgstAmt));
       setKey('cn-taxable', fmtN(taxable));
-      setKey('cn-net', fmtN(net));
+      setKey('cn-net', fmtN(roundedNet));
       return;
     }
 
@@ -362,7 +377,7 @@ function CreditNoteEditorInner() {
       { val: fmtN(sgstAmt), label: `SGST @ ${sg}%` },
       { val: fmtN(cgstAmt), label: `CGST @ ${cg}%` },
       { val: fmtN(igstAmt), label: `IGST @ ${ig}%` },
-      { val: fmtN(net),     label: '' },
+      { val: fmtN(roundedNet),     label: '' },
     ];
 
     // Try #cn-tax-summary by row index first (works for new HTML or loaded HTML with id preserved)
@@ -455,9 +470,11 @@ function CreditNoteEditorInner() {
       applyGstRatesCN(ig, cg, sg, paper);
     }
     paper.addEventListener('input', recalcCN);
+    const { ig, cg, sg } = ratesRef.current;
+    applyGstRatesCN(ig, cg, sg, paper);
     return () => paper.removeEventListener('input', recalcCN);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isRounded]);
 
   const inv = invoices.find(i => i.id === id);
   const party = inv ? parties.find(p => p.id === inv.partyId) : undefined;
@@ -565,6 +582,9 @@ function CreditNoteEditorInner() {
               </span>
             ))}
             <span style={{ fontSize: 11, color: '#6b7280' }}>💡 Click any field to edit</span>
+            <button onClick={() => setIsRounded(p => !p)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: isRounded ? '#7c3aed' : '#4b5563', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+              {isRounded ? '🔢 Exact Amount' : '🪙 Round Off'}
+            </button>
             <button onClick={handleBlankSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: saving ? '#6b7280' : '#059669', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer' }}>{saving ? '⏳ Saving…' : '💾 Save'}</button>
             <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}><Printer size={14} /> Print / Download</button>
           </div>

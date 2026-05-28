@@ -268,6 +268,9 @@ function InvoiceEditorInner() {
   const [igstRate, setIgstRate] = useState(18);
   const [cgstRate, setCgstRate] = useState(9);
   const [sgstRate, setSgstRate] = useState(5);
+  const [isRounded, setIsRounded] = useState(false);
+  const isRoundedRef = useRef(isRounded);
+  useEffect(() => { isRoundedRef.current = isRounded; }, [isRounded]);
 
   function applyGstRates(ig: number, cg: number, sg: number) {
     const taxEl = paperRef.current?.querySelector<HTMLElement>('[data-tax-summary]');
@@ -278,11 +281,19 @@ function InvoiceEditorInner() {
     const igstAmt = parseFloat((taxable * ig / 100).toFixed(2));
     const cgstAmt = parseFloat((taxable * cg / 100).toFixed(2));
     const sgstAmt = parseFloat((taxable * sg / 100).toFixed(2));
-    const net = parseFloat((taxable + igstAmt + cgstAmt + sgstAmt).toFixed(2));
-    taxEl.innerText = `Total Taxable Amount : ${fmtN(taxable)}\nSGST @ ${sg}%              : ${fmtN(sgstAmt)}\nCGST @ ${cg}%              : ${fmtN(cgstAmt)}\nIGST @ ${ig}%             : ${fmtN(igstAmt)}\nNet Payable Amount  : ${fmtN(net)}`;
+    const exactNet = taxable + igstAmt + cgstAmt + sgstAmt;
+    const roundedNet = isRoundedRef.current ? Math.round(exactNet) : exactNet;
+    const roundOff = isRoundedRef.current ? parseFloat((roundedNet - exactNet).toFixed(2)) : 0;
+
+    let roundOffText = '';
+    if (isRoundedRef.current) {
+      roundOffText = `Round Off              : ${roundOff >= 0 ? '+' : ''}${roundOff.toFixed(2)}\n`;
+    }
+
+    taxEl.innerText = `Total Taxable Amount : ${fmtN(taxable)}\nSGST @ ${sg}%              : ${fmtN(sgstAmt)}\nCGST @ ${cg}%              : ${fmtN(cgstAmt)}\nIGST @ ${ig}%             : ${fmtN(igstAmt)}\n${roundOffText}Net Payable Amount  : ${fmtN(roundedNet)}`;
     // Update Amount in Words
     const wordsEl = paperRef.current?.querySelector<HTMLElement>('[data-words]');
-    if (wordsEl && net > 0) wordsEl.innerText = `Rupees ${numberToWords(Math.round(net))}`;
+    if (wordsEl && roundedNet > 0) wordsEl.innerText = `Rupees ${numberToWords(Math.round(roundedNet))} Only`;
   }
 
   useEffect(() => {
@@ -659,12 +670,19 @@ function InvoiceEditorInner() {
         const sgstAmt    = parseFloat((totalTaxable * sgstRate   / 100).toFixed(2));
         const cgstAmt    = parseFloat((totalTaxable * cgstRate   / 100).toFixed(2));
         const igstAmt    = parseFloat((totalTaxable * igstRateVal / 100).toFixed(2));
-        const netPayable = parseFloat((totalTaxable + sgstAmt + cgstAmt + igstAmt).toFixed(2));
+        const exactNet   = totalTaxable + sgstAmt + cgstAmt + igstAmt;
+        const roundedNet = isRoundedRef.current ? Math.round(exactNet) : exactNet;
+        const roundOff   = isRoundedRef.current ? parseFloat((roundedNet - exactNet).toFixed(2)) : 0;
 
         const fmtN = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        taxSummaryEl.innerText = `Total Taxable Amount : ${fmtN(totalTaxable)}\nSGST @ ${sgstRate}%              : ${fmtN(sgstAmt)}\nCGST @ ${cgstRate}%              : ${fmtN(cgstAmt)}\nIGST @ ${igstRateVal}%             : ${fmtN(igstAmt)}\nNet Payable Amount  : ${fmtN(netPayable)}`;
+        let roundOffText = '';
+        if (isRoundedRef.current) {
+          roundOffText = `Round Off              : ${roundOff >= 0 ? '+' : ''}${roundOff.toFixed(2)}\n`;
+        }
+
+        taxSummaryEl.innerText = `Total Taxable Amount : ${fmtN(totalTaxable)}\nSGST @ ${sgstRate}%              : ${fmtN(sgstAmt)}\nCGST @ ${cgstRate}%              : ${fmtN(cgstAmt)}\nIGST @ ${igstRateVal}%             : ${fmtN(igstAmt)}\n${roundOffText}Net Payable Amount  : ${fmtN(roundedNet)}`;
         const wordsEl2 = paper!.querySelector<HTMLElement>('[data-words]');
-        if (wordsEl2 && netPayable > 0) wordsEl2.innerText = `Rupees ${numberToWords(Math.round(netPayable))}`;
+        if (wordsEl2 && roundedNet > 0) wordsEl2.innerText = `Rupees ${numberToWords(Math.round(roundedNet))} Only`;
       }
     }
 
@@ -737,7 +755,7 @@ function InvoiceEditorInner() {
       paper.removeEventListener('keydown', handlePaperKeyDown);
       paper.removeEventListener('focusout', handlePaperFocusOut);
     };
-  }, [inv?.id, invoiceFormat]); // re-attach when invoice or format changes
+  }, [inv?.id, invoiceFormat, isRounded]); // re-attach when invoice, format, or rounding changes
 
   // ── Imperative format-switcher: replaces #awb-body directly in the DOM ────
   // (needed because saved-HTML loading via innerHTML breaks React reconciliation)
@@ -1118,6 +1136,9 @@ img{max-width:100%;object-fit:contain}
             ))}
           </span>
           <span style={{ fontSize: 11, color: '#6b7280' }}>💡 Click any field to edit</span>
+          <button onClick={() => setIsRounded(p => !p)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: isRounded ? '#7c3aed' : '#4b5563', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+            {isRounded ? '🔢 Exact Amount' : '🪙 Round Off'}
+          </button>
           <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: saving ? '#6b7280' : '#059669', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer' }}>
             {saving ? '⏳ Saving…' : '💾 Save'}
           </button>
