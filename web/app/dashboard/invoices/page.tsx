@@ -127,7 +127,7 @@ function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo
     <img src="${window.location.origin}/iata.png" alt="IATA" style="width:130px;height:90px;object-fit:contain;flex-shrink:0" />
   </div>
 
-  <div class="title">TAX INVOICE</div>
+  <div class="title" style="text-align:center">TAX INVOICE</div>
 
   <!-- PARTY + BILL INFO -->
   <table style="margin-bottom:5px">

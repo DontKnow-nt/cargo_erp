@@ -163,7 +163,7 @@ export default async function InvoicePrintPage({ params, searchParams }: { param
           </tbody>
         </table>
 
-        <div className="title">TAX INVOICE</div>
+        <div className="title" style={{ textAlign: 'center' }}>TAX INVOICE</div>
 
         {/* Party + Bill Info */}
         <table style={{ marginBottom: 5 }}>

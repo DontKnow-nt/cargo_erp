@@ -1135,7 +1135,7 @@ img{max-width:100%;object-fit:contain}
 
             {/* ── HEADER: Logo + Company Info ── */}
             <tr>
-              <td colSpan={invoiceFormat === 'format2' ? 15 : 14} style={{ border: '1px solid #000', padding: '6px 10px' }}>
+              <td colSpan={invoiceFormat === 'format2' || invoiceFormat === 'format3' ? 15 : 14} style={{ border: '1px solid #000', padding: '6px 10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <img src="/logo.png" alt="Triveni" style={{ width: 90, height: 90, objectFit: 'contain', flexShrink: 0 }} />
                   <div style={{ flex: 1, textAlign: 'center' }}>
@@ -1154,14 +1154,14 @@ img{max-width:100%;object-fit:contain}
 
             {/* ── TAX INVOICE title ── */}
             <tr>
-              <td colSpan={invoiceFormat === 'format2' ? 15 : 14} style={{ border: '1px solid #000', padding: '4px', textAlign: 'center', fontWeight: 700, fontSize: 13, textDecoration: 'underline' }}>
+              <td colSpan={invoiceFormat === 'format2' || invoiceFormat === 'format3' ? 15 : 14} style={{ border: '1px solid #000', padding: '4px', textAlign: 'center', fontWeight: 700, fontSize: 13, textDecoration: 'underline' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline: 'none', textAlign: 'center', fontWeight: 700, fontSize: 13, textDecoration: 'underline', fontFamily: 'Arial, sans-serif' }}>TAX INVOICE</div>
               </td>
             </tr>
 
             {/* ── Party Info (left) + Bill Info (right) ── */}
             <tr>
-              <td colSpan={invoiceFormat === 'format2' ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
+              <td colSpan={invoiceFormat === 'format2' || invoiceFormat === 'format3' ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
                   {`M/s : ${inv.partyName}\nGSTIN : ${party?.gstin || '—'}\nAddress : ${party?.billingAddress || '—'}`}
                 </div>
@@ -1175,7 +1175,7 @@ img{max-width:100%;object-fit:contain}
 
             {/* ── SAC Code ── */}
             <tr>
-              <td colSpan={invoiceFormat === 'format2' ? 15 : 14} style={{ border: '1px solid #000', padding: '3px 7px', fontSize: 10, fontWeight: 700, textAlign: 'center' }}>
+              <td colSpan={invoiceFormat === 'format2' || invoiceFormat === 'format3' ? 15 : 14} style={{ border: '1px solid #000', padding: '3px 7px', fontSize: 10, fontWeight: 700, textAlign: 'center' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline: 'none', textAlign: 'center', fontWeight: 700, fontFamily: 'Arial, sans-serif', fontSize: 10 }}>SAC Code : 996531</div>
               </td>
             </tr>
@@ -1307,7 +1307,7 @@ img{max-width:100%;object-fit:contain}
 
             {/* ── Bank (left) + Tax Summary (right) ── */}
             <tr>
-              <td colSpan={invoiceFormat === 'format2' ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
+              <td colSpan={invoiceFormat === 'format2' || invoiceFormat === 'format3' ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
                 <div style={{ fontSize: 10, marginBottom: 4 }}><strong>Amount in Words :</strong> <span data-words contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>Rupees {amtWords}</span></div>
                 <div contentEditable suppressContentEditableWarning data-bank-detail style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap', marginTop: 6 }}>
                   {bankText}
@@ -1322,7 +1322,7 @@ img{max-width:100%;object-fit:contain}
 
             {/* ── Bank footer line ── */}
             <tr>
-              <td colSpan={invoiceFormat === 'format2' ? 15 : 14} style={{ border: '1px solid #000', padding: '3px 7px', fontSize: 9, textAlign: 'center' }}>
+              <td colSpan={invoiceFormat === 'format2' || invoiceFormat === 'format3' ? 15 : 14} style={{ border: '1px solid #000', padding: '3px 7px', fontSize: 9, textAlign: 'center' }}>
                 <div contentEditable suppressContentEditableWarning data-bank-footer style={{ outline: 'none', fontFamily: 'Arial, sans-serif', fontSize: 9, whiteSpace: 'pre-wrap' }}>
                   {bankFooter}
                 </div>
@@ -1331,7 +1331,7 @@ img{max-width:100%;object-fit:contain}
 
             {/* ── Notes (left) + Signature (right) ── */}
             <tr>
-              <td colSpan={invoiceFormat === 'format2' ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
+              <td colSpan={invoiceFormat === 'format2' || invoiceFormat === 'format3' ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 9, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
                   <div>NOTES :</div>
                   <div>1. DIFFERENCE, IF ANY, MAY BE NOTIFIED WITHIN 3 DAYS OF RECEIPT.</div>

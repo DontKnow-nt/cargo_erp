@@ -123,7 +123,7 @@ function CreditNoteTemplate({ inv, party, bank, today, amtWords }: {
         {/* ── CREDIT NOTE title ── */}
         <tr>
           <td colSpan={6} style={{ border: B, padding: '4px', textAlign: 'center', fontWeight: 700, fontSize: 14, textDecoration: 'underline' }}>
-            CREDIT NOTE
+            <div contentEditable suppressContentEditableWarning style={{ outline: 'none', textAlign: 'center', fontWeight: 700, fontSize: 14, textDecoration: 'underline', fontFamily: 'Arial, sans-serif' }}>CREDIT NOTE</div>
           </td>
         </tr>
 
