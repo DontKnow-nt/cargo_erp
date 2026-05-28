@@ -494,9 +494,27 @@ function CreditNoteEditorInner() {
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' }); const url = URL.createObjectURL(blob); const win = window.open(url, '_blank', 'width=1200,height=800'); if (win) setTimeout(() => URL.revokeObjectURL(url), 15000);
   }, [inv]);
 
-  const handleExportExcel = useCallback(() => {
+  const handleExportExcel = useCallback(async () => {
     const el = paperRef.current; if (!el) return;
     const clone = el.cloneNode(true) as HTMLElement;
+
+    try {
+      const [resp1, resp2] = await Promise.all([fetch('/logo.png'), fetch('/iata.png')]);
+      const [blob1, blob2] = await Promise.all([resp1.blob(), resp2.blob()]);
+      const [b64_triveni, b64_iata] = await Promise.all([
+        new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(blob1); }),
+        new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(blob2); }),
+      ]);
+      clone.querySelectorAll('img').forEach(img => {
+        const htmlImg = img as HTMLImageElement;
+        if (htmlImg.alt.toLowerCase().includes('iata') || htmlImg.src.includes('iata.png')) {
+          htmlImg.src = b64_iata;
+        } else {
+          htmlImg.src = b64_triveni;
+        }
+      });
+    } catch { /* logo missing, skip */ }
+
     clone.querySelectorAll('[contenteditable]').forEach(node => {
       node.removeAttribute('contenteditable');
       (node as HTMLElement).style.outline = 'none';
