@@ -33,12 +33,13 @@ export default function PartiesPage() {
     });
   }
 
-  const init: PartyForm = { partyName:'', gstin:'', contactPerson:'', phone:'', email:'', billingAddress:'', creditLimit:0, creditDays:30, status:'ACTIVE' };
+  const init: PartyForm = { partyName:'', gstin:'', pan:'', contactPerson:'', phone:'', email:'', billingAddress:'', creditLimit:0, creditDays:30, status:'ACTIVE' };
   const [form, setForm] = useState(init);
 
   const filtered = parties.filter(p =>
     p.partyName.toLowerCase().includes(search.toLowerCase()) ||
     (p.gstin||'').toLowerCase().includes(search.toLowerCase()) ||
+    (p.pan||'').toLowerCase().includes(search.toLowerCase()) ||
     (p.email||'').toLowerCase().includes(search.toLowerCase())
   );
 
@@ -48,7 +49,7 @@ export default function PartiesPage() {
 
   function openAdd() { setForm(init); setEditId(null); setShowForm(true); }
   function openEdit(p: typeof parties[0]) {
-    setForm({ partyName:p.partyName, gstin:p.gstin||'', contactPerson:p.contactPerson||'', phone:p.phone||'', email:p.email||'', billingAddress:p.billingAddress||'', creditLimit:p.creditLimit, creditDays:p.creditDays, status:normalizePartyStatus(p.status) });
+    setForm({ partyName:p.partyName, gstin:p.gstin||'', pan:p.pan||'', contactPerson:p.contactPerson||'', phone:p.phone||'', email:p.email||'', billingAddress:p.billingAddress||'', creditLimit:p.creditLimit, creditDays:p.creditDays, status:normalizePartyStatus(p.status) });
     setEditId(p.id); setShowForm(true);
   }
 
@@ -119,7 +120,12 @@ export default function PartiesPage() {
                         <span title={p.partyName}>{shortName(p.partyName)}</span>
                       </div>
                     </td>
-                    <td><span style={{fontFamily:'var(--font-mono)',fontSize:11,color:'var(--text-secondary)'}}>{p.gstin||'—'}</span></td>
+                    <td>
+                      <div style={{fontFamily:'var(--font-mono)',fontSize:11,color:'var(--text-secondary)'}}>
+                        {p.gstin || '—'}
+                        {p.pan && <div style={{fontSize:10,color:'var(--text-muted)',marginTop:2}}>PAN: {p.pan}</div>}
+                      </div>
+                    </td>
                     <td style={{fontSize:12,color:'var(--text-secondary)'}}>{p.contactPerson||'—'}</td>
                     <td style={{fontSize:12,color:'var(--text-muted)'}}>{p.email||'—'}</td>
                     <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:700}}>{p.creditLimit>0?fmt(p.creditLimit):'No Limit'}</td>
@@ -151,14 +157,18 @@ export default function PartiesPage() {
               <button className="btn btn-ghost btn-icon" onClick={()=>{setShowForm(false);setForm(init);setEditId(null);}}><X size={16}/></button>
             </div>
             <form onSubmit={handleSubmit}>
+              <div className="form-group" style={{marginBottom:12}}>
+                <label className="label">Party Name *</label>
+                <input className="input" placeholder="Company or individual name" value={form.partyName} onChange={e=>setForm(f=>({...f,partyName:e.target.value}))} required/>
+              </div>
               <div className="form-row form-row-2" style={{marginBottom:12}}>
-                <div className="form-group">
-                  <label className="label">Party Name *</label>
-                  <input className="input" placeholder="Company or individual name" value={form.partyName} onChange={e=>setForm(f=>({...f,partyName:e.target.value}))} required/>
-                </div>
                 <div className="form-group">
                   <label className="label">GSTIN</label>
                   <input className="input" placeholder="15-digit GSTIN" maxLength={15} value={form.gstin} onChange={e=>setForm(f=>({...f,gstin:e.target.value.toUpperCase()}))} style={{fontFamily:'var(--font-mono)',letterSpacing:'0.05em'}}/>
+                </div>
+                <div className="form-group">
+                  <label className="label">PAN Card</label>
+                  <input className="input" placeholder="10-digit PAN" maxLength={10} value={form.pan} onChange={e=>setForm(f=>({...f,pan:e.target.value.toUpperCase()}))} style={{fontFamily:'var(--font-mono)',letterSpacing:'0.05em'}}/>
                 </div>
               </div>
               <div className="form-row form-row-3" style={{marginBottom:12}}>

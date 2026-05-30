@@ -7,6 +7,7 @@ import { createParty } from '@/lib/actions/parties';
 type PartyForm = {
   partyName: string;
   gstin: string;
+  pan: string;
   contactPerson: string;
   phone: string;
   email: string;
@@ -27,6 +28,7 @@ export function AddPartyModal({
   const [form, setForm] = useState<PartyForm>({
     partyName: '',
     gstin: '',
+    pan: '',
     contactPerson: '',
     phone: '',
     email: '',
@@ -87,6 +89,19 @@ export function AddPartyModal({
               />
             </div>
             <div className="form-group">
+              <label className="label">PAN Card</label>
+              <input
+                className="input"
+                placeholder="10-digit PAN"
+                maxLength={10}
+                value={form.pan}
+                onChange={e => setForm(f => ({ ...f, pan: e.target.value.toUpperCase() }))}
+                style={{ fontFamily: 'var(--font-mono)', letterSpacing: '0.05em' }}
+              />
+            </div>
+          </div>
+          <div className="form-row form-row-2" style={{ marginBottom: 12 }}>
+            <div className="form-group">
               <label className="label">Contact Person</label>
               <input
                 className="input"
@@ -94,8 +109,6 @@ export function AddPartyModal({
                 onChange={e => setForm(f => ({ ...f, contactPerson: e.target.value }))}
               />
             </div>
-          </div>
-          <div className="form-row form-row-2" style={{ marginBottom: 12 }}>
             <div className="form-group">
               <label className="label">Phone</label>
               <input
@@ -105,15 +118,15 @@ export function AddPartyModal({
                 onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
               />
             </div>
-            <div className="form-group">
-              <label className="label">Email</label>
-              <input
-                className="input"
-                type="email"
-                value={form.email}
-                onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-              />
-            </div>
+          </div>
+          <div className="form-group" style={{ marginBottom: 12 }}>
+            <label className="label">Email</label>
+            <input
+              className="input"
+              type="email"
+              value={form.email}
+              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+            />
           </div>
           <div className="form-group" style={{ marginBottom: 12 }}>
             <label className="label">Billing Address</label>

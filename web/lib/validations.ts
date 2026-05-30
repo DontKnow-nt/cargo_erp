@@ -12,6 +12,7 @@ const creditLimit = z.number().min(0).max(100_000_000);
 export const PartySchema = z.object({
   partyName: z.string().min(2).max(200).trim(),
   gstin: z.string().max(15).regex(/^[0-9A-Z]{1,15}$/, 'GSTIN must be alphanumeric, max 15 chars').optional().or(z.literal('')),
+  pan: z.string().max(10).regex(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/, 'Invalid PAN format').optional().or(z.literal('')),
   contactPerson: z.string().max(100).trim().optional(),
   phone: z.string().regex(/^[6-9]\d{9}$/, 'Invalid Indian phone number').optional().or(z.literal('')),
   email: z.string().email('Invalid email').max(200).optional().or(z.literal('')),

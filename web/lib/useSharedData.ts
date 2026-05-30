@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 // ── Shared types matching Prisma/DB fields ────────────────────────────────────
 export type DbParty = {
-  id: string; partyName: string; gstin?: string | null; contactPerson?: string | null;
+  id: string; partyName: string; gstin?: string | null; pan?: string | null; contactPerson?: string | null;
   phone?: string | null; email?: string | null; billingAddress?: string | null;
   creditLimit: number; creditDays: number; status: string;
   createdBy?: string | null; createdAt: string | Date;

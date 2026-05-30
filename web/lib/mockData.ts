@@ -1,7 +1,7 @@
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type Party = {
-  id: string; partyName: string; gstin?: string; contactPerson?: string;
+  id: string; partyName: string; gstin?: string; pan?: string; contactPerson?: string;
   phone?: string; email?: string; billingAddress?: string;
   creditLimit: number; creditDays: number;
   status: 'ACTIVE' | 'INACTIVE'; createdAt: string;

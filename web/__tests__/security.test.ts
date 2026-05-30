@@ -146,6 +146,22 @@ describe('Input Validation - Zod schemas', () => {
     expect(result.success).toBe(true);
   });
 
+  test('PartySchema rejects invalid PAN', async () => {
+    const { PartySchema } = await import('@/lib/validations');
+    const result = PartySchema.safeParse({
+      partyName: 'Test Party', pan: 'INVALID-PAN', creditLimit: 100000, creditDays: 30,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test('PartySchema accepts valid PAN', async () => {
+    const { PartySchema } = await import('@/lib/validations');
+    const result = PartySchema.safeParse({
+      partyName: 'Test Party', pan: 'ABCDE1234F', creditLimit: 100000, creditDays: 30,
+    });
+    expect(result.success).toBe(true);
+  });
+
   test('PartySchema rejects negative credit limit', async () => {
     const { PartySchema } = await import('@/lib/validations');
     const result = PartySchema.safeParse({ partyName: 'Test Party', creditLimit: -1000, creditDays: 30 });
