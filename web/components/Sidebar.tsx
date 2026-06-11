@@ -39,6 +39,7 @@ const navSections = [
         children: [
           { label: 'All Invoices', href: '/dashboard/invoices' },
           { label: 'New Invoice',  href: '/dashboard/invoices/new' },
+          { label: 'Musashi',      href: '/dashboard/invoices/musashi' },
         ],
       },
       { label: 'Credit Note',          icon: FileText,      href: '/dashboard/credit-note' },
