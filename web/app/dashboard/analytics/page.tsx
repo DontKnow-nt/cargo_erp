@@ -32,6 +32,21 @@ export default function AnalyticsPage() {
     { type:'Docket', count:filtDkt.length, revenue:filtDkt.reduce((s,b)=>s+b.totalAmount,0) },
   ];
 
+  // Company-wise work done (AWB + Docket bookings count + revenue)
+  const [companyRange, setCompanyRange] = useState<DateRange>('1m');
+  const companyRangeOptions: {label:string;value:DateRange}[] = [
+    {label:'7 Days',value:'7d'},{label:'15 Days',value:'1m'},{label:'1 Month',value:'1m'},
+    {label:'3 Months',value:'3m'},{label:'6 Months',value:'6m'},{label:'1 Year',value:'1y'},
+  ];
+  const cAwb = filterByDateRange(awb, 'bookingDate', companyRange);
+  const cDkt = filterByDateRange(dockets, 'bookingDate', companyRange);
+  const companyMap: Record<string,{name:string;revenue:number;count:number}> = {};
+  [...cAwb.map(b=>({name:b.partyName,revenue:b.totalAmount})), ...cDkt.map(b=>({name:b.partyName,revenue:b.totalAmount}))].forEach(b=>{
+    if(!companyMap[b.name]) companyMap[b.name]={name:b.name,revenue:0,count:0};
+    companyMap[b.name].revenue+=b.revenue; companyMap[b.name].count++;
+  });
+  const companyData = Object.values(companyMap).sort((a,b)=>b.revenue-a.revenue).slice(0,8);
+  const CPIE_COLORS = ['#f59e0b','#2563eb','#059669','#dc2626','#7c3aed','#0891b2','#d97706','#64748b'];
   const fmt = (n:number) => n>=100000?`₹${(n/100000).toFixed(1)}L`:n>=1000?`₹${(n/1000).toFixed(0)}K`:`₹${n.toFixed(0)}`;
 
   return (
@@ -119,6 +134,52 @@ export default function AnalyticsPage() {
             </div>
           );
         })()}
+      </div>
+
+      {/* Company-wise work done pie chart */}
+      <div className="card" style={{padding:20,marginTop:16}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,flexWrap:'wrap',gap:10}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:700}}>Work Done by Company</div>
+            <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>Total revenue (AWB + Docket) per party</div>
+          </div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+            {companyRangeOptions.map(o=>(
+              <button key={o.value} onClick={()=>setCompanyRange(o.value)}
+                style={{padding:'5px 12px',borderRadius:99,fontSize:11,fontWeight:companyRange===o.value?700:500,
+                  background:companyRange===o.value?'var(--accent)':'var(--surface-sunken)',
+                  color:companyRange===o.value?'#fff':'var(--text-secondary)',
+                  border:`1px solid ${companyRange===o.value?'var(--accent)':'var(--border)'}`,cursor:'pointer',transition:'all 120ms'}}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {companyData.length > 0 ? (
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie data={companyData} dataKey="revenue" nameKey="name" cx="50%" cy="50%" outerRadius={110} innerRadius={50}
+                  label={({name,percent})=>`${((percent||0)*100).toFixed(0)}%`} labelLine={false}>
+                  {companyData.map((_,i)=><Cell key={i} fill={CPIE_COLORS[i%CPIE_COLORS.length]}/>)}
+                </Pie>
+                <Tooltip formatter={(v)=>[fmt(Number(v)),'Revenue']} contentStyle={{background:'var(--surface-base)',border:'1px solid var(--border)',borderRadius:8,fontSize:12}}/>
+              </PieChart>
+            </ResponsiveContainer>
+            <div style={{display:'flex',flexDirection:'column',gap:8,justifyContent:'center'}}>
+              {companyData.map((c,i)=>(
+                <div key={i} style={{display:'flex',alignItems:'center',gap:10}}>
+                  <div style={{width:12,height:12,borderRadius:'50%',background:CPIE_COLORS[i%CPIE_COLORS.length],flexShrink:0}}/>
+                  <div style={{flex:1,fontSize:12,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name}</div>
+                  <div style={{fontSize:11,color:'var(--text-muted)',flexShrink:0}}>{c.count} jobs</div>
+                  <div style={{fontFamily:'var(--font-mono)',fontSize:12,fontWeight:700,flexShrink:0}}>{fmt(c.revenue)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div style={{textAlign:'center',padding:'40px 0',color:'var(--text-muted)',fontSize:12}}>No booking data in selected range</div>
+        )}
       </div>
     </div>
   );
