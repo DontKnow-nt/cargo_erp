@@ -311,6 +311,8 @@ export default function InvoicesPage() {
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [partyFilter, setPartyFilter] = useState('ALL');
   const [viewInvoice, setViewInvoice] = useState<typeof invoices[0]|null>(null);
   const [editingLine, setEditingLine] = useState<string|null>(null);
@@ -376,7 +378,9 @@ export default function InvoicesPage() {
   const filtered = invoices.filter(i =>
     (i.invoiceNo.toLowerCase().includes(search.toLowerCase()) || i.partyName.toLowerCase().includes(search.toLowerCase()) || i.bookingRef.toLowerCase().includes(search.toLowerCase())) &&
     (statusFilter==='ALL' || i.status===statusFilter) &&
-    (partyFilter==='ALL' || i.partyName===partyFilter)
+    (partyFilter==='ALL' || i.partyName===partyFilter) &&
+    (!dateFrom || i.invoiceDate >= dateFrom) &&
+    (!dateTo   || i.invoiceDate <= dateTo)
   );
 
   const unbilledAwb = awb.filter(b => b.status==='BOOKED');
@@ -441,21 +445,32 @@ export default function InvoicesPage() {
         })}
       </div>
 
-      <div style={{display:'flex',gap:10,marginBottom:14}}>
-        <div style={{position:'relative',flex:1}}>
+      <div style={{display:'flex',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+        <div style={{position:'relative',flex:1,minWidth:180}}>
           <Search size={12} style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',color:'var(--text-muted)'}}/>
           <input className="input" placeholder="Search invoice, party, booking ref…" style={{paddingLeft:30,height:36,fontSize:12}} value={search} onChange={e=>setSearch(e.target.value)}/>
         </div>
-        <select className="input" style={{width:180,height:36,fontSize:12}} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+        <select className="input" style={{width:160,height:36,fontSize:12}} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
           <option value="ALL">All Status</option>
           {['DRAFT','REVIEWED','FINALIZED','SENT','PARTIALLY_PAID','PAID','OVERDUE','CANCELLED'].map(s=><option key={s} value={s}>{s.replace('_',' ')}</option>)}
         </select>
-        <select className="input" style={{width:180,height:36,fontSize:12}} value={partyFilter} onChange={e=>setPartyFilter(e.target.value)}>
+        <select className="input" style={{width:170,height:36,fontSize:12}} value={partyFilter} onChange={e=>setPartyFilter(e.target.value)}>
           <option value="ALL">All Companies</option>
           {[...new Set(invoices.map(i=>i.partyName))].sort().map(n=>(
             <option key={n} value={n}>{n}</option>
           ))}
         </select>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <span style={{fontSize:12,color:'var(--text-muted)',whiteSpace:'nowrap'}}>From:</span>
+          <input className="input" type="date" style={{height:36,fontSize:12,width:140}} value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <span style={{fontSize:12,color:'var(--text-muted)',whiteSpace:'nowrap'}}>To:</span>
+          <input className="input" type="date" style={{height:36,fontSize:12,width:140}} value={dateTo} onChange={e=>setDateTo(e.target.value)}/>
+        </div>
+        {(dateFrom||dateTo) && (
+          <button className="btn btn-secondary btn-sm" onClick={()=>{setDateFrom('');setDateTo('');}}>✕ Clear</button>
+        )}
       </div>
 
       <div className="card" style={{overflow:'hidden'}}>
