@@ -29,6 +29,7 @@ const navSections = [
     label: 'Rates & Import',
     items: [
       { label: 'Import Wizard', icon: Upload,     href: '/dashboard/import' },
+      { label: 'Import Excel',  icon: Upload,     href: '/dashboard/import-excel' },
     ],
   },
   {
