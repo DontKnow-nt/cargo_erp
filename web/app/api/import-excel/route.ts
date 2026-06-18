@@ -12,35 +12,21 @@ function parseDate(val: unknown): string {
   }
   const s = String(val).trim();
   const m = s.match(/^(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{2,4})$/);
-  if (m) { const y = m[3].length===2?`20${m[3]}`:m[3]; return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; }
+  if (m) { const y = m[3].length === 2 ? `20${m[3]}` : m[3]; return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; }
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   return new Date().toISOString().split('T')[0];
 }
+
 function num(v: unknown): number { return parseFloat(String(v||0).replace(/,/g,''))||0; }
 function str(v: unknown): string { return String(v||'').trim(); }
 function nh(h: string): string { return h.toLowerCase().replace(/[^a-z0-9]/g,''); }
 
-async function ensureParty(name: string, userId: string): Promise<string> {
-  if (!name.trim()) return (await prisma.party.findFirst({where:{partyName:'Unknown'}}) || await prisma.party.create({data:{partyName:'Unknown',status:'ACTIVE',createdBy:userId}})).id;
-  const ex = await prisma.party.findFirst({where:{partyName:{equals:name.trim(),mode:'insensitive'}}});
-  if (ex) return ex.id;
-  return (await prisma.party.create({data:{partyName:name.trim(),status:'ACTIVE',createdBy:userId}})).id;
-}
-
-// Detect if a row is AWB type or Docket type based on cell values
-function detectRowType(row: unknown[], headers: string[]): 'awb' | 'docket' | 'skip' {
-  const h = headers.map(nh);
-  const vals = row.map(v => str(v));
-  // If any cell looks like an AWB number (e.g. 312-12345678 or starts with airline code)
-  const awbPat = /^\d{3}[-\s]?\d{7,8}$|^\d{9,11}$/;
-  for (const v of vals) { if (awbPat.test(v.replace(/\s/g,''))) return 'awb'; }
-  // If has a docket-like number (shorter, 5-7 digits)
-  const dktIdx = h.findIndex(x => x.includes('docket'));
-  if (dktIdx >= 0 && vals[dktIdx] && /^\d{4,7}$/.test(vals[dktIdx])) return 'docket';
-  // Fallback: check header context
-  if (h.some(x => x.includes('docket'))) return 'docket';
-  if (h.some(x => x.includes('awb') || x.includes('airway'))) return 'awb';
-  return 'skip';
+async function ensureParty(name: string, userId: string): Promise<{id:string;name:string}> {
+  const n = name.trim() || 'Unknown';
+  const ex = await prisma.party.findFirst({ where: { partyName: { equals: n, mode: 'insensitive' } } });
+  if (ex) return { id: ex.id, name: ex.partyName };
+  const cr = await prisma.party.create({ data: { partyName: n, status: 'ACTIVE', createdBy: userId } });
+  return { id: cr.id, name: cr.partyName };
 }
 
 export async function POST(req: NextRequest) {
@@ -55,7 +41,7 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const wb = XLSX.read(buffer, { type: 'buffer' });
-    const results = { dockets: 0, awbs: 0, invoices: 0, skipped: 0, errors: [] as string[] };
+    const results = { outstanding: 0, skipped: 0, errors: [] as string[] };
 
     for (const sheetName of wb.SheetNames) {
       const ws = wb.Sheets[sheetName];
@@ -67,8 +53,8 @@ export async function POST(req: NextRequest) {
       for (let i = 0; i < Math.min(6, rows.length); i++) {
         const row = rows[i] as unknown[];
         const nonEmpty = row.filter(c => String(c||'').trim().length > 0).length;
-        const hasId = row.some(c => /sno|s\.no|date/i.test(String(c||'')));
-        if (nonEmpty >= 4 && hasId) { headerIdx = i; break; }
+        const hasDateOrSno = row.some(c => /sno|s\.no|date/i.test(String(c||'')));
+        if (nonEmpty >= 4 && hasDateOrSno) { headerIdx = i; break; }
         if (nonEmpty >= 6) { headerIdx = i; break; }
       }
 
@@ -78,115 +64,78 @@ export async function POST(req: NextRequest) {
       const get = (row: unknown[], ...names: string[]): unknown => {
         for (const n of names) {
           const idx = h.findIndex(x => x.includes(n));
-          if (idx >= 0 && row[idx] !== undefined && String(row[idx]||'').trim()) return row[idx];
+          if (idx >= 0 && String(row[idx]||'').trim()) return row[idx];
         }
         return '';
       };
 
-      // Collect all data rows, sort by date ascending (oldest first → created first → appears at bottom of list)
+      // Sort rows by date ascending (oldest first)
       const dataRows = rows.slice(headerIdx + 1).filter(r => {
         const row = r as unknown[];
-        const firstCells = row.slice(0, 4).map(c => String(c||'').trim());
-        return firstCells.filter(Boolean).length >= 2 && /\d/.test(firstCells.join(''));
+        return row.slice(0, 5).some(c => String(c||'').trim()) && /\d/.test(row.slice(0,5).join(''));
       });
-
-      dataRows.sort((a, b) => {
-        const da = parseDate(get(a as unknown[], 'date'));
-        const db = parseDate(get(b as unknown[], 'date'));
-        return da.localeCompare(db);
-      });
+      dataRows.sort((a, b) => parseDate(get(a as unknown[], 'date')).localeCompare(parseDate(get(b as unknown[], 'date'))));
 
       for (const rawRow of dataRows) {
         const row = rawRow as unknown[];
-        const rowType = detectRowType(row, headers);
-        if (rowType === 'skip') { results.skipped++; continue; }
-
-        const bookingDate = parseDate(get(row, 'date'));
-        const invoiceNo   = str(get(row, 'invoice'));
-        const pkt         = parseInt(str(get(row, 'pkt','pieces','boxes'))) || 1;
-        const weight      = num(get(row, 'wt','weight'));
-        const freight     = num(get(row, 'freight'));
-        const totalAmt    = num(get(row, 'totalamt','amount','total')) || num(row[row.length-1]);
-
         try {
-          if (rowType === 'docket') {
-            const docketNo = str(get(row, 'docket')) || str(get(row, 'docketno'));
-            if (!docketNo || docketNo.length < 2) { results.skipped++; continue; }
+          const invoiceNo = str(get(row, 'invoice'));
+          const docketNo  = str(get(row, 'docket'));
+          const awbNo     = str(get(row, 'awbno','awb'));
+          const bookingRef = invoiceNo || docketNo || awbNo || `REF-${Date.now()}`;
+          const bookingDate = parseDate(get(row, 'date'));
+          const totalAmt = num(get(row, 'totalamt','amount','total')) || num(row[row.length - 1]);
+          const partyName = str(get(row, 'party','shipper','consignee')) || sheetName;
 
-            const origin      = str(get(row, 'origin'));
-            const destination = str(get(row, 'destination','dest'));
-            const partyName   = str(get(row, 'party','consignee')) || sheetName;
-            const rate        = num(get(row, 'rate'));
+          if (totalAmt <= 0) { results.skipped++; continue; }
 
-            const dup = await prisma.docketBooking.findFirst({ where: { docketNo } });
-            if (dup) { results.skipped++; continue; }
+          // Check if outstanding already exists for this reference
+          const existing = await prisma.outstandingEntry.findFirst({ where: { bookingRef } });
+          if (existing) { results.skipped++; continue; }
 
-            const partyId = await ensureParty(partyName, userId);
-            const dkt = await prisma.docketBooking.create({
+          const party = await ensureParty(partyName, userId);
+
+          // Create a draft invoice to anchor the outstanding entry
+          const finalInvoiceNo = invoiceNo || `IMP-${bookingRef}-${Date.now()}`;
+          let invoiceId: string;
+
+          const existingInv = invoiceNo ? await prisma.invoice.findFirst({ where: { invoiceNo } }) : null;
+          if (existingInv) {
+            invoiceId = existingInv.id;
+          } else {
+            const due = new Date(bookingDate); due.setDate(due.getDate() + 30);
+            const inv = await prisma.invoice.create({
               data: {
-                docketNo, partyId, partyName,
-                bookingDate, origin: origin||null, destination: destination||null,
-                rateFittedAmount: freight||rate, markupAmount: 0, gstRate: 18,
-                gstAmount: 0, totalAmount: totalAmt||freight,
-                dueDatePolicy: 30, status: 'BOOKED',
-                weight: weight||null, pieces: pkt, createdBy: userId,
+                invoiceNo: finalInvoiceNo,
+                partyId: party.id, partyName: party.name,
+                bookingType: docketNo ? 'DOCKET' : 'AWB',
+                bookingRef,
+                invoiceDate: bookingDate,
+                dueDate: due.toISOString().split('T')[0],
+                subtotal: totalAmt, gstTotal: 0, grandTotal: totalAmt,
+                paidTotal: 0, outstandingTotal: totalAmt,
+                status: 'FINALIZED', createdBy: userId,
+                lines: { create: [{ description: bookingRef, qty: 1, rate: totalAmt, amount: totalAmt, taxRate: 0, taxAmount: 0, lineTotal: totalAmt }] }
               }
             });
-            results.dockets++;
-
-            if (invoiceNo && invoiceNo.length > 2 && !await prisma.invoice.findUnique({ where: { invoiceNo } })) {
-              const due = new Date(bookingDate); due.setDate(due.getDate()+30);
-              await prisma.invoice.create({ data: {
-                invoiceNo, partyId, partyName, bookingType:'DOCKET', bookingRef:docketNo,
-                invoiceDate:bookingDate, dueDate:due.toISOString().split('T')[0],
-                subtotal:totalAmt, gstTotal:0, grandTotal:totalAmt,
-                paidTotal:0, outstandingTotal:totalAmt, status:'DRAFT', createdBy:userId,
-                lines:{create:[{description:`Docket ${docketNo} · ${origin}→${destination}`,qty:pkt,rate:weight>0?freight/weight:freight,amount:freight,taxRate:0,taxAmount:0,lineTotal:freight}]}
-              }});
-              results.invoices++;
-            }
-
-          } else {
-            // AWB
-            const awbNo = str(get(row, 'awbno','awb','airway')) || str(get(row, 'awbno'));
-            if (!awbNo || awbNo.length < 3) { results.skipped++; continue; }
-
-            const sector = str(get(row, 'sector','route'));
-            let origin = str(get(row, 'origin','from'));
-            let destination = str(get(row, 'destination','dest','to'));
-            if (!origin && sector) {
-              const parts = sector.split(/[-–→\/\s]+/);
-              origin = parts[0]?.trim()||''; destination = parts[1]?.trim()||'';
-            }
-            const partyName = str(get(row, 'party','shipper','consignee')) || sheetName;
-
-            const dup = await prisma.awbBooking.findFirst({ where: { awbNo } });
-            if (dup) { results.skipped++; continue; }
-
-            const partyId = await ensureParty(partyName, userId);
-            await prisma.awbBooking.create({ data: {
-              awbNo, partyId, partyName, origin, destination,
-              airlineName:'IndiGo', bookingDate, weight, pieces:pkt,
-              baseRate: weight>0 ? freight/weight : 0,
-              markupAmount:0, gstRate:18, gstAmount:0,
-              totalAmount:totalAmt||freight, status:'BOOKED', createdBy:userId,
-            }});
-            results.awbs++;
-
-            if (invoiceNo && invoiceNo.length > 2 && !await prisma.invoice.findUnique({ where: { invoiceNo } })) {
-              const due = new Date(bookingDate); due.setDate(due.getDate()+30);
-              await prisma.invoice.create({ data: {
-                invoiceNo, partyId, partyName, bookingType:'AWB', bookingRef:awbNo,
-                invoiceDate:bookingDate, dueDate:due.toISOString().split('T')[0],
-                subtotal:totalAmt, gstTotal:0, grandTotal:totalAmt,
-                paidTotal:0, outstandingTotal:totalAmt, status:'DRAFT', createdBy:userId,
-                lines:{create:[{description:`AWB ${awbNo} · ${origin}→${destination} · ${weight}kg`,qty:weight||1,rate:weight>0?freight/weight:freight,amount:freight,taxRate:0,taxAmount:0,lineTotal:freight}]}
-              }});
-              results.invoices++;
-            }
+            invoiceId = inv.id;
           }
+
+          // Create outstanding entry
+          const due2 = new Date(bookingDate); due2.setDate(due2.getDate() + 30);
+          await prisma.outstandingEntry.create({
+            data: {
+              partyId: party.id, partyName: party.name,
+              invoiceId, invoiceNo: finalInvoiceNo,
+              bookingRef,
+              originalAmount: totalAmt, paidAmount: 0, outstandingAmount: totalAmt,
+              invoiceDate: bookingDate, dueDate: due2.toISOString().split('T')[0],
+              agingBucket: 'CURRENT', creditLimit: 0,
+            }
+          });
+          results.outstanding++;
         } catch (err) {
-          results.errors.push(`${rowType} row error: ${String(err).slice(0,80)}`);
+          results.errors.push(`Row error: ${String(err).slice(0, 80)}`);
         }
       }
     }

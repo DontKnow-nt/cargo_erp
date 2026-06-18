@@ -3,7 +3,7 @@ import { useState, useRef } from 'react';
 import { Upload, CheckCircle, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-type Result = { dockets: number; awbs: number; invoices: number; skipped: number; errors: string[] };
+type Result = { outstanding: number; skipped: number; errors: string[] };
 
 export default function ExcelImportPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -35,7 +35,7 @@ export default function ExcelImportPage() {
           <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <FileSpreadsheet size={20} color="var(--accent-dark)" /> Import Old Data (Excel)
           </h1>
-          <p className="page-subtitle">Upload .xlsx files with AWB / Docket / Invoice data. Older dates go first.</p>
+          <p className="page-subtitle">Upload .xlsx files to import outstanding balances from old data.</p>
         </div>
       </div>
 
@@ -60,13 +60,14 @@ export default function ExcelImportPage() {
         </div>
 
         <div style={{ marginTop: 16, padding: '12px 14px', background: 'var(--info-bg)', border: '1px solid var(--info-border)', borderRadius: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
-          <strong>What it imports:</strong>
+          <strong>What it does:</strong>
           <ul style={{ margin: '6px 0 0 16px', lineHeight: 1.8 }}>
-            <li><strong>Docket sheets</strong> — columns: S.No, Date, Docket No., Invoice No., Origin, Destination, Pkt, Wt., Rate, Freight, AWB, Pickup, Delivery, Total Amt</li>
-            <li><strong>AWB sheets</strong> — columns: S.No, Date, AWB NO, Invoice, Sector/Origin/Dest, Pkt, Wt., Freight, charges, Amount</li>
-            <li>Rows sorted by date — oldest first (appears at bottom of list)</li>
-            <li>Duplicate Docket/AWB numbers are skipped automatically</li>
-            <li>Invoices created automatically if Invoice No. column is filled</li>
+            <li>Reads each row from all sheets</li>
+            <li>Finds or creates the <strong>Party</strong> by name</li>
+            <li>Creates an <strong>Outstanding entry</strong> for each row with Total Amount</li>
+            <li>Rows sorted by date — oldest first</li>
+            <li>Duplicate Invoice/Docket/AWB references are skipped</li>
+            <li><strong>Does NOT create AWB bookings or Docket bookings</strong></li>
           </ul>
         </div>
 
@@ -83,9 +84,9 @@ export default function ExcelImportPage() {
             </div>
             <div style={{ padding: '12px 16px', display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
               {[
-                { label: 'Dockets', val: result.dockets, color: '#7c3aed' },
-                { label: 'AWBs', val: result.awbs, color: '#2563eb' },
-                { label: 'Invoices', val: result.invoices, color: '#059669' },
+                
+                
+                { label: 'Outstanding Added', val: result.outstanding, color: '#059669' },
                 { label: 'Skipped', val: result.skipped, color: '#64748b' },
               ].map(s => (
                 <div key={s.label} style={{ textAlign: 'center', padding: '10px 8px', background: 'var(--surface-sunken)', borderRadius: 8 }}>
