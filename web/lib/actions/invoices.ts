@@ -274,11 +274,12 @@ export async function generateCombinedInvoice(
   const alreadyInvoiced = [...awbs.filter(b => b.status === 'INVOICED').map(b => b.awbNo), ...dockets.filter(b => b.status === 'INVOICED').map(b => b.docketNo)];
   if (alreadyInvoiced.length) return { error: `Already invoiced: ${alreadyInvoiced.join(', ')}` };
 
-  // All must belong to same party
-  const partyIds = new Set([...awbs.map(b => b.partyId), ...dockets.map(b => b.partyId)]);
-  if (partyIds.size > 1) return { error: 'All bookings must belong to the same party for a combined invoice' };
+  // All must belong to same party — check by name (case-insensitive) to handle duplicate party records
+  const partyNames = new Set([...awbs.map(b => b.partyName.trim().toLowerCase()), ...dockets.map(b => b.partyName.trim().toLowerCase())]);
+  if (partyNames.size > 1) return { error: `All bookings must belong to the same party. Found: ${[...partyNames].join(', ')}` };
 
-  const partyId = [...partyIds][0];
+  // Use the first partyId found (prefer one that has matching party record)
+  const partyId = awbs[0]?.partyId || dockets[0]?.partyId;
   const party = await prisma.party.findUnique({ where: { id: partyId } });
   const creditDays = party?.creditDays ?? 30;
   const invoiceDate = new Date().toISOString().split('T')[0];
