@@ -3,6 +3,7 @@ import { Suspense, useRef, useCallback, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Printer } from 'lucide-react';
 import { useSharedData } from '@/lib/useSharedData';
+import { listCustomFormats, saveCustomFormat, deleteCustomFormat, type CustomFormatCol } from '@/lib/actions/customFormats';
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 function Toolbar({ paperRef }: { paperRef: React.RefObject<HTMLDivElement | null> }) {
@@ -253,7 +254,7 @@ function InvoiceEditorInner() {
   const paperRef = useRef<HTMLDivElement>(null);
 
   const [saving, setSaving] = useState(false);
-  const [invoiceFormat, setInvoiceFormat] = useState<'format1'|'format2'|'format3'|'musashi'>('format1');
+  const [invoiceFormat, setInvoiceFormat] = useState<'format1'|'format2'|'format3'|'musashi'|'custom'>('format1');
 
   // Refs so the format-switch effect can read latest rendered data without re-firing
   const _lineRowsRef   = useRef<{origin:string;dest:string;boxes:string;chgWt:string;rate:string;freight:string;tsp:string;taxable:string;awbNo:string;date:string}[]>([]);
@@ -273,6 +274,55 @@ function InvoiceEditorInner() {
   const isRoundedRef = useRef(isRounded);
   useEffect(() => { isRoundedRef.current = isRounded; }, [isRounded]);
 
+  // ── Custom Formats ──────────────────────────────────────────────────────────
+  type SavedCustomFmt = { id: string; name: string; columns: CustomFormatCol[] };
+  const [customFormats, setCustomFormats]   = useState<SavedCustomFmt[]>([]);
+  const [showCfModal, setShowCfModal]       = useState(false);
+  const [cfEditId, setCfEditId]             = useState<string | null>(null);
+  const [cfName, setCfName]                 = useState('');
+  const [cfCols, setCfCols]                 = useState<CustomFormatCol[]>([
+    { header: 'S.No',    isNumeric: false, isTotal: false },
+    { header: 'Date',    isNumeric: false, isTotal: false },
+    { header: 'AWB No',  isNumeric: false, isTotal: false },
+    { header: 'Freight', isNumeric: true,  isTotal: false },
+    { header: 'Total',   isNumeric: true,  isTotal: true  },
+  ]);
+  const [activeCfId, setActiveCfId] = useState<string | null>(null); // which custom fmt is active
+  const _activeCfColsRef = useRef<CustomFormatCol[]>([]);
+
+  useEffect(() => {
+    listCustomFormats().then(rows => {
+      setCustomFormats(rows.map(r => ({ id: r.id, name: r.name, columns: JSON.parse(r.columns) as CustomFormatCol[] })));
+    });
+  }, []);
+
+  async function handleSaveCf() {
+    if (!cfName.trim() || cfCols.length < 2) return;
+    const saved = await saveCustomFormat(cfEditId, cfName.trim(), cfCols);
+    const parsed = { id: saved.id, name: saved.name, columns: JSON.parse(saved.columns) as CustomFormatCol[] };
+    setCustomFormats(prev => cfEditId ? prev.map(f => f.id === cfEditId ? parsed : f) : [...prev, parsed]);
+    setShowCfModal(false);
+    setCfEditId(null); setCfName(''); setCfCols([
+      { header: 'S.No', isNumeric: false, isTotal: false },
+      { header: 'Date', isNumeric: false, isTotal: false },
+      { header: 'AWB No', isNumeric: false, isTotal: false },
+      { header: 'Freight', isNumeric: true, isTotal: false },
+      { header: 'Total', isNumeric: true, isTotal: true },
+    ]);
+  }
+  async function handleDeleteCf(id: string) {
+    await deleteCustomFormat(id);
+    setCustomFormats(prev => prev.filter(f => f.id !== id));
+    if (activeCfId === id) { setActiveCfId(null); setInvoiceFormat('format1'); }
+  }
+  function openNewCf() { setCfEditId(null); setCfName(''); setCfCols([
+    { header: 'S.No', isNumeric: false, isTotal: false },
+    { header: 'Date', isNumeric: false, isTotal: false },
+    { header: 'AWB No', isNumeric: false, isTotal: false },
+    { header: 'Freight', isNumeric: true, isTotal: false },
+    { header: 'Total', isNumeric: true, isTotal: true },
+  ]); setShowCfModal(true); }
+  function openEditCf(f: SavedCustomFmt) { setCfEditId(f.id); setCfName(f.name); setCfCols([...f.columns]); setShowCfModal(true); }
   function applyGstRates(ig: number, cg: number, sg: number) {
     const taxEl = paperRef.current?.querySelector<HTMLElement>('[data-tax-summary]');
     if (!taxEl) return;
@@ -403,6 +453,9 @@ function InvoiceEditorInner() {
       } else if (table.hasAttribute('data-musashi-fmt')) {
         // Musashi: Pkt (6), Wt (7), Rate (8), Freight (9), AWB (10), Pickup (11), Delivery (12), Total Amt (13)
         return [6, 7, 8, 9, 10, 11, 12, 13].includes(colIdx);
+      } else if (table.hasAttribute('data-custom-fmt')) {
+        const cols = _activeCfColsRef.current;
+        return cols.length > 0 ? (cols[colIdx]?.isNumeric ?? false) : false;
       } else {
         // Format 1: Boxes (5), Charg. Weight (6), Rate (7), Freight (8), AWB & DO (9), Due Carrier (10), Forwrd & Others (11), TSP & Others (12), Taxable Amount (13)
         return [5, 6, 7, 8, 9, 10, 11, 12, 13].includes(colIdx);
@@ -721,11 +774,46 @@ function InvoiceEditorInner() {
       return totalAmt;
     }
 
+    function recalcCustom() {
+      // Dynamic: columns defined by user. Total col = isTotal. Numeric cols auto-summed into total.
+      const cols = _activeCfColsRef.current;
+      if (!cols.length) return;
+      const awbBody = paper!.querySelector<HTMLTableSectionElement>('#awb-body tbody');
+      if (!awbBody) return;
+      const dataRows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')]
+        .filter(r => !r.dataset.grandTotal && r !== awbBody.firstElementChild);
+
+      const totalIdx = cols.findIndex(c => c.isTotal);
+      const numericIdxs = cols.map((c, i) => c.isNumeric && !c.isTotal ? i : -1).filter(i => i >= 0);
+      const colTotals: number[] = cols.map(() => 0);
+
+      dataRows.forEach(row => {
+        const cells = row.querySelectorAll<HTMLTableCellElement>('td');
+        const getT = (i: number) => cells[i]?.querySelector('[contenteditable]')?.textContent?.trim() ?? '';
+        const setT = (i: number, v: string) => { const el = cells[i]?.querySelector('[contenteditable]') as HTMLElement | null; if (el) el.textContent = v; };
+        // skip blank rows (check first non-S.No numeric col)
+        if (numericIdxs.length && !getT(numericIdxs[0])) { if (totalIdx >= 0) setT(totalIdx, ''); return; }
+        // auto-compute total = sum of all numeric (non-total) cols
+        let rowTotal = 0;
+        numericIdxs.forEach(i => { const v = parseNum(getT(i)) ?? 0; colTotals[i] += v; rowTotal += v; });
+        if (totalIdx >= 0) { const t = parseFloat(rowTotal.toFixed(2)); setT(totalIdx, t.toFixed(2)); colTotals[totalIdx] += t; }
+      });
+
+      const gtRow = awbBody.querySelector<HTMLTableRowElement>('[data-grand-total]');
+      if (gtRow) {
+        const gc = gtRow.querySelectorAll<HTMLTableCellElement>('td');
+        const setGT = (i: number, v: string) => { const el = gc[i]?.querySelector('[contenteditable]') as HTMLElement | null; if (el) el.textContent = v; else if (gc[i]) gc[i].textContent = v; };
+        [...numericIdxs, ...(totalIdx >= 0 ? [totalIdx] : [])].forEach(i => setGT(i, colTotals[i].toFixed(2)));
+      }
+      return totalIdx >= 0 ? colTotals[totalIdx] : colTotals[numericIdxs[numericIdxs.length - 1]] ?? 0;
+    }
+
     function recalc() {
       const isF2 = !!paper!.querySelector('[data-format2]');
       const isF3 = !!paper!.querySelector('[data-format3]');
       const isMusashi = !!paper!.querySelector('[data-musashi-fmt]');
-      const totalTaxable = isF3 ? (recalcFormat3() ?? 0) : isF2 ? (recalcFormat2() ?? 0) : isMusashi ? (recalcMusashi() ?? 0) : (recalcFormat1() ?? 0);
+      const isCustom  = !!paper!.querySelector('[data-custom-fmt]');
+      const totalTaxable = isF3 ? (recalcFormat3() ?? 0) : isF2 ? (recalcFormat2() ?? 0) : isMusashi ? (recalcMusashi() ?? 0) : isCustom ? (recalcCustom() ?? 0) : (recalcFormat1() ?? 0);
 
       // Update tax summary — detect GST structure from existing content
       const taxSummaryEl = paper!.querySelector<HTMLElement>('[data-tax-summary]');
@@ -960,6 +1048,27 @@ function InvoiceEditorInner() {
       </tr>`;
       tableHtml = `<table id="awb-body" data-musashi-fmt="1" style="border-collapse:collapse;width:100%;table-layout:fixed"><tbody>${body}</tbody></table>`;
 
+    } else if (invoiceFormat === 'custom' && activeCfId) {
+      const cf = customFormats.find(f => f.id === activeCfId);
+      if (!cf) return;
+      _activeCfColsRef.current = cf.columns;
+      const headers = cf.columns.map(c => c.header);
+      let body = `<tr style="background:#f0f0f0">${headers.map(hdCell).join('')}</tr>`;
+      // 5 blank rows
+      for (let i = 0; i < 5; i++) {
+        body += '<tr>' + cf.columns.map((c) => ce('', c.isNumeric ? 'right' : 'center')).join('') + '</tr>';
+      }
+      const emptyGT = cf.columns.map((_, i) => i);
+      body += `<tr style="background:#f8f8f8;font-weight:700" data-grand-total="1">
+        ${cf.columns.map((c, i) => i === 0
+          ? `<td style="border:1px solid #000;padding:4px 6px;font-size:10px;background:#f8f8f8;font-weight:700;text-align:right" colspan="1"><div contenteditable="true" style="outline:none;font-family:Arial,sans-serif;font-size:10px;font-weight:700">Grand Total</div></td>`
+          : ce(c.isNumeric ? '0.00' : '', c.isNumeric ? 'right' : 'center', true)
+        ).join('')}
+      </tr>`;
+      // suppress unused var warning
+      void emptyGT;
+      tableHtml = `<table id="awb-body" data-custom-fmt="1" style="border-collapse:collapse;width:100%;table-layout:fixed"><tbody>${body}</tbody></table>`;
+
     } else {
       // Format 1
       const headers = ['Sl#','Origin','AWB#/Ref.\nNumber','Date','Dest#','Boxes','Charg.\nWeight','Rate','Freight','AWB &\nDO','Due\nCarrier','Forwrd &\nOthers','TSP &\nOthers','Taxable\nAmount'];
@@ -1001,7 +1110,7 @@ function InvoiceEditorInner() {
     // Trigger recalc on the new table
     newTable.dispatchEvent(new Event('input', { bubbles: true }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoiceFormat]);
+  }, [invoiceFormat, activeCfId]);
 
   async function handleSave() {
     if (!paperRef.current || !inv) return;
@@ -1209,16 +1318,25 @@ img{max-width:100%;object-fit:contain}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
             <span style={{ fontWeight: 600, color: '#374151' }}>📋 Format:</span>
-            <select value={invoiceFormat} onChange={e => {
-              const val = e.target.value as 'format1'|'format2'|'format3'|'musashi';
-              setInvoiceFormat(val);
+            <select value={invoiceFormat === 'custom' ? `custom:${activeCfId}` : invoiceFormat} onChange={e => {
+              const val = e.target.value as string;
+              if (val.startsWith('custom:')) {
+                const id = val.replace('custom:', '');
+                const cf = customFormats.find(f => f.id === id);
+                if (cf) { _activeCfColsRef.current = cf.columns; setActiveCfId(id); _prevFmtRef.current = ''; setInvoiceFormat('custom'); }
+              } else {
+                setActiveCfId(null); _prevFmtRef.current = ''; setInvoiceFormat(val as 'format1'|'format2'|'format3'|'musashi');
+              }
             }}
               style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>
               <option value="format1">Format 1 (Default)</option>
               <option value="format2">Format 2 (Docket)</option>
               <option value="format3">Format 3 (AWB+)</option>
               <option value="musashi">Musashi Format</option>
+              {customFormats.length > 0 && <option disabled>── Custom ──</option>}
+              {customFormats.map(f => <option key={f.id} value={`custom:${f.id}`}>{f.name}</option>)}
             </select>
+            <button onClick={openNewCf} title="Create custom format" style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: '1px solid #6366f1', background: '#6366f1', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>+ Custom</button>
           </span>
           {banks.length > 0 && (
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
@@ -1492,6 +1610,74 @@ img{max-width:100%;object-fit:contain}
           </tbody>
         </table>
       </div>
+
+      {/* ── Custom Format Builder Modal ─────────────────────────────────── */}
+      {showCfModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 10, padding: 24, width: 620, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{cfEditId ? 'Edit' : 'New'} Custom Format</h3>
+              <button onClick={() => setShowCfModal(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer' }}>✕</button>
+            </div>
+
+            {/* Format name */}
+            <label style={{ fontSize: 12, fontWeight: 600 }}>Format Name</label>
+            <input value={cfName} onChange={e => setCfName(e.target.value)} placeholder="e.g. My Export Format"
+              style={{ display: 'block', width: '100%', marginTop: 4, marginBottom: 14, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, boxSizing: 'border-box' }} />
+
+            {/* Saved formats list */}
+            {customFormats.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Saved Formats</div>
+                {customFormats.map(f => (
+                  <div key={f.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 8px', background: '#f9fafb', borderRadius: 6, marginBottom: 4, fontSize: 12 }}>
+                    <span style={{ flex: 1 }}>{f.name} <span style={{ color: '#9ca3af' }}>({f.columns.length} cols)</span></span>
+                    <button onClick={() => openEditCf(f)} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '1px solid #6366f1', background: '#fff', color: '#6366f1', cursor: 'pointer' }}>Edit</button>
+                    <button onClick={() => handleDeleteCf(f.id)} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '1px solid #ef4444', background: '#fff', color: '#ef4444', cursor: 'pointer' }}>Delete</button>
+                  </div>
+                ))}
+                <hr style={{ margin: '12px 0', borderColor: '#e5e7eb' }} />
+              </div>
+            )}
+
+            {/* Column builder */}
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Columns ({cfCols.length})</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: 6, alignItems: 'center', marginBottom: 6, fontSize: 11, color: '#6b7280', fontWeight: 600 }}>
+              <span>Column Header</span><span>Numeric?</span><span>Total?</span><span></span>
+            </div>
+            {cfCols.map((col, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+                <input value={col.header} onChange={e => setCfCols(prev => prev.map((c, j) => j === i ? { ...c, header: e.target.value } : c))}
+                  placeholder={`Column ${i + 1}`}
+                  style={{ padding: '5px 8px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 12 }} />
+                <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={col.isNumeric} onChange={e => setCfCols(prev => prev.map((c, j) => j === i ? { ...c, isNumeric: e.target.checked, isTotal: e.target.checked ? c.isTotal : false } : c))} />
+                  Numeric
+                </label>
+                <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={col.isTotal} disabled={!col.isNumeric}
+                    onChange={e => setCfCols(prev => prev.map((c, j) => j === i ? { ...c, isTotal: e.target.checked } : { ...c, isTotal: false }))} />
+                  Total
+                </label>
+                <button onClick={() => setCfCols(prev => prev.filter((_, j) => j !== i))}
+                  style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #ef4444', background: '#fff', color: '#ef4444', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>−</button>
+              </div>
+            ))}
+            <button onClick={() => setCfCols(prev => [...prev, { header: '', isNumeric: false, isTotal: false }])}
+              style={{ marginTop: 4, padding: '5px 14px', borderRadius: 6, border: '1px dashed #6366f1', background: '#f5f3ff', color: '#6366f1', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+              + Add Column
+            </button>
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowCfModal(false)} style={{ padding: '7px 18px', borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+              <button onClick={handleSaveCf} disabled={!cfName.trim() || cfCols.length < 1}
+                style={{ padding: '7px 18px', borderRadius: 7, border: 'none', background: '#6366f1', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, opacity: (!cfName.trim() || cfCols.length < 1) ? 0.5 : 1 }}>
+                Save Format
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

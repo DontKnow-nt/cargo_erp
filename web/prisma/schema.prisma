@@ -314,3 +314,14 @@ model BankDetail {
 
   @@map("bank_details")
 }
+
+model InvoiceCustomFormat {
+  id        String   @id @default(uuid())
+  name      String   // e.g. "My Format"
+  columns   String   // JSON: [{header:string, isNumeric:boolean, isTotal:boolean}]
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("invoice_custom_formats")
+}
