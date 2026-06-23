@@ -253,7 +253,7 @@ function InvoiceEditorInner() {
   const paperRef = useRef<HTMLDivElement>(null);
 
   const [saving, setSaving] = useState(false);
-  const [invoiceFormat, setInvoiceFormat] = useState<'format1'|'format2'|'format3'>('format1');
+  const [invoiceFormat, setInvoiceFormat] = useState<'format1'|'format2'|'format3'|'musashi'>('format1');
 
   // Refs so the format-switch effect can read latest rendered data without re-firing
   const _lineRowsRef   = useRef<{origin:string;dest:string;boxes:string;chgWt:string;rate:string;freight:string;tsp:string;taxable:string;awbNo:string;date:string}[]>([]);
@@ -854,6 +854,36 @@ function InvoiceEditorInner() {
 
       tableHtml = `<table id="awb-body" data-format3="1" style="border-collapse:collapse;width:100%;table-layout:fixed"><tbody>${body}</tbody></table>`;
 
+    } else if (invoiceFormat === 'musashi') {
+      // Musashi: S.No | Date | Docket No. | Invoice No. | Origin | Destination | Pkt | Wt. | Rate | Freight | AWB | Pickup | Delivery | Total Amt
+      const headers = ['S.No','Date','Docket No.','Invoice No.','Origin','Destination','Pkt','Wt.','Rate','Freight','AWB','Pickup','Delivery','Total Amt'];
+      let body = `<tr style="background:#f0f0f0">${headers.map(hdCell).join('')}</tr>`;
+      rows.forEach((row, i) => {
+        const dktBk: any = dktBks.find((d: any) => d.docketNo === row.awbNo);
+        const freight = parseFloat(row.freight.replace(/,/g,'')) || 0;
+        body += `<tr>
+          ${ce(i+1,'center')}${ce(row.date,'center')}
+          ${ce(dktBk?.docketNo ?? row.awbNo,'center')}${ce(dktBk?.wayBillNo ?? '','center')}
+          ${ce(row.origin,'center')}${ce(row.dest,'center')}
+          ${ce(row.boxes,'center')}${ce(row.chgWt,'right')}${ce(row.rate,'right')}
+          ${ce(freight.toFixed(2),'right')}
+          ${ce('0','right')}${ce('0','right')}${ce('0','right')}
+          ${ce(freight.toFixed(2),'right')}
+        </tr>`;
+      });
+      const twt  = rows.reduce((s,r) => s+(parseFloat(r.chgWt)||0), 0);
+      const tf_m = rows.reduce((s,r) => s+(parseFloat(r.freight.replace(/,/g,''))||0), 0);
+      body += `<tr style="background:#f8f8f8;font-weight:700" data-grand-total="1">
+        ${emptyTd()}${emptyTd()}${emptyTd()}
+        <td style="border:1px solid #000;padding:4px 6px;font-size:10px;background:#f8f8f8;font-weight:700;text-align:right"><div contenteditable="true" style="outline:none;font-family:Arial,sans-serif;font-size:10px;font-weight:700;text-align:right">Grand Total</div></td>
+        ${emptyTd()}${emptyTd()}${emptyTd()}
+        ${ce(twt.toFixed(2),'right',true)}${emptyTd()}
+        ${ce(tf_m.toFixed(2),'right',true)}
+        ${ce('0.00','right',true)}${ce('0.00','right',true)}${ce('0.00','right',true)}
+        ${ce(tf_m.toFixed(2),'right',true)}
+      </tr>`;
+      tableHtml = `<table id="awb-body" data-musashi-fmt="1" style="border-collapse:collapse;width:100%;table-layout:fixed"><tbody>${body}</tbody></table>`;
+
     } else {
       // Format 1
       const headers = ['Sl#','Origin','AWB#/Ref.\nNumber','Date','Dest#','Boxes','Charg.\nWeight','Rate','Freight','AWB &\nDO','Due\nCarrier','Forwrd &\nOthers','TSP &\nOthers','Taxable\nAmount'];
@@ -1104,9 +1134,8 @@ img{max-width:100%;object-fit:contain}
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
             <span style={{ fontWeight: 600, color: '#374151' }}>📋 Format:</span>
             <select value={invoiceFormat} onChange={e => {
-              const val = e.target.value;
-              if (val === 'musashi') { router.push(`/dashboard/invoices/musashi?id=${invId}`); return; }
-              setInvoiceFormat(val as 'format1'|'format2'|'format3');
+              const val = e.target.value as 'format1'|'format2'|'format3'|'musashi';
+              setInvoiceFormat(val);
             }}
               style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>
               <option value="format1">Format 1 (Default)</option>
