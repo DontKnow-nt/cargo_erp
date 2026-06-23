@@ -400,6 +400,9 @@ function InvoiceEditorInner() {
       } else if (table.hasAttribute('data-format3')) {
         // Format 3: Pkt (5), Wt (6), Freight (7), F/C (8), GMR (9), TSP (10), Clearance (11), Awb Fees (12), H Chge (13), Amount (14)
         return [5, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(colIdx);
+      } else if (table.hasAttribute('data-musashi-fmt')) {
+        // Musashi: Pkt (6), Wt (7), Rate (8), Freight (9), AWB (10), Pickup (11), Delivery (12), Total Amt (13)
+        return [6, 7, 8, 9, 10, 11, 12, 13].includes(colIdx);
       } else {
         // Format 1: Boxes (5), Charg. Weight (6), Rate (7), Freight (8), AWB & DO (9), Due Carrier (10), Forwrd & Others (11), TSP & Others (12), Taxable Amount (13)
         return [5, 6, 7, 8, 9, 10, 11, 12, 13].includes(colIdx);
@@ -652,10 +655,77 @@ function InvoiceEditorInner() {
       return totalAmount;
     }
 
+    function recalcMusashi() {
+      // Cols: 0=S.No, 1=Date, 2=Docket No, 3=Invoice No, 4=Origin, 5=Dest, 6=Pkt, 7=Wt, 8=Rate, 9=Freight, 10=AWB, 11=Pickup, 12=Delivery, 13=Total Amt
+      const awbBody = paper!.querySelector<HTMLTableSectionElement>('#awb-body tbody');
+      if (!awbBody) return;
+      const rows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')].filter(r => !r.dataset.grandTotal && r !== awbBody.firstElementChild);
+
+      let totalPkt = 0, totalWt = 0, totalFreight = 0, totalAwb = 0, totalPickup = 0, totalDelivery = 0, totalAmt = 0;
+
+      rows.forEach(row => {
+        const cells = row.querySelectorAll<HTMLTableCellElement>('td');
+        if (cells.length < 14) return;
+        const getT = (i: number) => cells[i]?.querySelector('[contenteditable]')?.textContent?.trim() ?? '';
+        const setT = (i: number, v: string) => {
+          const el = cells[i]?.querySelector('[contenteditable]') as HTMLElement | null;
+          if (el) el.textContent = v;
+        };
+
+        const docketNo = getT(2);
+        const pktText  = getT(6);
+        const wtText   = getT(7);
+        if (!docketNo && !pktText && !wtText) { setT(9, ''); setT(13, ''); return; }
+
+        const pkt      = parseNum(pktText) ?? 0;
+        const wt       = parseNum(wtText) ?? 0;
+        const rateNum  = parseNum(getT(8));
+
+        // Freight = Wt × Rate (auto-calc if rate is numeric)
+        let freight = parseNum(getT(9)) ?? 0;
+        if (rateNum !== null && wt > 0) {
+          freight = parseFloat((wt * rateNum).toFixed(2));
+          setT(9, freight.toFixed(2));
+        }
+
+        const awb      = parseNum(getT(10)) ?? 0;
+        const pickup   = parseNum(getT(11)) ?? 0;
+        const delivery = parseNum(getT(12)) ?? 0;
+        const total    = parseFloat((freight + awb + pickup + delivery).toFixed(2));
+        setT(13, total.toFixed(2));
+
+        totalPkt      += pkt;
+        totalWt       += wt;
+        totalFreight  += freight;
+        totalAwb      += awb;
+        totalPickup   += pickup;
+        totalDelivery += delivery;
+        totalAmt      += total;
+      });
+
+      const gtRow = awbBody.querySelector<HTMLTableRowElement>('[data-grand-total]');
+      if (gtRow) {
+        const gc = gtRow.querySelectorAll<HTMLTableCellElement>('td');
+        const setGT = (i: number, v: string) => {
+          const el = gc[i]?.querySelector('[contenteditable]') as HTMLElement | null;
+          if (el) el.textContent = v; else if (gc[i]) gc[i].textContent = v;
+        };
+        setGT(6,  totalPkt.toString());
+        setGT(7,  totalWt.toFixed(2));
+        setGT(9,  totalFreight.toFixed(2));
+        setGT(10, totalAwb.toFixed(2));
+        setGT(11, totalPickup.toFixed(2));
+        setGT(12, totalDelivery.toFixed(2));
+        setGT(13, totalAmt.toFixed(2));
+      }
+      return totalAmt;
+    }
+
     function recalc() {
       const isF2 = !!paper!.querySelector('[data-format2]');
       const isF3 = !!paper!.querySelector('[data-format3]');
-      const totalTaxable = isF3 ? (recalcFormat3() ?? 0) : isF2 ? (recalcFormat2() ?? 0) : (recalcFormat1() ?? 0);
+      const isMusashi = !!paper!.querySelector('[data-musashi-fmt]');
+      const totalTaxable = isF3 ? (recalcFormat3() ?? 0) : isF2 ? (recalcFormat2() ?? 0) : isMusashi ? (recalcMusashi() ?? 0) : (recalcFormat1() ?? 0);
 
       // Update tax summary — detect GST structure from existing content
       const taxSummaryEl = paper!.querySelector<HTMLElement>('[data-tax-summary]');
@@ -871,12 +941,18 @@ function InvoiceEditorInner() {
           ${ce(freight.toFixed(2),'right')}
         </tr>`;
       });
+      // Pad to at least 5 rows
+      for (let i = 0; i < Math.max(0, 5 - rows.length); i++) {
+        body += '<tr>' + Array.from({length:14}).map((_,j) => ce('', j>=6?'right':'center')).join('') + '</tr>';
+      }
       const twt  = rows.reduce((s,r) => s+(parseFloat(r.chgWt)||0), 0);
       const tf_m = rows.reduce((s,r) => s+(parseFloat(r.freight.replace(/,/g,''))||0), 0);
+      // Cols: 0=S.No,1=Date,2=Docket No,3=Invoice No,4=Origin,5=Dest,6=Pkt,7=Wt,8=Rate,9=Freight,10=AWB,11=Pickup,12=Delivery,13=Total Amt
       body += `<tr style="background:#f8f8f8;font-weight:700" data-grand-total="1">
         ${emptyTd()}${emptyTd()}${emptyTd()}
-        <td style="border:1px solid #000;padding:4px 6px;font-size:10px;background:#f8f8f8;font-weight:700;text-align:right"><div contenteditable="true" style="outline:none;font-family:Arial,sans-serif;font-size:10px;font-weight:700;text-align:right">Grand Total</div></td>
-        ${emptyTd()}${emptyTd()}${emptyTd()}
+        <td style="border:1px solid #000;padding:4px 6px;font-size:10px;background:#f8f8f8;font-weight:700;text-align:center"><div contenteditable="true" style="outline:none;font-family:Arial,sans-serif;font-size:10px;font-weight:700">Grand Total</div></td>
+        ${emptyTd()}${emptyTd()}
+        ${ce('','center',true)}
         ${ce(twt.toFixed(2),'right',true)}${emptyTd()}
         ${ce(tf_m.toFixed(2),'right',true)}
         ${ce('0.00','right',true)}${ce('0.00','right',true)}${ce('0.00','right',true)}
