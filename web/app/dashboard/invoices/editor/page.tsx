@@ -1,6 +1,6 @@
 'use client';
 import { Suspense, useRef, useCallback, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Printer } from 'lucide-react';
 import { useSharedData } from '@/lib/useSharedData';
 
@@ -247,6 +247,7 @@ function fmt(n: number) {
 // ── Inner editor ──────────────────────────────────────────────────────────────
 function InvoiceEditorInner() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const invId = searchParams.get('id');
   const { invoices, parties, awbBookings, docketBookings } = useSharedData();
   const paperRef = useRef<HTMLDivElement>(null);
@@ -1102,11 +1103,16 @@ img{max-width:100%;object-fit:contain}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
             <span style={{ fontWeight: 600, color: '#374151' }}>📋 Format:</span>
-            <select value={invoiceFormat} onChange={e => setInvoiceFormat(e.target.value as 'format1'|'format2'|'format3')}
+            <select value={invoiceFormat} onChange={e => {
+              const val = e.target.value;
+              if (val === 'musashi') { router.push(`/dashboard/invoices/musashi?id=${invId}`); return; }
+              setInvoiceFormat(val as 'format1'|'format2'|'format3');
+            }}
               style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>
               <option value="format1">Format 1 (Default)</option>
               <option value="format2">Format 2 (Docket)</option>
               <option value="format3">Format 3 (AWB+)</option>
+              <option value="musashi">Musashi Format</option>
             </select>
           </span>
           {banks.length > 0 && (
