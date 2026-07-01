@@ -41,7 +41,7 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
       borderBottom: '1px solid var(--border)',
       display: 'flex', alignItems: 'center',
       padding: '0 24px', gap: 16, zIndex: 40,
-      transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1)',
+      transition: 'left 120ms cubic-bezier(0.4,0,0.2,1)',
     }}>
       <button className="mobile-menu-btn" onClick={onMenuClick} aria-label="Open menu">
         <Menu size={18} />

@@ -103,7 +103,9 @@ h1,h2,h3,h4,h5,h6 {
   border-right: 1px solid var(--border);
   box-shadow: var(--shadow-xs);
   display: flex; flex-direction: column;
-  transition: width 0.25s cubic-bezier(0.4,0,0.2,1);
+  transition: width 120ms cubic-bezier(0.4,0,0.2,1);
+  contain: layout paint style;
+  will-change: width;
   z-index: 50;
 }
 .sidebar.collapsed { width: var(--sidebar-collapsed); }
@@ -133,6 +135,7 @@ h1,h2,h3,h4,h5,h6 {
   text-decoration: none;
   margin: 1px 8px;
   border: 1px solid transparent;
+  contain: paint;
 }
 .nav-item:hover { background: var(--surface-sunken); color: var(--text-primary); }
 .nav-item.active { background: var(--accent-subtle); color: var(--accent-dark); border-color: var(--warning-border); }

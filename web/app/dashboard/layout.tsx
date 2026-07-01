@@ -17,7 +17,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         flex: 1,
         marginLeft: 'var(--sidebar-current-width, var(--sidebar-width))',
         paddingTop: 'var(--header-height)',
-        transition: 'margin-left 0.22s cubic-bezier(0.4,0,0.2,1)',
+        transition: 'margin-left 120ms cubic-bezier(0.4,0,0.2,1)',
       }}>
         <Header onMenuClick={() => setSidebarOpen(o => !o)} />
         <main style={{ padding: 24, minHeight: 'calc(100vh - var(--header-height))' }}>

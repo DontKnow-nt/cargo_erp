@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { signOut, useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -73,7 +73,33 @@ type NavItem = {
   children?: { label: string; href: string }[];
 };
 
-function NavRow({ item, collapsed, path }: { item: NavItem; collapsed: boolean; path: string }) {
+const prefetchTimers = new Map<string, number>();
+
+function scheduleNavPrefetch(href: string) {
+  if (typeof window === 'undefined' || prefetchTimers.has(href)) return;
+  const timer = window.setTimeout(() => {
+    prefetchTimers.delete(href);
+    const requestIdle = (window as typeof window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+    }).requestIdleCallback;
+
+    if (requestIdle) {
+      requestIdle(() => prefetchSharedDataForPath(href), { timeout: 600 });
+      return;
+    }
+    window.setTimeout(() => prefetchSharedDataForPath(href), 0);
+  }, 120);
+  prefetchTimers.set(href, timer);
+}
+
+function cancelNavPrefetch(href: string) {
+  const timer = prefetchTimers.get(href);
+  if (!timer) return;
+  window.clearTimeout(timer);
+  prefetchTimers.delete(href);
+}
+
+const NavRow = memo(function NavRow({ item, collapsed, path, onNavigate }: { item: NavItem; collapsed: boolean; path: string; onNavigate?: () => void }) {
   const hasChildren = !!item.children?.length;
   const parentActive = path.startsWith(item.href);
   const [open, setOpen] = useState(parentActive);
@@ -83,7 +109,7 @@ function NavRow({ item, collapsed, path }: { item: NavItem; collapsed: boolean; 
     width: collapsed ? 0 : undefined,
     overflow: 'hidden',
     whiteSpace: 'nowrap',
-    transition: 'opacity 0.2s ease, width 0.25s ease',
+    transition: 'opacity 120ms ease',
     flexShrink: 0,
   };
 
@@ -91,8 +117,11 @@ function NavRow({ item, collapsed, path }: { item: NavItem; collapsed: boolean; 
     const active = path === item.href || (item.href !== '/dashboard' && path.startsWith(item.href));
     return (
       <Link href={item.href} className={`nav-item ${active ? 'active' : ''}`}
-        onMouseEnter={() => prefetchSharedDataForPath(item.href)}
-        onFocus={() => prefetchSharedDataForPath(item.href)}
+        onClick={onNavigate}
+        onMouseEnter={() => scheduleNavPrefetch(item.href)}
+        onMouseLeave={() => cancelNavPrefetch(item.href)}
+        onFocus={() => scheduleNavPrefetch(item.href)}
+        onBlur={() => cancelNavPrefetch(item.href)}
         title={collapsed ? item.label : undefined}>
         <item.icon size={15} strokeWidth={2} style={{ flexShrink: 0 }} />
         <span style={textStyle}>{item.label}</span>
@@ -116,8 +145,11 @@ function NavRow({ item, collapsed, path }: { item: NavItem; collapsed: boolean; 
         <div style={{ marginLeft: 12, borderLeft: '1px solid var(--border)', paddingLeft: 4 }}>
           {item.children!.map(c => (
             <Link key={c.href} href={c.href} className={`nav-item ${path === c.href ? 'active' : ''}`}
-              onMouseEnter={() => prefetchSharedDataForPath(c.href)}
-              onFocus={() => prefetchSharedDataForPath(c.href)}
+              onClick={onNavigate}
+              onMouseEnter={() => scheduleNavPrefetch(c.href)}
+              onMouseLeave={() => cancelNavPrefetch(c.href)}
+              onFocus={() => scheduleNavPrefetch(c.href)}
+              onBlur={() => cancelNavPrefetch(c.href)}
               style={{ fontSize: 12, padding: '5px 10px', margin: '1px 4px' }}>
               {c.label}
             </Link>
@@ -126,7 +158,7 @@ function NavRow({ item, collapsed, path }: { item: NavItem; collapsed: boolean; 
       )}
     </div>
   );
-}
+});
 
 export default function Sidebar({ onClose, mobileOpen }: { onClose?: () => void; mobileOpen?: boolean }) {
   const [collapsed, setCollapsed] = useState(true);
@@ -139,6 +171,7 @@ export default function Sidebar({ onClose, mobileOpen }: { onClose?: () => void;
   const userEmail = session?.user?.email ?? '';
 
   const expanded = !collapsed || hoverExpanded;
+  const sidebarWidth = expanded ? 'var(--sidebar-width)' : 'var(--sidebar-collapsed)';
 
   // Fetch permitted pages for current user
   useEffect(() => {
@@ -150,7 +183,7 @@ export default function Sidebar({ onClose, mobileOpen }: { onClose?: () => void;
 
   // Filter nav sections to only show permitted items
   const isSuperAdmin = (session?.user as { role?: string })?.role === 'SUPER_ADMIN';
-  const visibleSections = navSections.map(section => ({
+  const visibleSections = useMemo(() => navSections.map(section => ({
     ...section,
     items: section.items.filter(item => {
       if (isSuperAdmin) return true; // SUPER_ADMIN sees everything
@@ -158,7 +191,7 @@ export default function Sidebar({ onClose, mobileOpen }: { onClose?: () => void;
       if (item.href === '/dashboard') return true;
       return permittedPages.some(p => pageKey === p || pageKey.startsWith(p));
     }),
-  })).filter(s => s.items.length > 0);
+  })).filter(s => s.items.length > 0), [isSuperAdmin, permittedPages]);
 
   function handleMouseEnter() {
     if (!collapsed) return;
@@ -170,16 +203,26 @@ export default function Sidebar({ onClose, mobileOpen }: { onClose?: () => void;
   }
 
   // Broadcast sidebar width to CSS so Header can respond
+  const handleToggleCollapsed = useCallback(() => {
+    setCollapsed(value => !value);
+    setHoverExpanded(false);
+  }, []);
+
+  const handleNavigate = useCallback(() => {
+    onClose?.();
+  }, [onClose]);
+
   useEffect(() => {
     document.documentElement.style.setProperty(
       '--sidebar-current-width',
-      collapsed && !hoverExpanded ? 'var(--sidebar-collapsed)' : 'var(--sidebar-width)'
+      collapsed ? 'var(--sidebar-collapsed)' : 'var(--sidebar-width)'
     );
-  }, [collapsed, hoverExpanded]);
+  }, [collapsed]);
 
   return (
     <aside className={`sidebar${mobileOpen ? ' mobile-open' : ''}`}
-      style={{ width: expanded ? 'var(--sidebar-width)' : 'var(--sidebar-collapsed)' }}
+      data-expanded={expanded}
+      style={{ width: sidebarWidth }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
@@ -187,7 +230,7 @@ export default function Sidebar({ onClose, mobileOpen }: { onClose?: () => void;
       <div style={{ padding: '16px 14px 13px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 9, flexShrink: 0 }}>
         <img src="/logo.png" alt="Triveni Logo" style={{ width: 34, height: 34, borderRadius: 9, objectFit: 'contain', flexShrink: 0 }} />
         {/* Logo text — always rendered, fades out when collapsed */}
-        <div style={{ overflow: 'hidden', opacity: expanded ? 1 : 0, width: expanded ? 'auto' : 0, transition: 'opacity 0.2s ease, width 0.25s ease', whiteSpace: 'nowrap' }}>
+        <div style={{ overflow: 'hidden', opacity: expanded ? 1 : 0, width: expanded ? 'auto' : 0, transition: 'opacity 120ms ease', whiteSpace: 'nowrap' }}>
           <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: '-0.04em', color: 'var(--text-primary)' }}>
             Cargo<span style={{ color: '#b45309' }}>ERP</span>
           </div>
@@ -199,11 +242,11 @@ export default function Sidebar({ onClose, mobileOpen }: { onClose?: () => void;
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '6px 0' }}>
         {visibleSections.map(s => (
           <div key={s.label} style={{ marginBottom: 2 }}>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.14em', textTransform: 'uppercase', padding: '9px 20px 4px', opacity: expanded ? 1 : 0, height: expanded ? 'auto' : 0, overflow: 'hidden', transition: 'opacity 0.2s ease, height 0.25s ease', whiteSpace: 'nowrap' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.14em', textTransform: 'uppercase', padding: expanded ? '9px 20px 4px' : '0 20px', opacity: expanded ? 1 : 0, height: expanded ? 'auto' : 0, overflow: 'hidden', transition: 'opacity 120ms ease', whiteSpace: 'nowrap' }}>
                 {s.label}
               </div>
             {s.items.map(item => (
-              <NavRow key={item.href} item={item as NavItem} collapsed={!expanded} path={path} />
+              <NavRow key={item.href} item={item as NavItem} collapsed={!expanded} path={path} onNavigate={handleNavigate} />
             ))}
           </div>
         ))}
@@ -213,19 +256,19 @@ export default function Sidebar({ onClose, mobileOpen }: { onClose?: () => void;
       <div style={{ borderTop: '1px solid var(--border)', padding: '6px 0', flexShrink: 0 }}>
         <div className="nav-item" style={{ justifyContent: !expanded ? 'center' : undefined, cursor: 'default' }}>
           <div style={{ width: 27, height: 27, borderRadius: 7, background: 'linear-gradient(135deg,#f59e0b,#d97706)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff' }}>{userName.charAt(0).toUpperCase()}</div>
-          <div style={{ overflow: 'hidden', opacity: expanded ? 1 : 0, width: expanded ? 'auto' : 0, transition: 'opacity 0.2s ease, width 0.25s ease', whiteSpace: 'nowrap' }}>
+          <div style={{ overflow: 'hidden', opacity: expanded ? 1 : 0, width: expanded ? 'auto' : 0, transition: 'opacity 120ms ease', whiteSpace: 'nowrap' }}>
             <div style={{ fontSize: 12, fontWeight: 600 }}>{userName}</div>
             <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{userEmail}</div>
           </div>
         </div>
         <button onClick={() => signOut({ callbackUrl: '/login' })} className="nav-item" style={{ justifyContent: !expanded ? 'center' : undefined, background: 'none', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
           <LogOut size={14} style={{ flexShrink: 0 }} />
-          <span style={{ opacity: expanded ? 1 : 0, width: expanded ? 'auto' : 0, overflow: 'hidden', whiteSpace: 'nowrap', transition: 'opacity 0.2s ease, width 0.25s ease' }}>Logout</span>
+          <span style={{ opacity: expanded ? 1 : 0, width: expanded ? 'auto' : 0, overflow: 'hidden', whiteSpace: 'nowrap', transition: 'opacity 120ms ease' }}>Logout</span>
         </button>
       </div>
 
       {/* Collapse toggle */}
-      <button onClick={() => setCollapsed(!collapsed)} style={{
+      <button onClick={handleToggleCollapsed} style={{
         position: 'absolute', right: -13, top: 72,
         width: 26, height: 26, borderRadius: '50%',
         background: 'var(--surface-base)', border: '1px solid var(--border)',
