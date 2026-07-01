@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useCallback, useTransition, useEffect } from 'react';
+import { useState, useRef, useCallback, useTransition, useEffect, useDeferredValue, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { FileText, Download, Search, X, Plus, CheckCircle, Edit2, Printer, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
@@ -291,7 +291,7 @@ function InvBadge({ status }: { status: string }) {
 }
 
 export default function InvoicesPage() {
-  const { invoices, parties, awbBookings: awb, docketBookings: dockets, refresh } = useSharedData();
+  const { invoices, parties, awbBookings: awb, docketBookings: dockets, refresh, mutate } = useSharedData();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -310,6 +310,7 @@ export default function InvoicesPage() {
   };
 
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -375,16 +376,19 @@ export default function InvoicesPage() {
     });
   }
 
-  const filtered = invoices.filter(i =>
-    (i.invoiceNo.toLowerCase().includes(search.toLowerCase()) || i.partyName.toLowerCase().includes(search.toLowerCase()) || i.bookingRef.toLowerCase().includes(search.toLowerCase())) &&
+  const filtered = useMemo(() => {
+    const term = deferredSearch.trim().toLowerCase();
+    return invoices.filter(i =>
+    (!term || i.invoiceNo.toLowerCase().includes(term) || i.partyName.toLowerCase().includes(term) || i.bookingRef.toLowerCase().includes(term)) &&
     (statusFilter==='ALL' || i.status===statusFilter) &&
     (partyFilter==='ALL' || i.partyName===partyFilter) &&
     (!dateFrom || i.invoiceDate >= dateFrom) &&
     (!dateTo   || i.invoiceDate <= dateTo)
-  );
+    );
+  }, [dateFrom, dateTo, deferredSearch, invoices, partyFilter, statusFilter]);
 
-  const unbilledAwb = awb.filter(b => b.status==='BOOKED');
-  const unbilledDkt = dockets.filter(b => b.status==='BOOKED');
+  const unbilledAwb = useMemo(() => awb.filter(b => b.status==='BOOKED'), [awb]);
+  const unbilledDkt = useMemo(() => dockets.filter(b => b.status==='BOOKED'), [dockets]);
 
   function startEditLine(line: DbInvoice['lines'][0]) {
     setEditingLine(line.id);
@@ -401,11 +405,56 @@ export default function InvoicesPage() {
   function handleGenerate() {
     if (!genBookingId) { toast.error('Select a booking'); return; }
     startTransition(async () => {
+      const booking = genBookingType === 'AWB'
+        ? awb.find(b => b.id === genBookingId)
+        : dockets.find(b => b.id === genBookingId);
       const res = genBookingType==='AWB'
         ? await generateInvoiceFromAwb(genBookingId)
         : await generateInvoiceFromDocket(genBookingId);
       if (res && 'error' in res) toast.error(res.error as string);
-      else if (res && 'invoiceNo' in res) { toast.success(`Invoice ${res.invoiceNo} generated`); setShowGenerate(false); setGenBookingId(''); refresh(); }
+      else if (res && 'invoiceNo' in res) {
+        if (booking) {
+          const party = parties.find(p => p.id === booking.partyId);
+          const invoiceDate = new Date().toISOString().split('T')[0];
+          const due = new Date(invoiceDate);
+          due.setDate(due.getDate() + (genBookingType === 'DOCKET' ? ((booking as typeof dockets[number]).dueDatePolicy || party?.creditDays || 30) : (party?.creditDays || 30)));
+          const subtotal = genBookingType === 'AWB'
+            ? (booking as typeof awb[number]).weight * (booking as typeof awb[number]).baseRate + (booking as typeof awb[number]).markupAmount
+            : (booking as typeof dockets[number]).rateFittedAmount + (booking as typeof dockets[number]).markupAmount;
+          const gstRate = genBookingType === 'AWB' ? (booking as typeof awb[number]).gstRate : (booking as typeof dockets[number]).gstRate;
+          const gstTotal = subtotal * gstRate / 100;
+          const grandTotal = subtotal + gstTotal;
+          mutate(current => ({
+            ...current,
+            invoices: [{
+              id: res.invoiceId,
+              invoiceNo: res.invoiceNo,
+              partyId: booking.partyId,
+              partyName: booking.partyName,
+              bookingType: genBookingType,
+              bookingRef: genBookingType === 'AWB' ? (booking as typeof awb[number]).awbNo : (booking as typeof dockets[number]).docketNo,
+              invoiceDate,
+              dueDate: due.toISOString().split('T')[0],
+              subtotal,
+              gstTotal,
+              grandTotal,
+              paidTotal: 0,
+              outstandingTotal: grandTotal,
+              status: 'DRAFT',
+              notes: null,
+              createdBy: null,
+              createdAt: new Date().toISOString(),
+              lines: [],
+            }, ...current.invoices],
+            awbBookings: current.awbBookings.map(b => b.id === genBookingId ? { ...b, status: 'INVOICED' } : b),
+            docketBookings: current.docketBookings.map(b => b.id === genBookingId ? { ...b, status: 'INVOICED' } : b),
+          }));
+        }
+        toast.success(`Invoice ${res.invoiceNo} generated`);
+        setShowGenerate(false);
+        setGenBookingId('');
+        refresh();
+      }
     });
   }
 

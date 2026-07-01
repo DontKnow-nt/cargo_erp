@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "cross-env NODE_OPTIONS=--max-old-space-size=1536 next dev --webpack",
-    "build": "next build",
+    "build": "next build --webpack",
     "postinstall": "npm run db:generate",
     "start": "next start",
     "lint": "eslint",

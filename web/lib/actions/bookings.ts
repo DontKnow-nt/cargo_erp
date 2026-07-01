@@ -44,6 +44,13 @@ export async function createAwbBooking(data: unknown) {
   const parsed = AwbBookingSchema.safeParse(data);
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
   const d = parsed.data;
+  const existingAwb = await prisma.awbBooking.findFirst({
+    where: { awbNo: { equals: d.awbNo, mode: 'insensitive' } },
+    select: { awbNo: true },
+  });
+  if (existingAwb) {
+    return { error: `Duplicate AWB: ${existingAwb.awbNo} already exists` };
+  }
   const partyId = await resolvePartyId(d.partyId, d.partyName);
   const booking = await prisma.awbBooking.create({
     data: { awbNo: d.awbNo, partyId, partyName: d.partyName, origin: d.origin, destination: d.destination, airlineName: d.airlineName, bookingDate: d.bookingDate, shipmentDate: d.shipmentDate ?? null, weight: d.weight, pieces: d.pieces, baseRate: d.baseRate, markupAmount: d.markupAmount, gstRate: d.gstRate, gstAmount: d.gstAmount, totalAmount: d.totalAmount, status: d.status, notes: d.notes ?? null, weightCharge: d.weightCharge ?? 0, valuationCharge: d.valuationCharge ?? 0, otherChargesDueAgent: d.otherChargesDueAgent ?? 0, otherChargesDueCarrier: d.otherChargesDueCarrier ?? 0, totalPrepaid: d.totalPrepaid ?? 0, createdBy: session.user.id },

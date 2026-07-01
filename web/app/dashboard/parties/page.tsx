@@ -1,5 +1,5 @@
 'use client';
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useDeferredValue, useMemo } from 'react';
 import { Users, Plus, Search, Download, X, CheckCircle, AlertTriangle, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import toast from 'react-hot-toast';
@@ -14,9 +14,10 @@ type PartyForm = Omit<Party, 'id' | 'createdAt'>;
 const normalizePartyStatus = (status: string): PartyForm['status'] => status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
 
 export default function PartiesPage() {
-  const { parties, outstanding, refresh } = useSharedData();
+  const { parties, outstanding, refresh, mutate } = useSharedData();
 
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId]   = useState<string|null>(null);
   const [isPending, startTransition] = useTransition();
@@ -36,12 +37,16 @@ export default function PartiesPage() {
   const init: PartyForm = { partyName:'', gstin:'', pan:'', contactPerson:'', phone:'', email:'', billingAddress:'', creditLimit:0, creditDays:30, status:'ACTIVE' };
   const [form, setForm] = useState(init);
 
-  const filtered = parties.filter(p =>
-    p.partyName.toLowerCase().includes(search.toLowerCase()) ||
-    (p.gstin||'').toLowerCase().includes(search.toLowerCase()) ||
-    (p.pan||'').toLowerCase().includes(search.toLowerCase()) ||
-    (p.email||'').toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = useMemo(() => {
+    const term = deferredSearch.trim().toLowerCase();
+    if (!term) return parties;
+    return parties.filter(p =>
+      p.partyName.toLowerCase().includes(term) ||
+      (p.gstin||'').toLowerCase().includes(term) ||
+      (p.pan||'').toLowerCase().includes(term) ||
+      (p.email||'').toLowerCase().includes(term)
+    );
+  }, [deferredSearch, parties]);
 
   function getUsed(partyId: string) {
     return outstanding.filter(o => o.partyId === partyId && o.outstandingAmount > 0).reduce((s,o)=>s+o.outstandingAmount,0);
@@ -61,6 +66,22 @@ export default function PartiesPage() {
       if (res && 'error' in res) {
         toast.error(typeof res.error === 'string' ? res.error : 'Validation error');
         return;
+      }
+      if (!editId && res && 'id' in res) {
+        mutate(current => ({
+          ...current,
+          parties: [{
+            id: res.id,
+            ...form,
+            createdBy: null,
+            createdAt: new Date().toISOString(),
+          }, ...current.parties],
+        }));
+      } else if (editId) {
+        mutate(current => ({
+          ...current,
+          parties: current.parties.map(p => p.id === editId ? { ...p, ...form } : p),
+        }));
       }
       toast.success(editId ? 'Party updated' : `${form.partyName} added`);
       setShowForm(false); setForm(init); setEditId(null);

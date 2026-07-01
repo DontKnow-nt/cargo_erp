@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useRef, useCallback, useTransition, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useTransition, useEffect, useDeferredValue, useMemo } from 'react';
 import { Plane, Plus, Search, Download, X, CheckCircle, Edit2, Save, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { DateRangeFilter, filterByDateRange, exportToCSV, exportToXLSX, exportToPDF, BulkDownloadModal, type DateRange, type ExportFormat, type ExportModule } from '@/lib/exportUtils';
@@ -18,6 +18,7 @@ const AIRLINES = ['IndiGo','Air India','SpiceJet','GoAir','Vistara','Akasa Air']
 const CITIES   = ['DEL','BOM','BLR','HYD','MAA','CCU','AMD','COK','JAI','PNQ','BHO','IXR'];
 
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+const normalizeAwbNo = (value: string) => value.replace(/[^a-z0-9]/gi, '').toUpperCase();
 
 function Badge({ status }: { status: string }) {
   const m: Record<string,[string,string]> = {
@@ -28,7 +29,7 @@ function Badge({ status }: { status: string }) {
 }
 
 export default function AwbBookingsPage() {
-  const { awbBookings, parties, docketBookings, rateVersions, freightRates, outstanding, auditLogs, users, refresh } = useSharedData();
+  const { awbBookings, parties, docketBookings, rateVersions, freightRates, outstanding, auditLogs, users, refresh, mutate } = useSharedData();
   const [isPending, startTransition] = useTransition();
 
   const [showForm, setShowForm]     = useState(false);
@@ -42,6 +43,7 @@ export default function AwbBookingsPage() {
   const [docketAwb, setDocketAwb]   = useState<typeof awbBookings[0]|null>(null);
   const [connectDocketAwb, setConnectDocketAwb] = useState<typeof awbBookings[0]|null>(null);
   const [search, setSearch]         = useState('');
+  const deferredSearch = useDeferredValue(search);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [partyFilter, setPartyFilter] = useState('ALL');
   const [linkFilter, setLinkFilter] = useState<'ALL' | 'LINKED' | 'UNLINKED'>('ALL');
@@ -104,8 +106,19 @@ export default function AwbBookingsPage() {
   const initForm = { awbNo:'', awbPrefix:'312', partyId:'', origin:'', destination:'', airlineName:'', bookingDate:new Date().toISOString().split('T')[0], weight:0, pieces:1, baseRate:0, markupAmount:0, notes:'', weightCharge:0, valuationCharge:0, otherChargesDueAgent:0, otherChargesDueCarrier:0, totalPrepaid:0, gstRate:18, gstAmount:0 };
   const [form, setForm] = useState(initForm);
 
-  const activeParties = parties.filter(p => p.status === 'ACTIVE');
+  const activeParties = useMemo(() => parties.filter(p => p.status === 'ACTIVE'), [parties]);
   const selParty      = parties.find(p => p.id === form.partyId);
+  const fullFormAwbNo = form.awbPrefix ? `${form.awbPrefix}-${form.awbNo}` : form.awbNo;
+  const duplicateAwb = useMemo(() => {
+    const normalized = normalizeAwbNo(fullFormAwbNo);
+    if (!form.awbNo || normalized.length < 4) return undefined;
+    return awbBookings.find(b => normalizeAwbNo(b.awbNo) === normalized);
+  }, [awbBookings, form.awbNo, fullFormAwbNo]);
+
+  useEffect(() => {
+    if (!duplicateAwb) return;
+    toast.error(`Duplicate AWB: ${duplicateAwb.awbNo} already exists`, { id: 'duplicate-awb' });
+  }, [duplicateAwb?.id, duplicateAwb?.awbNo]);
 
   const getRateForRoute = useCallback((carrier: string, origin: string, dest: string) => {
     const activeIds = rateVersions
@@ -261,6 +274,10 @@ export default function AwbBookingsPage() {
     if (!form.awbNo || !form.partyId || !form.origin || !form.destination || !form.airlineName || form.weight <= 0) {
       toast.error('Fill all required fields'); return;
     }
+    if (duplicateAwb) {
+      toast.error(`Duplicate AWB: ${duplicateAwb.awbNo} already exists`, { id: 'duplicate-awb-submit' });
+      return;
+    }
     if (typeof window !== 'undefined') {
       const saved: string[] = JSON.parse(localStorage.getItem('customCities') || '[]');
       const updated = [...new Set([...saved, ...[form.origin, form.destination].filter(c => c && !CITIES.includes(c))])];
@@ -271,7 +288,7 @@ export default function AwbBookingsPage() {
     if (ck.warning) toast(ck.message, { icon:'⚠️' });
 
     // Combine prefix + awbNo for full AWB number
-    const fullAwbNo = form.awbPrefix ? `${form.awbPrefix}-${form.awbNo}` : form.awbNo;
+    const fullAwbNo = fullFormAwbNo;
 
     // Optimistic: close form immediately
     setShowForm(false); setForm(initForm);
@@ -288,7 +305,42 @@ export default function AwbBookingsPage() {
         otherChargesDueAgent:form.otherChargesDueAgent||0, otherChargesDueCarrier:form.otherChargesDueCarrier||0,
         totalPrepaid:form.totalPrepaid||0,
       });
-      if (res && 'error' in res) { toast.error('Validation error — booking may not have saved'); }
+      if (!(res && 'error' in res)) {
+        const createdId = res && 'id' in res ? res.id : `pending-${Date.now()}`;
+        mutate(current => ({
+          ...current,
+          awbBookings: [{
+            id: createdId,
+            awbNo: fullAwbNo,
+            partyId: form.partyId,
+            partyName: selParty?.partyName || '',
+            origin: form.origin,
+            destination: form.destination,
+            airlineName: form.airlineName,
+            bookingDate: form.bookingDate,
+            shipmentDate: null,
+            weight: form.weight,
+            pieces: form.pieces,
+            baseRate: form.baseRate,
+            markupAmount: form.markupAmount,
+            gstRate: 0,
+            gstAmount: 0,
+            totalAmount,
+            status: 'BOOKED',
+            notes: form.notes || null,
+            createdBy: null,
+            createdAt: new Date().toISOString(),
+            weightCharge: form.weightCharge || 0,
+            valuationCharge: form.valuationCharge || 0,
+            otherChargesDueAgent: form.otherChargesDueAgent || 0,
+            otherChargesDueCarrier: form.otherChargesDueCarrier || 0,
+            totalPrepaid: form.totalPrepaid || 0,
+          }, ...current.awbBookings],
+        }));
+      }
+      if (res && 'error' in res) {
+        toast.error(typeof res.error === 'string' ? res.error : 'Validation error — booking may not have saved');
+      }
       refresh();
     });
   }
@@ -297,7 +349,14 @@ export default function AwbBookingsPage() {
     startTransition(async () => {
       const res = await generateInvoiceFromAwb(id);
       if (res && 'error' in res) toast.error(res.error as string);
-      else if (res && 'invoiceNo' in res) toast.success(`Invoice ${res.invoiceNo} generated for ${awbNo}`);
+      else if (res && 'invoiceNo' in res) {
+        mutate(current => ({
+          ...current,
+          awbBookings: current.awbBookings.map(b => b.id === id ? { ...b, status: 'INVOICED' } : b),
+        }));
+        toast.success(`Invoice ${res.invoiceNo} generated for ${awbNo}`);
+        refresh();
+      }
     });
   }
 
@@ -321,13 +380,17 @@ export default function AwbBookingsPage() {
     });
   }
 
-  const rangeFiltered = filterByDateRange(awbBookings, 'bookingDate', dateRange);
-  const filtered = rangeFiltered.filter(b =>
-    (b.awbNo.toLowerCase().includes(search.toLowerCase()) || b.partyName.toLowerCase().includes(search.toLowerCase())) &&
+  const linkedAwbIds = useMemo(() => new Set(docketBookings.map(d => d.linkedAwbId).filter(Boolean)), [docketBookings]);
+  const rangeFiltered = useMemo(() => filterByDateRange(awbBookings, 'bookingDate', dateRange), [awbBookings, dateRange]);
+  const filtered = useMemo(() => {
+    const term = deferredSearch.trim().toLowerCase();
+    return rangeFiltered.filter(b =>
+    (!term || b.awbNo.toLowerCase().includes(term) || b.partyName.toLowerCase().includes(term)) &&
     (statusFilter === 'ALL' || b.status === statusFilter) &&
     (partyFilter === 'ALL' || b.partyId === partyFilter || b.partyName === partyFilter) &&
-    (linkFilter === 'ALL' || (linkFilter === 'LINKED' ? docketBookings.some(d => d.linkedAwbId === b.id) : !docketBookings.some(d => d.linkedAwbId === b.id)))
-  );
+    (linkFilter === 'ALL' || (linkFilter === 'LINKED' ? linkedAwbIds.has(b.id) : !linkedAwbIds.has(b.id)))
+    );
+  }, [deferredSearch, rangeFiltered, statusFilter, partyFilter, linkFilter, linkedAwbIds]);
 
   function handleExport(fmt: 'csv'|'xlsx'|'pdf') {
     const data = filtered.map(b => ({ 'AWB No':b.awbNo, Party:b.partyName, Route:`${b.origin}→${b.destination}`, Airline:b.airlineName, Date:fmtDate(b.bookingDate), 'Weight(kg)':b.weight, 'Rate(₹)':b.baseRate, 'Markup(₹)':b.markupAmount, 'Total(₹)':((b as any).totalPrepaid || b.totalAmount).toFixed(2), Status:b.status }));
@@ -609,6 +672,11 @@ export default function AwbBookingsPage() {
                     <span style={{padding:'0 6px',color:'var(--text-muted)',fontWeight:700}}>-</span>
                     <input className="input" style={{border:'none',borderRadius:0,flex:1,fontFamily:'var(--font-mono)'}} placeholder="31444" value={form.awbNo} onChange={e=>setForm(f=>({...f,awbNo:e.target.value}))} required/>
                   </div>
+                  {duplicateAwb && (
+                    <div style={{fontSize:11,color:'#dc2626',fontWeight:700,marginTop:5}}>
+                      Duplicate AWB: {duplicateAwb.awbNo} already exists
+                    </div>
+                  )}
                 </div>
                 <div className="form-group">
                   <label className="label">Party / Customer *</label>
@@ -740,7 +808,7 @@ export default function AwbBookingsPage() {
 
               <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
                 <button type="button" className="btn btn-secondary" onClick={()=>{setShowForm(false);setForm(initForm);}}>Cancel</button>
-                <button type="submit" className="btn btn-primary"><CheckCircle size={13}/> Save AWB Booking</button>
+                <button type="submit" className="btn btn-primary" disabled={Boolean(duplicateAwb)} title={duplicateAwb ? `AWB ${duplicateAwb.awbNo} already exists` : undefined}><CheckCircle size={13}/> Save AWB Booking</button>
               </div>
             </form>
           </div>

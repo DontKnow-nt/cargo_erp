@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useRef, useCallback, useTransition, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useTransition, useEffect, useDeferredValue, useMemo } from 'react';
 import { ClipboardList, Plus, Search, Download, X, CheckCircle, Edit2, Save, Trash2, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { exportToCSV, exportToXLSX, exportToPDF, filterByDateRange, DateRangeFilter, type DateRange, type ExportFormat } from '@/lib/exportUtils';
@@ -24,7 +24,7 @@ function Badge({ status }: { status: string }) {
 }
 
 export default function DocketBookingsPage() {
-  const { docketBookings, parties, awbBookings, outstanding, auditLogs, users, refresh } = useSharedData();
+  const { docketBookings, parties, awbBookings, outstanding, auditLogs, users, refresh, mutate } = useSharedData();
   const [isPending, startTransition] = useTransition();
 
   const [showForm, setShowForm]   = useState(false);
@@ -42,6 +42,7 @@ export default function DocketBookingsPage() {
   const [editForm, setEditForm]     = useState<Partial<typeof docketBookings[0]>>({});
   const [showEditModal, setShowEditModal] = useState(false);
   const [search, setSearch]       = useState('');
+  const deferredSearch = useDeferredValue(search);
   const [statusFilter, setStatus] = useState('ALL');
   const [partyFilter, setPartyFilter] = useState('ALL');
   const [linkFilter, setLinkFilter] = useState<'ALL' | 'LINKED' | 'UNLINKED'>('ALL');
@@ -86,7 +87,7 @@ export default function DocketBookingsPage() {
   const [gstManualMode, setGstManualMode] = useState(false);
   const [gstAmountInput, setGstAmountInput] = useState('');
 
-  const activeParties = parties.filter(p => p.status==='ACTIVE');
+  const activeParties = useMemo(() => parties.filter(p => p.status==='ACTIVE'), [parties]);
   const selParty      = parties.find(p => p.id===form.partyId);
   // Auto-calculated GST based on percentage
   const gstAutoAmount  = parseFloat(((form.rateFittedAmount + form.markupAmount) * form.gstRate / 100).toFixed(2));
@@ -173,19 +174,53 @@ export default function DocketBookingsPage() {
         wayBillNo:form.wayBillNo||undefined, consignee:form.consignee||undefined, value:form.value||undefined, methodOfPacking:form.methodOfPacking||undefined, pieces:(form as any).pieces||1,
       });
       if (res && 'error' in res) { toast.error('Validation error'); return; }
+      const createdId = res && 'id' in res ? res.id : `pending-${Date.now()}`;
+      mutate(current => ({
+        ...current,
+        docketBookings: [{
+          id: createdId,
+          docketNo: form.docketNo,
+          partyId: form.partyId,
+          partyName: selParty?.partyName || '',
+          bookingDate: form.bookingDate,
+          origin: form.origin || null,
+          destination: form.destination || null,
+          description: form.description || null,
+          weight: form.weight,
+          rateFittedAmount: form.rateFittedAmount,
+          markupAmount: form.markupAmount,
+          gstRate: form.gstRate,
+          gstAmount,
+          totalAmount,
+          dueDatePolicy: form.dueDatePolicy,
+          status: 'BOOKED',
+          notes: form.notes || null,
+          linkedAwbId: null,
+          wayBillNo: form.wayBillNo || null,
+          consignee: form.consignee || null,
+          value: form.value || 0,
+          methodOfPacking: form.methodOfPacking || null,
+          pieces: (form as any).pieces || 1,
+          createdBy: null,
+          createdAt: new Date().toISOString(),
+        }, ...current.docketBookings],
+      }));
       toast.success(`Docket ${form.docketNo} saved`);
       setShowForm(false); setForm(init);
       refresh();
     });
   }
 
-  const rangeFiltered = filterByDateRange(docketBookings, 'bookingDate', dateRange);
-  const filtered = rangeFiltered.filter(b =>
-    (b.docketNo.toLowerCase().includes(search.toLowerCase()) || b.partyName.toLowerCase().includes(search.toLowerCase())) &&
+  const rangeFiltered = useMemo(() => filterByDateRange(docketBookings, 'bookingDate', dateRange), [docketBookings, dateRange]);
+  const filtered = useMemo(() => {
+    const term = deferredSearch.trim().toLowerCase();
+    return rangeFiltered.filter(b =>
+    (!term || b.docketNo.toLowerCase().includes(term) || b.partyName.toLowerCase().includes(term)) &&
     (statusFilter==='ALL' || b.status===statusFilter) &&
     (partyFilter==='ALL' || b.partyName===partyFilter) &&
     (linkFilter === 'ALL' || (linkFilter === 'LINKED' ? Boolean(b.linkedAwbId) : !b.linkedAwbId))
-  );
+    );
+  }, [deferredSearch, rangeFiltered, statusFilter, partyFilter, linkFilter]);
 
   return (
     <div className="animate-fadeIn">
@@ -315,7 +350,7 @@ export default function DocketBookingsPage() {
                         )}
                         {!selectMode && b.status==='BOOKED' && canInvoice && (
                           <button className="btn btn-secondary btn-sm" style={{fontSize:11,padding:'3px 9px',whiteSpace:'nowrap'}}
-                            onClick={e=>{e.stopPropagation();startTransition(async()=>{const res=await generateInvoiceFromDocket(b.id);if(res&&'error'in res)toast.error(res.error as string);else if(res&&'invoiceNo'in res)toast.success(`Invoice ${res.invoiceNo} generated`);});}}>
+                            onClick={e=>{e.stopPropagation();startTransition(async()=>{const res=await generateInvoiceFromDocket(b.id);if(res&&'error'in res)toast.error(res.error as string);else if(res&&'invoiceNo'in res){mutate(current=>({...current,docketBookings:current.docketBookings.map(d=>d.id===b.id?{...d,status:'INVOICED'}:d)}));toast.success(`Invoice ${res.invoiceNo} generated`);refresh();}});}}>
                             Gen Invoice
                           </button>
                         )}

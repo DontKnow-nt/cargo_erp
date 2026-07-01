@@ -1,6 +1,6 @@
 'use client';
 import { AlertTriangle, Download, Search, Trash2 } from 'lucide-react';
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useDeferredValue, useMemo } from 'react';
 import { useSharedData } from '@/lib/useSharedData';
 import { LiveIndicator } from '@/components/LiveIndicator';
 import { deleteOutstandingEntries } from '@/lib/actions/invoices';
@@ -21,6 +21,7 @@ export default function OutstandingPage() {
   const { outstanding, parties, refresh } = useSharedData();
 
   const [search, setSearch]     = useState('');
+  const deferredSearch = useDeferredValue(search);
   const [partyFilter, setPartyFilter] = useState('ALL');
   const [bucketFilter, setBucketFilter] = useState('ALL');
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -59,12 +60,15 @@ export default function OutstandingPage() {
     partyMap[o.partyId].amount+=o.outstandingAmount;
   });
 
-  const filtered = outstanding.filter(o =>
+  const filtered = useMemo(() => {
+    const term = deferredSearch.trim().toLowerCase();
+    return outstanding.filter(o =>
     o.outstandingAmount > 0 &&
-    (o.partyName.toLowerCase().includes(search.toLowerCase()) || o.invoiceNo.toLowerCase().includes(search.toLowerCase()) || o.bookingRef.toLowerCase().includes(search.toLowerCase())) &&
+    (!term || o.partyName.toLowerCase().includes(term) || o.invoiceNo.toLowerCase().includes(term) || o.bookingRef.toLowerCase().includes(term)) &&
     (partyFilter==='ALL' || o.partyId===partyFilter) &&
     (bucketFilter==='ALL' || o.agingBucket===bucketFilter)
-  );
+    );
+  }, [bucketFilter, deferredSearch, outstanding, partyFilter]);
 
   return (
     <div className="animate-fadeIn">

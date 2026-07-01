@@ -1,5 +1,5 @@
 'use client';
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useDeferredValue, useMemo } from 'react';
 import { CreditCard, Plus, Search, Download, X, CheckCircle, Edit2, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { addPaymentReceipt, updatePaymentReceipt, deletePaymentReceipts } from '@/lib/actions/payments';
@@ -14,7 +14,7 @@ type FormState = { partyId:string; invoiceId:string; paymentDate:string; payment
 const initForm = (): FormState => ({ partyId:'', invoiceId:'', paymentDate:new Date().toISOString().split('T')[0], paymentAmount:0, paymentMode:'NEFT', referenceNo:'', bankName:'', remarks:'' });
 
 export default function PaymentsPage() {
-  const { paymentReceipts, invoices, parties, refresh } = useSharedData();
+  const { paymentReceipts, invoices, parties, refresh, mutate } = useSharedData();
   const [isPending, startTransition] = useTransition();
 
   const [showForm, setShowForm] = useState(false);
@@ -22,10 +22,11 @@ export default function PaymentsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editId, setEditId]     = useState<string|null>(null);
   const [search, setSearch]     = useState('');
+  const deferredSearch = useDeferredValue(search);
   const [form, setForm]         = useState<FormState>(initForm());
 
   const selParty      = parties.find(p => p.id === form.partyId);
-  const partyInvoices = invoices.filter(i => i.partyId === form.partyId && ['DRAFT','FINALIZED','SENT','PARTIALLY_PAID','OVERDUE'].includes(i.status));
+  const partyInvoices = useMemo(() => invoices.filter(i => i.partyId === form.partyId && ['DRAFT','FINALIZED','SENT','PARTIALLY_PAID','OVERDUE'].includes(i.status)), [form.partyId, invoices]);
   const selInvoice    = invoices.find(i => i.id === form.invoiceId);
 
   function openAdd() { setForm(initForm()); setEditId(null); setShowForm(true); }
@@ -41,30 +42,83 @@ export default function PaymentsPage() {
       if (editId) {
         const res = await updatePaymentReceipt(editId, form);
         if (res && 'error' in res) { toast.error(res.error as string); return; }
+        mutate(current => ({
+          ...current,
+          paymentReceipts: current.paymentReceipts.map(r => r.id === editId ? {
+            ...r,
+            paymentDate: form.paymentDate,
+            paymentAmount: form.paymentAmount,
+            freightComponent: form.paymentAmount,
+            paymentMode: form.paymentMode,
+            referenceNo: form.referenceNo || null,
+            bankName: form.bankName || null,
+            remarks: form.remarks || null,
+          } : r),
+        }));
         toast.success('Payment updated');
       } else {
-        const autoInv = partyInvoices.sort((a,b) => (b.outstandingTotal||0) - (a.outstandingTotal||0))[0];
+        const autoInv = [...partyInvoices].sort((a,b) => (b.outstandingTotal||0) - (a.outstandingTotal||0))[0];
+        const invoiceId = form.invoiceId || autoInv?.id || '';
+        const invoiceNo = form.invoiceId ? (selInvoice?.invoiceNo||'') : (autoInv?.invoiceNo||'MANUAL');
         const res = await addPaymentReceipt({
           partyId:form.partyId, partyName:selParty?.partyName||'',
-          invoiceId:form.invoiceId || autoInv?.id || '',
-          invoiceNo:form.invoiceId ? (selInvoice?.invoiceNo||'') : (autoInv?.invoiceNo||'MANUAL'),
+          invoiceId,
+          invoiceNo,
           paymentDate:form.paymentDate, paymentAmount:form.paymentAmount,
           freightComponent:form.paymentAmount, gstComponent:0,
           paymentMode:form.paymentMode as 'CASH'|'CHEQUE'|'BANK_TRANSFER'|'NEFT'|'RTGS'|'UPI'|'OTHER',
           referenceNo:form.referenceNo, bankName:form.bankName, notes:form.remarks,
         });
         if (res && 'error' in res) { toast.error(res.error as string); return; }
+        const receiptId = res && 'receiptId' in res ? res.receiptId : `pending-${Date.now()}`;
+        const receiptNo = res && 'receiptNo' in res ? res.receiptNo : 'Saving...';
+        mutate(current => ({
+          ...current,
+          paymentReceipts: [{
+            id: receiptId,
+            receiptNo,
+            partyId: form.partyId,
+            partyName: selParty?.partyName || '',
+            invoiceId,
+            invoiceNo,
+            paymentDate: form.paymentDate,
+            paymentAmount: form.paymentAmount,
+            freightComponent: form.paymentAmount,
+            gstComponent: 0,
+            paymentMode: form.paymentMode,
+            referenceNo: form.referenceNo || null,
+            bankName: form.bankName || null,
+            remarks: form.remarks || null,
+            status: 'CONFIRMED',
+            createdAt: new Date().toISOString(),
+          }, ...current.paymentReceipts],
+          invoices: current.invoices.map(inv => {
+            if (inv.id !== invoiceId) return inv;
+            const paidTotal = inv.paidTotal + form.paymentAmount;
+            const outstandingTotal = Math.max(0, inv.grandTotal - paidTotal);
+            return {
+              ...inv,
+              paidTotal,
+              outstandingTotal,
+              status: outstandingTotal === 0 ? 'PAID' : 'PARTIALLY_PAID',
+            };
+          }),
+        }));
         toast.success('Payment receipt recorded');
       }
       setShowForm(false); setForm(initForm()); setEditId(null); refresh();
     });
   }
 
-  const filtered = paymentReceipts.filter(r =>
-    r.receiptNo.toLowerCase().includes(search.toLowerCase()) ||
-    r.partyName.toLowerCase().includes(search.toLowerCase()) ||
-    r.invoiceNo.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = useMemo(() => {
+    const term = deferredSearch.trim().toLowerCase();
+    if (!term) return paymentReceipts;
+    return paymentReceipts.filter(r =>
+      r.receiptNo.toLowerCase().includes(term) ||
+      r.partyName.toLowerCase().includes(term) ||
+      r.invoiceNo.toLowerCase().includes(term)
+    );
+  }, [deferredSearch, paymentReceipts]);
 
   function handleExport(type: 'csv' | 'pdf') {
     const rows = filtered.map(r => ({

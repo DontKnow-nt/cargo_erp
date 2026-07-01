@@ -9,6 +9,7 @@ import {
   CreditCard, AlertTriangle, BookOpen, ChevronLeft, ChevronRight,
   ChevronDown, ChevronRight as CRight,
 } from 'lucide-react';
+import { prefetchSharedDataForPath } from '@/lib/useSharedData';
 
 const navSections = [
   {
@@ -90,6 +91,8 @@ function NavRow({ item, collapsed, path }: { item: NavItem; collapsed: boolean; 
     const active = path === item.href || (item.href !== '/dashboard' && path.startsWith(item.href));
     return (
       <Link href={item.href} className={`nav-item ${active ? 'active' : ''}`}
+        onMouseEnter={() => prefetchSharedDataForPath(item.href)}
+        onFocus={() => prefetchSharedDataForPath(item.href)}
         title={collapsed ? item.label : undefined}>
         <item.icon size={15} strokeWidth={2} style={{ flexShrink: 0 }} />
         <span style={textStyle}>{item.label}</span>
@@ -113,6 +116,8 @@ function NavRow({ item, collapsed, path }: { item: NavItem; collapsed: boolean; 
         <div style={{ marginLeft: 12, borderLeft: '1px solid var(--border)', paddingLeft: 4 }}>
           {item.children!.map(c => (
             <Link key={c.href} href={c.href} className={`nav-item ${path === c.href ? 'active' : ''}`}
+              onMouseEnter={() => prefetchSharedDataForPath(c.href)}
+              onFocus={() => prefetchSharedDataForPath(c.href)}
               style={{ fontSize: 12, padding: '5px 10px', margin: '1px 4px' }}>
               {c.label}
             </Link>
