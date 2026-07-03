@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Plane, ClipboardList, FileText, CreditCard, Users, BarChart2, Upload, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Search, Plane, ClipboardList, FileText, CreditCard, Users, BarChart2, Upload, AlertTriangle, Table2 } from 'lucide-react';
 
 const ROUTES = [
   { label: 'Dashboard',          href: '/dashboard',                    icon: BarChart2 },
@@ -12,6 +12,7 @@ const ROUTES = [
   { label: 'Parties',            href: '/dashboard/parties',            icon: Users },
   { label: 'Outstanding',        href: '/dashboard/outstanding',        icon: AlertTriangle },
   { label: 'Import Wizard',      href: '/dashboard/import',             icon: Upload },
+  { label: 'Excel',              href: '/dashboard/excel',              icon: Table2 },
   { label: 'Analytics',          href: '/dashboard/analytics',          icon: BarChart2 },
   { label: 'Cargo Way Bill',     href: '/dashboard/bookings/dockets/way-bill', icon: ClipboardList },
 ];

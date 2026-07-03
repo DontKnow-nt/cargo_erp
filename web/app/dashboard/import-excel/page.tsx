@@ -63,11 +63,13 @@ export default function ExcelImportPage() {
           <strong>What it does:</strong>
           <ul style={{ margin: '6px 0 0 16px', lineHeight: 1.8 }}>
             <li>Reads each row from all sheets</li>
-            <li>Finds or creates the <strong>Party</strong> by name</li>
-            <li>Creates an <strong>Outstanding entry</strong> for each row with Total Amount</li>
+            <li>Matches each row's AWB/Docket number against existing AWB/Docket bookings</li>
+            <li>On a match with a <strong>BOOKED</strong> booking: uses that booking's Party name, adds Total Amount to Outstanding, and marks the booking <strong>IMPORTED</strong></li>
+            <li>On a match with an <strong>INVOICED</strong> booking: skipped — that booking already has a real invoice + outstanding entry, adding again would double-count it</li>
+            <li>No match: still adds the row's Total Amount to Outstanding using the Excel row's own party name</li>
             <li>Rows sorted by date — oldest first</li>
-            <li>Duplicate Invoice/Docket/AWB references are skipped</li>
-            <li><strong>Does NOT create AWB bookings or Docket bookings</strong></li>
+            <li>Re-uploading the same file won&apos;t double-count — bookings already marked IMPORTED are skipped</li>
+            <li><strong>Does NOT create new AWB bookings or Docket bookings</strong></li>
           </ul>
         </div>
 

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@carbon/icons-react": "^11.80.0",
+    "@handsontable/react-wrapper": "^18.0.0",
     "@neondatabase/serverless": "^1.1.0",
     "@prisma/adapter-neon": "^7.8.0",
     "@prisma/adapter-pg": "^7.8.0",
@@ -36,6 +37,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^17.4.2",
     "framer-motion": "^12.38.0",
+    "handsontable": "^18.0.0",
     "lucide-react": "^1.14.0",
     "next": "16.2.6",
     "next-auth": "^4.24.11",
