@@ -10,6 +10,7 @@ import BankDetailsPanel from '@/components/BankDetailsPanel';
 import { CreatorAvatar } from '@/components/CreatorAvatar';
 import { useSharedData, type DbInvoice } from '@/lib/useSharedData';
 import { LiveIndicator } from '@/components/LiveIndicator';
+import { amountToWords } from '@/lib/invoiceAmounts';
 
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtN = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -21,26 +22,15 @@ function formatBookingRefList(ref: string) {
   return `${parts.slice(0, 3).join(', ')} ... (+${parts.length - 3} more)`;
 }
 
-// ── Number to words (Indian system) ──────────────────────────────────────────
-function numberToWords(num: number): string {
-  const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
-  const tens = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
-  if (num === 0) return 'Zero';
-  function convert(n: number): string {
-    if (n < 20) return ones[n];
-    if (n < 100) return tens[Math.floor(n/10)] + (n%10?' '+ones[n%10]:'');
-    if (n < 1000) return ones[Math.floor(n/100)]+' Hundred'+(n%100?' '+convert(n%100):'');
-    if (n < 100000) return convert(Math.floor(n/1000))+' Thousand'+(n%1000?' '+convert(n%1000):'');
-    if (n < 10000000) return convert(Math.floor(n/100000))+' Lakh'+(n%100000?' '+convert(n%100000):'');
-    return convert(Math.floor(n/10000000))+' Crore'+(n%10000000?' '+convert(n%10000000):'');
-  }
-  const intPart = Math.floor(num);
-  const decPart = Math.round((num - intPart)*100);
-  let result = convert(intPart);
-  if (decPart > 0) result += ' and Paise '+convert(decPart);
-  return result+' Only';
+function invoiceOtherTotal(inv: DbInvoice) {
+  return inv.lines.reduce((sum, line) => {
+    return /handling|markup|other|tsp|awb\s*&?\s*do|due\s*carrier|oda|docket\s*chg|pickup|delivery|forward|forwrd/i.test(line.description)
+      ? sum + line.amount
+      : sum;
+  }, 0);
 }
 
+// ── Number to words (Indian system) ──────────────────────────────────────────
 // ── Triveni-style Invoice Print ───────────────────────────────────────────────
 type CompanyInfo = { name:string; address:string; gstin:string; pan:string; tan:string; stax:string; cin:string; phone:string; email:string; regdOffice:string };
 type PartyInfo = { gstin:string; address:string; pos:string; billingPeriod:string };
@@ -50,7 +40,7 @@ function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo
   const taxableAmt = inv.subtotal;
   const igstAmt = inv.gstTotal;
   const grandTotal = inv.grandTotal;
-  const amtWords = numberToWords(Math.round(grandTotal));
+  const amtWords = amountToWords(grandTotal);
 
   // Parse each line: try to extract AWB-style fields from description
   // description format: "Airfreight DEL→BLR · 250 kg @ ₹90/kg"
@@ -199,7 +189,7 @@ function printTriveniInvoice(inv: DbInvoice, companyInfo: CompanyInfo, partyInfo
   <table style="margin-bottom:5px">
     <tr>
       <td style="width:58%;border:1px solid #000;padding:5px 7px;vertical-align:top">
-        <div><strong>Amount in Words :</strong> &nbsp;Rupees ${amtWords}</div>
+        <div><strong>Amount in Words :</strong> &nbsp;${amtWords}</div>
         <div style="margin-top:8px"><strong>Bank</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: &nbsp;${bank?.bank_name ?? 'YES BANK Ltd.'}</div>
         <div><strong>Account No.</strong> &nbsp;&nbsp;&nbsp;&nbsp;: &nbsp;${bank?.account_number ?? '008463700000641'}</div>
         <div><strong>IFSC Code</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: &nbsp;${bank?.ifsc ?? 'YESB0000283'}</div>
@@ -536,12 +526,12 @@ export default function InvoicesPage() {
                 <th>Invoice No.</th><th>Party</th><th>Booking Ref</th><th>Type</th>
                 <th>Date</th><th>Due Date</th>
                 <th style={{textAlign:'right'}}>Subtotal</th><th style={{textAlign:'right'}}>GST</th>
-                <th style={{textAlign:'right'}}>Total</th><th style={{textAlign:'right'}}>Paid</th>
+                <th style={{textAlign:'right'}}>Other</th><th style={{textAlign:'right'}}>Net Payable</th><th style={{textAlign:'right'}}>Paid</th>
                 <th style={{textAlign:'right'}}>Outstanding</th><th>Status</th><th style={{textAlign:'center'}}>By</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.length===0 && <tr><td colSpan={selectMode?14:13} style={{textAlign:'center',padding:'36px 0',color:'var(--text-muted)'}}>No invoices</td></tr>}
+              {filtered.length===0 && <tr><td colSpan={selectMode?16:15} style={{textAlign:'center',padding:'36px 0',color:'var(--text-muted)'}}>No invoices</td></tr>}
               {filtered.map(inv=>(
                 <tr key={inv.id}
                   style={{background: selected.has(inv.id) ? 'rgba(239,68,68,0.06)' : undefined, cursor: selectMode ? 'pointer' : undefined}}
@@ -564,6 +554,7 @@ export default function InvoicesPage() {
                   <td style={{fontSize:12,color:new Date(inv.dueDate)<new Date()&&inv.status!=='PAID'?'#dc2626':'var(--text-muted)'}}>{inv.dueDate}</td>
                   <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12}}>{fmt(inv.subtotal)}</td>
                   <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:'var(--text-muted)'}}>{fmt(inv.gstTotal)}</td>
+                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:'var(--text-muted)'}}>{fmt(invoiceOtherTotal(inv))}</td>
                   <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:700}}>{fmt(inv.grandTotal)}</td>
                   <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontSize:12,color:'#059669'}}>{fmt(inv.paidTotal)}</td>
                   <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:700,color:inv.outstandingTotal>0?'#dc2626':'#059669'}}>{fmt(inv.outstandingTotal)}</td>
@@ -698,7 +689,8 @@ export default function InvoicesPage() {
                 {[
                   {label:'Subtotal', val:fmt(viewInvoice.subtotal)},
                   {label:`GST (18%)`, val:fmt(viewInvoice.gstTotal)},
-                  {label:'Grand Total', val:fmt(viewInvoice.grandTotal), bold:true, big:true},
+                  {label:'Other', val:fmt(invoiceOtherTotal(viewInvoice))},
+                  {label:'Net Payable', val:fmt(viewInvoice.grandTotal), bold:true, big:true},
                   {label:'Paid', val:fmt(viewInvoice.paidTotal), color:'#059669'},
                   {label:'Outstanding', val:fmt(viewInvoice.outstandingTotal), color:viewInvoice.outstandingTotal>0?'#dc2626':'#059669', bold:true},
                 ].map(row=>(
@@ -802,7 +794,7 @@ function InvoiceBulkDownloadModal({ invoices, companyInfo, onClose }: { invoices
   function doDownload() {
     let data = filterByDateRange(invoices,'invoiceDate',range);
     if (statusFilter !== 'ALL') data = data.filter(i => i.status === statusFilter);
-    const rows = data.map(i => ({ 'Invoice No':i.invoiceNo, Party:i.partyName, 'Booking Ref':i.bookingRef, Type:i.bookingType, Date:fmtDate(i.invoiceDate), 'Due Date':fmtDate(i.dueDate), 'Subtotal(₹)':i.subtotal.toFixed(2), 'GST(₹)':i.gstTotal.toFixed(2), 'Total(₹)':i.grandTotal.toFixed(2), 'Paid(₹)':i.paidTotal.toFixed(2), 'Outstanding(₹)':i.outstandingTotal.toFixed(2), Status:i.status }));
+    const rows = data.map(i => ({ 'Invoice No':i.invoiceNo, Party:i.partyName, 'Booking Ref':i.bookingRef, Type:i.bookingType, Date:fmtDate(i.invoiceDate), 'Due Date':fmtDate(i.dueDate), 'Subtotal(₹)':i.subtotal.toFixed(2), 'GST(₹)':i.gstTotal.toFixed(2), 'Other(₹)':invoiceOtherTotal(i).toFixed(2), 'Net Payable(₹)':i.grandTotal.toFixed(2), 'Paid(₹)':i.paidTotal.toFixed(2), 'Outstanding(₹)':i.outstandingTotal.toFixed(2), Status:i.status }));
     const fname = `invoices_${range}`;
     if(format==='csv') exportToCSV(rows,fname);
     else if(format==='xlsx') exportToXLSX(rows,fname);

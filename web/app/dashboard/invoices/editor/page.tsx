@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Printer } from 'lucide-react';
 import { useSharedData } from '@/lib/useSharedData';
 import { listCustomFormats, saveCustomFormat, deleteCustomFormat, type CustomFormatCol } from '@/lib/actions/customFormats';
+import { amountToWords } from '@/lib/invoiceAmounts';
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 function Toolbar({ paperRef }: { paperRef: React.RefObject<HTMLDivElement | null> }) {
@@ -226,21 +227,6 @@ function EC({ children, style, colSpan, rowSpan }: {
 }
 
 // ── Number to words ───────────────────────────────────────────────────────────
-function numberToWords(num: number): string {
-  const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
-  const tens = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
-  if (num === 0) return 'Zero';
-  function convert(n: number): string {
-    if (n < 20) return ones[n];
-    if (n < 100) return tens[Math.floor(n/10)] + (n%10 ? ' '+ones[n%10] : '');
-    if (n < 1000) return ones[Math.floor(n/100)]+' Hundred'+(n%100 ? ' '+convert(n%100) : '');
-    if (n < 100000) return convert(Math.floor(n/1000))+' Thousand'+(n%1000 ? ' '+convert(n%1000) : '');
-    if (n < 10000000) return convert(Math.floor(n/100000))+' Lakh'+(n%100000 ? ' '+convert(n%100000) : '');
-    return convert(Math.floor(n/10000000))+' Crore'+(n%10000000 ? ' '+convert(n%10000000) : '');
-  }
-  return convert(Math.floor(num)) + ' Only';
-}
-
 function fmt(n: number) {
   return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -344,7 +330,7 @@ function InvoiceEditorInner() {
     taxEl.innerText = `Total Taxable Amount : ${fmtN(taxable)}\nSGST @ ${sg}%              : ${fmtN(sgstAmt)}\nCGST @ ${cg}%              : ${fmtN(cgstAmt)}\nIGST @ ${ig}%             : ${fmtN(igstAmt)}\n${roundOffText}Net Payable Amount  : ${fmtN(roundedNet)}`;
     // Update Amount in Words
     const wordsEl = paperRef.current?.querySelector<HTMLElement>('[data-words]');
-    if (wordsEl && roundedNet > 0) wordsEl.innerText = `Rupees ${numberToWords(Math.round(roundedNet))} Only`;
+    if (wordsEl && roundedNet > 0) wordsEl.innerText = amountToWords(roundedNet);
   }
 
   useEffect(() => {
@@ -841,7 +827,7 @@ function InvoiceEditorInner() {
 
         taxSummaryEl.innerText = `Total Taxable Amount : ${fmtN(totalTaxable)}\nSGST @ ${sgstRate}%              : ${fmtN(sgstAmt)}\nCGST @ ${cgstRate}%              : ${fmtN(cgstAmt)}\nIGST @ ${igstRateVal}%             : ${fmtN(igstAmt)}\n${roundOffText}Net Payable Amount  : ${fmtN(roundedNet)}`;
         const wordsEl2 = paper!.querySelector<HTMLElement>('[data-words]');
-        if (wordsEl2 && roundedNet > 0) wordsEl2.innerText = `Rupees ${numberToWords(Math.round(roundedNet))} Only`;
+        if (wordsEl2 && roundedNet > 0) wordsEl2.innerText = amountToWords(roundedNet);
       }
     }
 
@@ -1176,7 +1162,7 @@ img{max-width:100%;object-fit:contain}
 
   const billDate = inv.invoiceDate.split('-').reverse().join('.');
   const invIgstRate = inv.lines[0]?.taxRate ?? 18;
-  const amtWords = numberToWords(Math.round(inv.grandTotal));
+  const amtWords = amountToWords(inv.grandTotal);
 
   // ── Build line rows: pull weight+pieces from actual AWB/docket bookings ──
   type LineRow = { origin:string; dest:string; boxes:string; chgWt:string; rate:string; freight:string; tsp:string; taxable:string; awbNo:string; date:string };
@@ -1564,7 +1550,7 @@ img{max-width:100%;object-fit:contain}
             {/* ── Bank (left) + Tax Summary (right) ── */}
             <tr>
               <td colSpan={invoiceFormat === 'format2' || invoiceFormat === 'format3' ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
-                <div style={{ fontSize: 10, marginBottom: 4 }}><strong>Amount in Words :</strong> <span data-words contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>Rupees {amtWords}</span></div>
+                <div style={{ fontSize: 10, marginBottom: 4 }}><strong>Amount in Words :</strong> <span data-words contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>{amtWords}</span></div>
                 <div contentEditable suppressContentEditableWarning data-bank-detail style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap', marginTop: 6 }}>
                   {bankText}
                 </div>

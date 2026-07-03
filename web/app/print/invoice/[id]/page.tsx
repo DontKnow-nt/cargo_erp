@@ -3,6 +3,7 @@ import { AutoPrint } from '@/components/AutoPrint';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { amountToWords } from '@/lib/invoiceAmounts';
 
 type BankRecord = Awaited<ReturnType<typeof prisma.bankDetail.findMany>>[number];
 type BankView = {
@@ -43,25 +44,6 @@ interface Invoice {
 
 function fmt(n: number) {
   return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function numberToWords(num: number): string {
-  const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
-  const tens = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
-  if (num === 0) return 'Zero';
-  function convert(n: number): string {
-    if (n < 20) return ones[n];
-    if (n < 100) return tens[Math.floor(n/10)] + (n%10 ? ' '+ones[n%10] : '');
-    if (n < 1000) return ones[Math.floor(n/100)]+' Hundred'+(n%100 ? ' '+convert(n%100) : '');
-    if (n < 100000) return convert(Math.floor(n/1000))+' Thousand'+(n%1000 ? ' '+convert(n%1000) : '');
-    if (n < 10000000) return convert(Math.floor(n/100000))+' Lakh'+(n%100000 ? ' '+convert(n%100000) : '');
-    return convert(Math.floor(n/10000000))+' Crore'+(n%10000000 ? ' '+convert(n%10000000) : '');
-  }
-  const intPart = Math.floor(num);
-  const decPart = Math.round((num - intPart) * 100);
-  let result = convert(intPart);
-  if (decPart > 0) result += ' and Paise ' + convert(decPart);
-  return result + ' Only';
 }
 
 export default async function InvoicePrintPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ data?: string }> }) {
@@ -121,7 +103,7 @@ export default async function InvoicePrintPage({ params, searchParams }: { param
   const allBanks: BankView[] = banks.map((b: BankRecord) => ({ account_name: b.accountName, bank_name: b.bankName, branch: b.branch, account_number: b.accountNumber, ifsc: b.ifsc }));
 
   const billDate = inv.invoice_date.split('-').reverse().join('.');
-  const amtWords = numberToWords(Math.round(inv.grand_total));
+  const amtWords = amountToWords(inv.grand_total);
   const igstRate = inv.lines[0]?.tax_rate ?? 18;
 
   return (
