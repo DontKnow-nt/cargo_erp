@@ -887,11 +887,63 @@ function InvoiceEditorInner() {
       }
     }
 
+    // ── Excel-style paste: distribute clipboard grid across cells ──────────
+    function handlePaperPaste(e: ClipboardEvent) {
+      const target = e.target as HTMLElement;
+      if (!target || !target.hasAttribute('contenteditable')) return;
+      const startTd = target.closest('td');
+      if (!startTd) return;
+      const awbBody = paper!.querySelector('#awb-body tbody') ?? paper!.querySelector('#awb-body');
+      if (!awbBody || !awbBody.contains(startTd)) return;
+
+      const clip = e.clipboardData?.getData('text/plain');
+      if (!clip) return;
+      // Excel/Sheets clipboard uses \r\n between rows and \t between columns
+      const grid = clip.replace(/\r/g, '').split('\n').filter((_, i, arr) => !(i === arr.length - 1 && arr[i] === ''))
+        .map(line => line.split('\t'));
+      if (grid.length === 1 && grid[0].length === 1) return; // single cell — let default paste happen
+
+      e.preventDefault();
+
+      const startTr = startTd.closest('tr');
+      if (!startTr) return;
+      let allRows = Array.from(awbBody.querySelectorAll('tr'));
+      const startRowIdx = allRows.indexOf(startTr as HTMLTableRowElement);
+      const startColIdx = Array.from(startTr.children).indexOf(startTd);
+      if (startRowIdx < 0 || startColIdx < 0) return;
+
+      const gtRow = awbBody.querySelector('[data-grand-total]');
+      const templateRow = (allRows.find(r => !r.hasAttribute('data-grand-total') && r !== awbBody.firstElementChild) ?? startTr) as HTMLTableRowElement;
+
+      grid.forEach((rowVals, ri) => {
+        let tr = allRows[startRowIdx + ri] as HTMLTableRowElement | undefined;
+        // If we've run out of rows (before the grand-total row), insert a new blank row
+        if (!tr || tr.hasAttribute('data-grand-total')) {
+          const newRow = templateRow.cloneNode(true) as HTMLTableRowElement;
+          newRow.querySelectorAll('[contenteditable]').forEach(el => { (el as HTMLElement).textContent = ''; });
+          if (gtRow) gtRow.before(newRow); else awbBody.appendChild(newRow);
+          allRows = Array.from(awbBody.querySelectorAll('tr'));
+          tr = newRow;
+        }
+        if (tr === awbBody.firstElementChild) return; // never overwrite header row
+        const cells = Array.from(tr.children) as HTMLTableCellElement[];
+        rowVals.forEach((val, ci) => {
+          const td = cells[startColIdx + ci];
+          if (!td) return;
+          const ce = td.querySelector<HTMLElement>('[contenteditable]');
+          if (ce) ce.textContent = val.trim();
+        });
+      });
+
+      startTr.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
     if (!paper.querySelector('#awb-body')) return;
 
     paper.addEventListener('input', recalc);
     paper.addEventListener('keydown', handlePaperKeyDown);
     paper.addEventListener('focusout', handlePaperFocusOut);
+    paper.addEventListener('paste', handlePaperPaste as EventListener);
 
     recalc(); // sync on initial load / after HTML restore
 
@@ -899,6 +951,7 @@ function InvoiceEditorInner() {
       paper.removeEventListener('input', recalc);
       paper.removeEventListener('keydown', handlePaperKeyDown);
       paper.removeEventListener('focusout', handlePaperFocusOut);
+      paper.removeEventListener('paste', handlePaperPaste as EventListener);
     };
   }, [inv?.id, invoiceFormat, isRounded]); // re-attach when invoice, format, or rounding changes
 
