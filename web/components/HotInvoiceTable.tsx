@@ -221,7 +221,7 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
 
   function grandTotal(): number {
     const inst = hotRef.current?.hotInstance;
-    if (!inst) return 0;
+    if (!inst || inst.isDestroyed) return 0;
     const totalCol = columns.find(c => c.computed && ['taxable', 'amount', 'totalAmt'].includes(c.key));
     if (!totalCol) return 0;
     const rc = inst.countRows();
@@ -235,7 +235,7 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
   function afterChange(changes: Handsontable.CellChange[] | null, source: string) {
     if (!changes || source === 'loadData' || source === 'internal') return;
     const inst = hotRef.current?.hotInstance;
-    if (!inst) return;
+    if (!inst || inst.isDestroyed) return;
     const touched = new Set<number>();
     changes.forEach(([r]) => touched.add(r as number));
     touched.forEach(r => {
@@ -258,7 +258,7 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
   function beforeKeyDown(event: KeyboardEvent) {
     if (event.key !== 'Delete' && event.key !== 'Backspace') return;
     const inst = hotRef.current?.hotInstance;
-    if (!inst) return;
+    if (!inst || inst.isDestroyed) return;
     const selected = inst.getSelected();
     if (!selected || selected.length === 0) return;
 
@@ -302,7 +302,7 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
     getGrandTotal: grandTotal,
     toHtmlTable: () => {
       const inst = hotRef.current?.hotInstance;
-      if (!inst) return '';
+      if (!inst || inst.isDestroyed) return '';
       const esc = (s: string) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       const cellHtml = (val: string, align: string, bold = false) =>
         `<td style="border:1px solid #000;padding:3px 5px;font-size:10px;vertical-align:top;text-align:${align}"><div contenteditable="true" style="outline:none;min-height:14px;font-family:Arial,sans-serif;font-size:10px;white-space:pre-wrap${bold?';font-weight:700':''}">${esc(val)}</div></td>`;
@@ -334,14 +334,14 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
     },
     insertRow: () => {
       const inst = hotRef.current?.hotInstance;
-      if (!inst) return;
+      if (!inst || inst.isDestroyed) return;
       const sel = inst.getSelectedLast();
       const atRow = sel ? sel[0] : inst.countRows() - 1;
       inst.alter('insert_row_below', atRow, 1);
     },
     removeRow: () => {
       const inst = hotRef.current?.hotInstance;
-      if (!inst) return;
+      if (!inst || inst.isDestroyed) return;
       if (inst.countRows() <= 1) return;
       const sel = inst.getSelectedLast();
       const atRow = sel ? sel[0] : inst.countRows() - 1;
@@ -368,8 +368,8 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
       setColumns(prev => prev.filter(c => c.key !== removedKey));
       setTimeout(() => onTotalChange?.(grandTotal()), 0);
     },
-    undo: () => { hotRef.current?.hotInstance?.getPlugin('undoRedo')?.undo(); },
-    redo: () => { hotRef.current?.hotInstance?.getPlugin('undoRedo')?.redo(); },
+    undo: () => { const i = hotRef.current?.hotInstance; if (i && !i.isDestroyed) i.getPlugin('undoRedo')?.undo(); },
+    redo: () => { const i = hotRef.current?.hotInstance; if (i && !i.isDestroyed) i.getPlugin('undoRedo')?.redo(); },
   }), [columns, formatAttr]);
 
   return (
