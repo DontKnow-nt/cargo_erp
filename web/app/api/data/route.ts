@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { extractEditorInvoiceTotals } from '@/lib/invoiceAmounts';
 
 const DATA_RESOURCES = [
   'parties',
@@ -38,10 +39,43 @@ const invoiceSelect = {
   outstandingTotal: true,
   status: true,
   notes: true,
+  editorHtml: true,
   createdBy: true,
   createdAt: true,
   lines: true,
 };
+
+function publicInvoice(inv: any) {
+  const editorTotals = typeof inv.editorHtml === 'string' ? extractEditorInvoiceTotals(inv.editorHtml) : null;
+  const synced = editorTotals
+    ? {
+        ...inv,
+        subtotal: editorTotals.subtotal,
+        gstTotal: editorTotals.gstTotal,
+        grandTotal: editorTotals.grandTotal,
+        outstandingTotal: Math.max(0, editorTotals.grandTotal - (inv.paidTotal ?? 0)),
+      }
+    : inv;
+  const { editorHtml: _editorHtml, ...rest } = synced;
+  return rest;
+}
+
+function publicOutstanding(entry: any) {
+  const editorTotals = typeof entry.invoice?.editorHtml === 'string'
+    ? extractEditorInvoiceTotals(entry.invoice.editorHtml)
+    : null;
+  const paidAmount = entry.invoice?.paidTotal ?? entry.paidAmount ?? 0;
+  const synced = editorTotals
+    ? {
+        ...entry,
+        originalAmount: editorTotals.grandTotal,
+        paidAmount,
+        outstandingAmount: Math.max(0, editorTotals.grandTotal - paidAmount),
+      }
+    : entry;
+  const { invoice: _invoice, ...rest } = synced;
+  return rest;
+}
 
 function getRequestedResources(request: Request) {
   const params = new URL(request.url).searchParams;
@@ -67,9 +101,12 @@ export async function GET(request: Request) {
     shouldLoad('parties') && prisma.party.findMany({ orderBy: { partyName: 'asc' } }).then((data) => { payload.parties = data; }),
     shouldLoad('awbBookings') && prisma.awbBooking.findMany({ orderBy: { createdAt: 'desc' } }).then((data) => { payload.awbBookings = data; }),
     shouldLoad('docketBookings') && prisma.docketBooking.findMany({ orderBy: { createdAt: 'desc' } }).then((data) => { payload.docketBookings = data; }),
-    shouldLoad('invoices') && prisma.invoice.findMany({ select: invoiceSelect, orderBy: { createdAt: 'desc' } }).then((data) => { payload.invoices = data; }),
+    shouldLoad('invoices') && prisma.invoice.findMany({ select: invoiceSelect, orderBy: { createdAt: 'desc' } }).then((data) => { payload.invoices = data.map(publicInvoice); }),
     shouldLoad('paymentReceipts') && prisma.paymentReceipt.findMany({ orderBy: { createdAt: 'desc' } }).then((data) => { payload.paymentReceipts = data; }),
-    shouldLoad('outstanding') && prisma.outstandingEntry.findMany({ orderBy: { createdAt: 'desc' } }).then((data) => { payload.outstanding = data; }),
+    shouldLoad('outstanding') && prisma.outstandingEntry.findMany({
+      include: { invoice: { select: { editorHtml: true, paidTotal: true } } },
+      orderBy: { createdAt: 'desc' },
+    }).then((data) => { payload.outstanding = data.map(publicOutstanding); }),
     shouldLoad('rateVersions') && prisma.freightRateVersion.findMany({ orderBy: { createdAt: 'desc' } }).then((data) => { payload.rateVersions = data; }),
     shouldLoad('freightRates') && prisma.freightRate.findMany().then((data) => { payload.freightRates = data; }),
     shouldLoad('importJobs') && prisma.importJob.findMany({ orderBy: { createdAt: 'desc' } }).then((data) => { payload.importJobs = data; }),
