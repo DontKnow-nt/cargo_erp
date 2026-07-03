@@ -85,41 +85,67 @@ export async function POST(req: NextRequest) {
           const bookingRef = invoiceNo || docketNo || awbNo || `REF-${Date.now()}`;
           const bookingDate = parseDate(get(row, 'date'));
           const totalAmt = num(get(row, 'totalamt','amount','total')) || num(row[row.length - 1]);
-          const partyName = str(get(row, 'party','shipper','consignee')) || sheetName;
+          let partyName = str(get(row, 'party','shipper','consignee')) || sheetName;
 
           if (totalAmt <= 0) { results.skipped++; continue; }
 
-          // Check if outstanding already exists for this reference
-          const existing = await prisma.outstandingEntry.findFirst({ where: { bookingRef } });
-          if (existing) { results.skipped++; continue; }
+          // Match this row against an EXISTING AWB or Docket booking already in the system
+          // (not against the Invoice table -- a booking may exist without ever having been
+          // invoiced). When matched, use the booking's own party name (more reliable than the
+          // Excel row's free-text party column) and mark that booking as "IMPORTED" so it's
+          // visible in the AWB/Docket lists. If this exact booking was already marked IMPORTED
+          // by an earlier run of this same import, skip it -- re-uploading the same file must
+          // not add the same amount to Outstanding twice.
+          let matchedAwb: { id: string; awbNo: string; partyName: string; status: string } | null = null;
+          let matchedDocket: { id: string; docketNo: string; partyName: string; status: string } | null = null;
+          if (awbNo) {
+            matchedAwb = await prisma.awbBooking.findFirst({ where: { awbNo: { equals: awbNo, mode: 'insensitive' } }, select: { id: true, awbNo: true, partyName: true, status: true } });
+          }
+          if (!matchedAwb && docketNo) {
+            matchedDocket = await prisma.docketBooking.findFirst({ where: { docketNo: { equals: docketNo, mode: 'insensitive' } }, select: { id: true, docketNo: true, partyName: true, status: true } });
+          }
+
+          if (matchedAwb?.status === 'IMPORTED' || matchedDocket?.status === 'IMPORTED') { results.skipped++; continue; }
+          // A booking already billed through the normal invoicing flow (status INVOICED) already
+          // has its own real Invoice + OutstandingEntry. Adding this row would double-count that
+          // amount, so skip it -- but a BOOKED (not yet invoiced) match still gets processed below.
+          if (matchedAwb?.status === 'INVOICED' || matchedDocket?.status === 'INVOICED') { results.skipped++; continue; }
+
+          // Safety guard: if this row's own invoice number already belongs to a real invoice
+          // (e.g. the Excel file repeats the same invoice number, or it collides with one already
+          // in the system), skip -- Invoice.invoiceNo is unique and creating it again would fail.
+          if (invoiceNo) {
+            const dupeInvoiceNo = await prisma.invoice.findFirst({ where: { invoiceNo }, select: { id: true } });
+            if (dupeInvoiceNo) { results.skipped++; continue; }
+          }
+
+          if (matchedAwb) partyName = matchedAwb.partyName;
+          if (matchedDocket) partyName = matchedDocket.partyName;
 
           const party = await ensureParty(partyName, userId);
 
           // Create a draft invoice to anchor the outstanding entry
           const finalInvoiceNo = invoiceNo || `IMP-${bookingRef}-${Date.now()}`;
-          let invoiceId: string;
+          const due = new Date(bookingDate); due.setDate(due.getDate() + 30);
+          const inv = await prisma.invoice.create({
+            data: {
+              invoiceNo: finalInvoiceNo,
+              partyId: party.id, partyName: party.name,
+              bookingType: docketNo ? 'DOCKET' : 'AWB',
+              bookingRef,
+              invoiceDate: bookingDate,
+              dueDate: due.toISOString().split('T')[0],
+              subtotal: totalAmt, gstTotal: 0, grandTotal: totalAmt,
+              paidTotal: 0, outstandingTotal: totalAmt,
+              status: 'FINALIZED', createdBy: userId,
+              lines: { create: [{ description: bookingRef, qty: 1, rate: totalAmt, amount: totalAmt, taxRate: 0, taxAmount: 0, lineTotal: totalAmt }] }
+            }
+          });
+          const invoiceId = inv.id;
 
-          const existingInv = invoiceNo ? await prisma.invoice.findFirst({ where: { invoiceNo } }) : null;
-          if (existingInv) {
-            invoiceId = existingInv.id;
-          } else {
-            const due = new Date(bookingDate); due.setDate(due.getDate() + 30);
-            const inv = await prisma.invoice.create({
-              data: {
-                invoiceNo: finalInvoiceNo,
-                partyId: party.id, partyName: party.name,
-                bookingType: docketNo ? 'DOCKET' : 'AWB',
-                bookingRef,
-                invoiceDate: bookingDate,
-                dueDate: due.toISOString().split('T')[0],
-                subtotal: totalAmt, gstTotal: 0, grandTotal: totalAmt,
-                paidTotal: 0, outstandingTotal: totalAmt,
-                status: 'FINALIZED', createdBy: userId,
-                lines: { create: [{ description: bookingRef, qty: 1, rate: totalAmt, amount: totalAmt, taxRate: 0, taxAmount: 0, lineTotal: totalAmt }] }
-              }
-            });
-            invoiceId = inv.id;
-          }
+          // Mark the matched booking as IMPORTED so it's clearly flagged in the AWB/Docket lists.
+          if (matchedAwb) await prisma.awbBooking.update({ where: { id: matchedAwb.id }, data: { status: 'IMPORTED' } });
+          if (matchedDocket) await prisma.docketBooking.update({ where: { id: matchedDocket.id }, data: { status: 'IMPORTED' } });
 
           // Create outstanding entry
           const due2 = new Date(bookingDate); due2.setDate(due2.getDate() + 30);

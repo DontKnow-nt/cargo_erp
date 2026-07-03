@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "handsontable/styles/handsontable.min.css";
+import "handsontable/styles/ht-theme-main.min.css";
 import { Toaster } from "react-hot-toast";
 import AuthProvider from "@/components/AuthProvider";
 

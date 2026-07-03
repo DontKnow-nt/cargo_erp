@@ -17,7 +17,7 @@ const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigi
 
 function Badge({ status }: { status: string }) {
   const m: Record<string,[string,string]> = {
-    BOOKED:['#2563eb','#eff6ff'], INVOICED:['#059669','#ecfdf5'], CANCELLED:['#dc2626','#fef2f2'],
+    BOOKED:['#2563eb','#eff6ff'], INVOICED:['#059669','#ecfdf5'], CANCELLED:['#dc2626','#fef2f2'], IMPORTED:['#7c3aed','#f5f3ff'],
   };
   const [c,bg] = m[status]||['#64748b','#f8fafc'];
   return <span style={{padding:'2px 9px',borderRadius:99,fontSize:10,fontWeight:600,color:c,background:bg,border:`1px solid ${c}30`,fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.07em'}}>{status}</span>;

@@ -4,7 +4,7 @@ export const DEFAULT_PAGES = ['dashboard', 'analytics', 'purchases'] as const;
 
 export const GRANTABLE_PAGES = [
   'bookings/awb', 'bookings/dockets', 'invoices', 'credit-note', 'payments', 'outstanding',
-  'parties', 'rates', 'import', 'reports', 'analytics', 'audit', 'notifications', 'settings', 'purchases',
+  'parties', 'rates', 'import', 'excel', 'reports', 'analytics', 'audit', 'notifications', 'settings', 'purchases',
 ] as const;
 
 export type GrantablePage = typeof GRANTABLE_PAGES[number];

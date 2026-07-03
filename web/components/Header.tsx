@@ -9,6 +9,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/bookings/dockets': 'Docket Bookings',
   '/dashboard/rates': 'Freight Rate Management',
   '/dashboard/import': 'Import Wizard',
+  '/dashboard/excel': 'Excel',
   '/dashboard/invoices': 'Invoices',
   '/dashboard/payments': 'Payment Receipts',
   '/dashboard/outstanding': 'Outstanding & Aging',
