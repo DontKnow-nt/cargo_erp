@@ -561,9 +561,7 @@ export default function InvoicesPage() {
                   <td><InvBadge status={inv.status}/></td>
                   <td style={{textAlign:'center'}}><CreatorAvatar userId={(inv as {createdBy?:string|null}).createdBy} createdAt={inv.createdAt} /></td>
                   <td style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
-                    {!selectMode && <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={e=>{e.stopPropagation();setViewInvoice(inv);}}>View</button>}
                     {!selectMode && <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px',color:'#7c3aed'}} title="Open full editor in new tab" onClick={e=>{e.stopPropagation();window.open(`/dashboard/invoices/editor?id=${inv.id}`,'_blank');}}>✏️ Edit</button>}
-                    {!selectMode && <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={e=>{e.stopPropagation();router.push(`/dashboard/invoices/editor?id=${inv.id}`);}} title="Open Editor / Print">🖨️</button>}
                     {!selectMode && <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 8px',color:'#d97706'}} onClick={e=>{e.stopPropagation();router.push(`/dashboard/invoices/musashi?id=${inv.id}`);}} title="Musashi Format">📋 Musashi</button>}
                     {!selectMode && inv.status==='DRAFT'&&<button className="btn btn-success btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={e=>{e.stopPropagation();startTransition(async()=>{await finalizeInvoice(inv.id);toast.success('Invoice finalized');});}}>Finalize</button>}
                     {!selectMode && ['DRAFT','REVIEWED'].includes(inv.status)&&<button className="btn btn-danger btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={e=>{e.stopPropagation();startTransition(async()=>{await cancelInvoice(inv.id);toast('Invoice cancelled',{icon:'🚫'});});}}>Cancel</button>}
