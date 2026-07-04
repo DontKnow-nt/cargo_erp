@@ -1,9 +1,9 @@
 'use client';
-import { AlertTriangle, Download, Search, Trash2, Plus } from 'lucide-react';
+import { AlertTriangle, Download, Search, Trash2, Plus, Edit2 } from 'lucide-react';
 import { useState, useTransition, useDeferredValue, useMemo } from 'react';
 import { useSharedData } from '@/lib/useSharedData';
 import { LiveIndicator } from '@/components/LiveIndicator';
-import { deleteOutstandingEntries, createManualOutstandingEntry } from '@/lib/actions/invoices';
+import { deleteOutstandingEntries, createManualOutstandingEntry, updateOutstandingEntry } from '@/lib/actions/invoices';
 import toast from 'react-hot-toast';
 
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -27,6 +27,7 @@ export default function OutstandingPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showManualAdd, setShowManualAdd] = useState(false);
+  const [editEntry, setEditEntry] = useState<typeof outstanding[number] | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function confirmDelete() {
@@ -81,6 +82,9 @@ export default function OutstandingPage() {
         <div style={{display:'flex',gap:9}}>
           <LiveIndicator onRefresh={refresh} />
           <button className="btn btn-primary btn-sm" onClick={()=>setShowManualAdd(true)}><Plus size={12}/> Add Manual Entry</button>
+          {selected.size === 1 && (
+            <button className="btn btn-secondary btn-sm" onClick={()=>{const o=outstanding.find(x=>x.id===[...selected][0]); if(o) setEditEntry(o);}}><Edit2 size={12}/> Edit</button>
+          )}
           {selected.size > 0 && (
             <button className="btn btn-danger btn-sm" onClick={()=>setShowDeleteConfirm(true)}><Trash2 size={12}/> Delete ({selected.size})</button>
           )}
@@ -197,6 +201,8 @@ export default function OutstandingPage() {
                     <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:800,color:isOverdue?'#dc2626':'var(--text-primary)'}}>{fmt(o.outstandingAmount)}</td>
                     <td><span style={{padding:'2px 9px',borderRadius:99,fontSize:10,fontWeight:600,color:c,background:c+'15',border:`1px solid ${c}40`,fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.07em'}}>{BUCKET_LABELS[o.agingBucket]}</span></td>
                     <td>
+                      <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 6px',color:'var(--accent-dark)'}}
+                        onClick={()=>setEditEntry(o)}><Edit2 size={11}/></button>
                       <button className="btn btn-ghost btn-sm" style={{fontSize:11,padding:'3px 6px',color:'#dc2626'}}
                         onClick={()=>{setSelected(new Set([o.id]));setShowDeleteConfirm(true);}}><Trash2 size={11}/></button>
                     </td>
@@ -228,6 +234,15 @@ export default function OutstandingPage() {
 
       {showManualAdd && (
         <ManualAddModal parties={parties} onClose={()=>setShowManualAdd(false)} onDone={()=>{setShowManualAdd(false);refresh();}} />
+      )}
+
+      {editEntry && (
+        <EditOutstandingModal
+          entry={editEntry}
+          parties={parties}
+          onClose={()=>setEditEntry(null)}
+          onDone={()=>{setEditEntry(null);setSelected(new Set());refresh();}}
+        />
       )}
     </div>
   );
@@ -289,6 +304,97 @@ function ManualAddModal({ parties, onClose, onDone }: {
         <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:22}}>
           <button className="btn btn-secondary" onClick={onClose} disabled={isPending}>Cancel</button>
           <button className="btn btn-primary" onClick={submit} disabled={isPending}>{isPending ? 'Adding…' : 'Add Entry'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type OutstandingRow = {
+  id: string; partyId: string; partyName: string; invoiceNo: string;
+  originalAmount: number; paidAmount: number; invoiceDate: string; dueDate: string;
+};
+
+function EditOutstandingModal({ entry, parties, onClose, onDone }: {
+  entry: OutstandingRow;
+  parties: { id: string; partyName: string }[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [partyId, setPartyId] = useState(entry.partyId);
+  const [invoiceNo, setInvoiceNo] = useState(entry.invoiceNo);
+  const [originalAmount, setOriginalAmount] = useState(String(entry.originalAmount));
+  const [paidAmount, setPaidAmount] = useState(String(entry.paidAmount));
+  const [invoiceDate, setInvoiceDate] = useState(entry.invoiceDate);
+  const [dueDate, setDueDate] = useState(entry.dueDate);
+  const [isPending, startTransition] = useTransition();
+
+  function submit() {
+    if (!partyId) { toast.error('Select a party'); return; }
+    if (!invoiceNo.trim()) { toast.error('Enter an invoice number'); return; }
+    const orig = parseFloat(originalAmount);
+    const paid = parseFloat(paidAmount);
+    if (!Number.isFinite(orig) || orig < 0) { toast.error('Enter a valid original amount'); return; }
+    if (!Number.isFinite(paid) || paid < 0) { toast.error('Enter a valid paid amount'); return; }
+    if (paid > orig) { toast.error('Paid amount cannot exceed original amount'); return; }
+    if (!invoiceDate) { toast.error('Select an invoice date'); return; }
+    if (!dueDate) { toast.error('Select a due date'); return; }
+
+    startTransition(async () => {
+      const res = await updateOutstandingEntry(entry.id, {
+        partyId, invoiceNo: invoiceNo.trim(), originalAmount: orig, paidAmount: paid, invoiceDate, dueDate,
+      });
+      if (res && 'error' in res) { toast.error(res.error as string); return; }
+      toast.success('Outstanding entry updated');
+      onDone();
+    });
+  }
+
+  const outstandingPreview = Math.max(0, (parseFloat(originalAmount) || 0) - (parseFloat(paidAmount) || 0));
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" style={{maxWidth:420}}>
+        <div style={{fontSize:16,fontWeight:800,marginBottom:16}}>Edit Outstanding Entry</div>
+
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          <div>
+            <label style={{fontSize:11,fontWeight:600,color:'var(--text-muted)',display:'block',marginBottom:4}}>Party</label>
+            <select className="input" style={{width:'100%',height:38,fontSize:13}} value={partyId} onChange={e=>setPartyId(e.target.value)}>
+              <option value="">Select a party…</option>
+              {parties.map(p=><option key={p.id} value={p.id}>{p.partyName}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{fontSize:11,fontWeight:600,color:'var(--text-muted)',display:'block',marginBottom:4}}>Invoice Number</label>
+            <input className="input" style={{width:'100%',height:38,fontSize:13}} value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} />
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <div>
+              <label style={{fontSize:11,fontWeight:600,color:'var(--text-muted)',display:'block',marginBottom:4}}>Original Amount</label>
+              <input className="input" type="number" min="0" step="0.01" style={{width:'100%',height:38,fontSize:13}} value={originalAmount} onChange={e=>setOriginalAmount(e.target.value)} />
+            </div>
+            <div>
+              <label style={{fontSize:11,fontWeight:600,color:'var(--text-muted)',display:'block',marginBottom:4}}>Paid Amount</label>
+              <input className="input" type="number" min="0" step="0.01" style={{width:'100%',height:38,fontSize:13}} value={paidAmount} onChange={e=>setPaidAmount(e.target.value)} />
+            </div>
+          </div>
+          <div style={{fontSize:11,color:'var(--text-muted)'}}>Outstanding will be: <strong style={{color:'var(--text-primary)'}}>{fmt(outstandingPreview)}</strong></div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <div>
+              <label style={{fontSize:11,fontWeight:600,color:'var(--text-muted)',display:'block',marginBottom:4}}>Invoice Date</label>
+              <input className="input" type="date" style={{width:'100%',height:38,fontSize:13}} value={invoiceDate} onChange={e=>setInvoiceDate(e.target.value)} />
+            </div>
+            <div>
+              <label style={{fontSize:11,fontWeight:600,color:'var(--text-muted)',display:'block',marginBottom:4}}>Due Date</label>
+              <input className="input" type="date" style={{width:'100%',height:38,fontSize:13}} value={dueDate} onChange={e=>setDueDate(e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:22}}>
+          <button className="btn btn-secondary" onClick={onClose} disabled={isPending}>Cancel</button>
+          <button className="btn btn-primary" onClick={submit} disabled={isPending}>{isPending ? 'Saving…' : 'Save Changes'}</button>
         </div>
       </div>
     </div>

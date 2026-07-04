@@ -104,8 +104,41 @@ export async function updatePaymentReceipt(id: string, data: { paymentDate: stri
 export async function deletePaymentReceipts(ids: string[]) {
   const session = await requireAuth();
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };
-  await prisma.paymentReceipt.deleteMany({ where: { id: { in: ids } } });
+
+  const receipts = await prisma.paymentReceipt.findMany({ where: { id: { in: ids } }, select: { id: true, invoiceId: true, paymentAmount: true } });
+
+  // Net the total amount being reversed per invoice (a single invoice can have multiple
+  // receipts being deleted at once), then apply each invoice's reversal + delete the
+  // receipts in one transaction so the invoice/outstanding balance can never end up
+  // out of sync with what payment receipts actually exist.
+  const reversalByInvoice = new Map<string, number>();
+  for (const r of receipts) {
+    if (!r.invoiceId) continue;
+    reversalByInvoice.set(r.invoiceId, (reversalByInvoice.get(r.invoiceId) ?? 0) + r.paymentAmount);
+  }
+
+  const invoiceIds = [...reversalByInvoice.keys()];
+  const invoicesToReverse = invoiceIds.length
+    ? await prisma.invoice.findMany({ where: { id: { in: invoiceIds } } })
+    : [];
+
+  const ops = [];
+  for (const inv of invoicesToReverse) {
+    const reversal = reversalByInvoice.get(inv.id) ?? 0;
+    const newPaid = Math.max(0, inv.paidTotal - reversal);
+    const newOut = Math.max(0, inv.grandTotal - newPaid);
+    const newStatus = newOut === 0 ? 'PAID' : newPaid > 0 ? 'PARTIALLY_PAID' : (inv.status === 'PAID' || inv.status === 'PARTIALLY_PAID' ? 'FINALIZED' : inv.status);
+    ops.push(prisma.invoice.update({ where: { id: inv.id }, data: { paidTotal: newPaid, outstandingTotal: newOut, status: newStatus } }));
+    ops.push(prisma.outstandingEntry.updateMany({ where: { invoiceId: inv.id }, data: { paidAmount: newPaid, outstandingAmount: newOut } }));
+  }
+  ops.push(prisma.paymentReceipt.deleteMany({ where: { id: { in: ids } } }));
+
+  await prisma.$transaction(ops);
   serverLog('info', 'payment.deleted', { userId: session.user.id, count: ids.length });
   revalidatePath('/dashboard/payments');
+  revalidatePath('/dashboard/invoices');
+  revalidatePath('/dashboard/outstanding');
+  revalidatePath('/dashboard/reports');
+  revalidatePath('/dashboard');
   return { success: true };
 }

@@ -369,6 +369,102 @@ export async function createCreditNote(data: { partyId: string; partyName: strin
   return { id: invoice.id, invoiceNo };
 }
 
+function calcAgingBucket(dueDate: string): string {
+  const days = Math.floor((Date.now() - new Date(dueDate).getTime()) / 86400000);
+  if (days <= 0) return 'CURRENT';
+  if (days <= 15) return 'DAYS_1_15';
+  if (days <= 30) return 'DAYS_16_30';
+  if (days <= 60) return 'DAYS_31_60';
+  if (days <= 90) return 'DAYS_61_90';
+  return 'DAYS_90_PLUS';
+}
+
+/**
+ * Edit an existing Outstanding entry directly (party, invoice no, original amount, paid amount,
+ * invoice date, due date). Recomputes outstandingAmount and agingBucket, and keeps the linked
+ * Invoice row's paidTotal/outstandingTotal/status in sync so the two never diverge.
+ */
+export async function updateOutstandingEntry(id: string, input: {
+  partyId: string;
+  invoiceNo: string;
+  originalAmount: number;
+  paidAmount: number;
+  invoiceDate: string;
+  dueDate: string;
+}) {
+  const session = await requireAuth();
+  const entry = await prisma.outstandingEntry.findUnique({ where: { id } });
+  if (!entry) return { error: 'Outstanding entry not found' };
+  const linkedInvoice = await prisma.invoice.findUnique({ where: { id: entry.invoiceId }, select: { status: true } });
+
+  const partyId = String(input.partyId || '').trim();
+  const invoiceNo = String(input.invoiceNo || '').trim();
+  const originalAmount = Number(input.originalAmount);
+  const paidAmount = Number(input.paidAmount);
+  const invoiceDate = String(input.invoiceDate || '').trim();
+  const dueDate = String(input.dueDate || '').trim();
+
+  if (!partyId) return { error: 'Select a party' };
+  if (!invoiceNo) return { error: 'Enter an invoice number' };
+  if (!Number.isFinite(originalAmount) || originalAmount < 0) return { error: 'Enter a valid original amount' };
+  if (!Number.isFinite(paidAmount) || paidAmount < 0) return { error: 'Enter a valid paid amount' };
+  if (paidAmount > originalAmount) return { error: 'Paid amount cannot exceed original amount' };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate)) return { error: 'Enter a valid invoice date' };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return { error: 'Enter a valid due date' };
+
+  const party = await prisma.party.findUnique({ where: { id: partyId }, select: { id: true, partyName: true, creditLimit: true } });
+  if (!party) return { error: 'Party not found' };
+
+  if (invoiceNo !== entry.invoiceNo) {
+    const dupe = await prisma.invoice.findFirst({ where: { invoiceNo, id: { not: entry.invoiceId } }, select: { id: true } });
+    if (dupe) return { error: `Invoice number "${invoiceNo}" already exists` };
+  }
+
+  const outstandingAmount = Math.max(0, originalAmount - paidAmount);
+  const agingBucket = outstandingAmount === 0 ? 'CURRENT' : calcAgingBucket(dueDate);
+
+  // If fully paid -> PAID. If partially paid -> PARTIALLY_PAID. Otherwise (nothing paid),
+  // fall back to whatever non-payment status the invoice already had (DRAFT/FINALIZED/IMPORTED/
+  // etc.) rather than overwriting it, so editing an Outstanding entry never silently downgrades
+  // a real invoice's own workflow status.
+  let derivedStatus: string;
+  if (outstandingAmount === 0) derivedStatus = 'PAID';
+  else if (paidAmount > 0) derivedStatus = 'PARTIALLY_PAID';
+  else if (linkedInvoice?.status === 'PAID' || linkedInvoice?.status === 'PARTIALLY_PAID') derivedStatus = 'FINALIZED';
+  else derivedStatus = linkedInvoice?.status ?? 'IMPORTED';
+
+  await prisma.$transaction([
+    prisma.outstandingEntry.update({
+      where: { id },
+      data: {
+        partyId: party.id, partyName: party.partyName,
+        invoiceNo, bookingRef: invoiceNo,
+        originalAmount, paidAmount, outstandingAmount,
+        invoiceDate, dueDate, agingBucket,
+        creditLimit: party.creditLimit ?? 0,
+      },
+    }),
+    prisma.invoice.update({
+      where: { id: entry.invoiceId },
+      data: {
+        partyId: party.id, partyName: party.partyName,
+        invoiceNo, bookingRef: invoiceNo,
+        invoiceDate, dueDate,
+        subtotal: originalAmount, grandTotal: originalAmount,
+        paidTotal: paidAmount, outstandingTotal: outstandingAmount,
+        status: derivedStatus,
+      },
+    }),
+  ]);
+
+  serverLog('info', 'outstanding.updated', { userId: session.user.id, entryId: id, invoiceNo });
+  revalidatePath('/dashboard/outstanding');
+  revalidatePath('/dashboard/invoices');
+  revalidatePath('/dashboard/reports');
+  revalidatePath('/dashboard');
+  return { success: true };
+}
+
 export async function deleteOutstandingEntries(ids: string[]) {
   const session = await requireAuth();
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };
