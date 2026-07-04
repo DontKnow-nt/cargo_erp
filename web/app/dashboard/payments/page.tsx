@@ -26,7 +26,7 @@ export default function PaymentsPage() {
   const [form, setForm]         = useState<FormState>(initForm());
 
   const selParty      = parties.find(p => p.id === form.partyId);
-  const partyInvoices = useMemo(() => invoices.filter(i => i.partyId === form.partyId && ['DRAFT','FINALIZED','SENT','PARTIALLY_PAID','OVERDUE'].includes(i.status)), [form.partyId, invoices]);
+  const partyInvoices = useMemo(() => invoices.filter(i => i.partyId === form.partyId && i.status !== 'CANCELLED' && (i.outstandingTotal ?? 0) > 0), [form.partyId, invoices]);
   const selInvoice    = invoices.find(i => i.id === form.invoiceId);
 
   function openAdd() { setForm(initForm()); setEditId(null); setShowForm(true); }
@@ -59,6 +59,7 @@ export default function PaymentsPage() {
       } else {
         const autoInv = [...partyInvoices].sort((a,b) => (b.outstandingTotal||0) - (a.outstandingTotal||0))[0];
         const invoiceId = form.invoiceId || autoInv?.id || '';
+        if (!invoiceId) { toast.error('This party has no outstanding invoice to record a payment against'); return; }
         const invoiceNo = form.invoiceId ? (selInvoice?.invoiceNo||'') : (autoInv?.invoiceNo||'MANUAL');
         const res = await addPaymentReceipt({
           partyId:form.partyId, partyName:selParty?.partyName||'',

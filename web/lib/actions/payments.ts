@@ -14,10 +14,11 @@ export async function addPaymentReceipt(data: unknown) {
   const session = await requireAuth();
   const parsed = PaymentReceiptSchema.safeParse(data);
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
+  if (!parsed.data.invoiceId) return { error: 'Select an invoice to record this payment against' };
 
-  const inv = parsed.data.invoiceId ? await prisma.invoice.findUnique({ where: { id: parsed.data.invoiceId } }) : null;
-  if (parsed.data.invoiceId && !inv) return { error: 'Invoice not found' };
-  if (inv?.status === 'CANCELLED') return { error: 'Cannot pay cancelled invoice' };
+  const inv = await prisma.invoice.findUnique({ where: { id: parsed.data.invoiceId } });
+  if (!inv) return { error: 'Invoice not found' };
+  if (inv.status === 'CANCELLED') return { error: 'Cannot pay cancelled invoice' };
 
   const count = await prisma.paymentReceipt.count();
   const ts = Date.now().toString().slice(-6);
@@ -25,14 +26,14 @@ export async function addPaymentReceipt(data: unknown) {
   // Check uniqueness
   const existing = await prisma.paymentReceipt.findFirst({ where: { receiptNo } });
   const finalReceiptNo = existing ? `RCP-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}-${ts.slice(-2)}` : receiptNo;
-  const newPaid = (inv?.paidTotal ?? 0) + parsed.data.paymentAmount;
-  const newOut = Math.max(0, (inv?.grandTotal ?? 0) - newPaid);
+  const newPaid = inv.paidTotal + parsed.data.paymentAmount;
+  const newOut = Math.max(0, inv.grandTotal - newPaid);
   const newStatus = newOut === 0 ? 'PAID' : 'PARTIALLY_PAID';
 
   const receipt = await prisma.paymentReceipt.create({
     data: {
       receiptNo: finalReceiptNo, partyId: parsed.data.partyId, partyName: parsed.data.partyName,
-      invoiceId: parsed.data.invoiceId || '', invoiceNo: parsed.data.invoiceNo || 'MANUAL',
+      invoiceId: parsed.data.invoiceId, invoiceNo: parsed.data.invoiceNo || inv.invoiceNo,
       paymentDate: parsed.data.paymentDate, paymentAmount: parsed.data.paymentAmount,
       freightComponent: parsed.data.freightComponent, gstComponent: parsed.data.gstComponent,
       paymentMode: parsed.data.paymentMode ?? null, referenceNo: parsed.data.referenceNo ?? null,
@@ -41,12 +42,10 @@ export async function addPaymentReceipt(data: unknown) {
     },
   });
 
-  if (inv) {
-    await prisma.$transaction([
-      prisma.invoice.update({ where: { id: inv.id }, data: { paidTotal: newPaid, outstandingTotal: newOut, status: newStatus } }),
-      prisma.outstandingEntry.updateMany({ where: { invoiceId: inv.id }, data: { paidAmount: newPaid, outstandingAmount: newOut, agingBucket: newOut === 0 ? 'CURRENT' : undefined } }),
-    ]);
-  }
+  await prisma.$transaction([
+    prisma.invoice.update({ where: { id: inv.id }, data: { paidTotal: newPaid, outstandingTotal: newOut, status: newStatus } }),
+    prisma.outstandingEntry.updateMany({ where: { invoiceId: inv.id }, data: { paidAmount: newPaid, outstandingAmount: newOut, agingBucket: newOut === 0 ? 'CURRENT' : undefined } }),
+  ]);
 
   serverLog('info', 'payment.created', { userId: session.user.id, receiptId: receipt.id, receiptNo: finalReceiptNo, invoiceId: parsed.data.invoiceId, amount: parsed.data.paymentAmount });
   await recordAuditLog({
