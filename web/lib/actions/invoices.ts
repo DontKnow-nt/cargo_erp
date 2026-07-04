@@ -378,6 +378,66 @@ export async function deleteOutstandingEntries(ids: string[]) {
   return { success: true };
 }
 
+/**
+ * Manually add an Outstanding entry against an EXISTING party (chosen from the party list,
+ * never free-typed) with an amount, invoice number, and date entered directly by the user.
+ * Creates a minimal backing Invoice (status IMPORTED, so it doesn't show up as a live invoice
+ * needing Finalize/Review/Cancel) since OutstandingEntry.invoiceId is a required foreign key.
+ */
+export async function createManualOutstandingEntry(input: {
+  partyId: string;
+  invoiceNo: string;
+  amount: number;
+  date: string; // YYYY-MM-DD
+}) {
+  const session = await requireAuth();
+  const partyId = String(input.partyId || '').trim();
+  const invoiceNo = String(input.invoiceNo || '').trim();
+  const amount = Number(input.amount);
+  const date = String(input.date || '').trim();
+
+  if (!partyId) return { error: 'Select a party' };
+  if (!invoiceNo) return { error: 'Enter an invoice number' };
+  if (!Number.isFinite(amount) || amount <= 0) return { error: 'Enter a valid amount greater than 0' };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'Enter a valid date' };
+
+  const party = await prisma.party.findUnique({ where: { id: partyId }, select: { id: true, partyName: true, creditLimit: true } });
+  if (!party) return { error: 'Party not found' };
+
+  const dupe = await prisma.invoice.findFirst({ where: { invoiceNo }, select: { id: true } });
+  if (dupe) return { error: `Invoice number "${invoiceNo}" already exists` };
+
+  const due = new Date(date); due.setDate(due.getDate() + 30);
+  const dueDate = due.toISOString().split('T')[0];
+
+  const invoice = await prisma.invoice.create({
+    data: {
+      invoiceNo, partyId: party.id, partyName: party.partyName,
+      bookingType: 'MANUAL', bookingRef: invoiceNo,
+      invoiceDate: date, dueDate,
+      subtotal: amount, gstTotal: 0, grandTotal: amount,
+      paidTotal: 0, outstandingTotal: amount,
+      status: 'IMPORTED', createdBy: session.user.id,
+      lines: { create: [{ description: `Manually added outstanding entry`, qty: 1, rate: amount, amount, taxRate: 0, taxAmount: 0, lineTotal: amount }] },
+    },
+  });
+
+  await prisma.outstandingEntry.create({
+    data: {
+      partyId: party.id, partyName: party.partyName,
+      invoiceId: invoice.id, invoiceNo,
+      bookingRef: invoiceNo,
+      originalAmount: amount, paidAmount: 0, outstandingAmount: amount,
+      invoiceDate: date, dueDate,
+      agingBucket: 'CURRENT', creditLimit: party.creditLimit ?? 0,
+    },
+  });
+
+  serverLog('info', 'outstanding.manual_added', { userId: session.user.id, partyId: party.id, invoiceNo, amount });
+  revalidatePath('/dashboard/outstanding');
+  return { success: true };
+}
+
 export async function deleteInvoices(ids: string[]) {
   const session = await requireAuth();
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) return { error: 'Invalid IDs' };

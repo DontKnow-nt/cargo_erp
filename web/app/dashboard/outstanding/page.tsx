@@ -1,9 +1,9 @@
 'use client';
-import { AlertTriangle, Download, Search, Trash2 } from 'lucide-react';
+import { AlertTriangle, Download, Search, Trash2, Plus } from 'lucide-react';
 import { useState, useTransition, useDeferredValue, useMemo } from 'react';
 import { useSharedData } from '@/lib/useSharedData';
 import { LiveIndicator } from '@/components/LiveIndicator';
-import { deleteOutstandingEntries } from '@/lib/actions/invoices';
+import { deleteOutstandingEntries, createManualOutstandingEntry } from '@/lib/actions/invoices';
 import toast from 'react-hot-toast';
 
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -26,6 +26,7 @@ export default function OutstandingPage() {
   const [bucketFilter, setBucketFilter] = useState('ALL');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showManualAdd, setShowManualAdd] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function confirmDelete() {
@@ -79,6 +80,7 @@ export default function OutstandingPage() {
         </div>
         <div style={{display:'flex',gap:9}}>
           <LiveIndicator onRefresh={refresh} />
+          <button className="btn btn-primary btn-sm" onClick={()=>setShowManualAdd(true)}><Plus size={12}/> Add Manual Entry</button>
           {selected.size > 0 && (
             <button className="btn btn-danger btn-sm" onClick={()=>setShowDeleteConfirm(true)}><Trash2 size={12}/> Delete ({selected.size})</button>
           )}
@@ -223,6 +225,72 @@ export default function OutstandingPage() {
           </div>
         </div>
       )}
+
+      {showManualAdd && (
+        <ManualAddModal parties={parties} onClose={()=>setShowManualAdd(false)} onDone={()=>{setShowManualAdd(false);refresh();}} />
+      )}
+    </div>
+  );
+}
+
+function ManualAddModal({ parties, onClose, onDone }: {
+  parties: { id: string; partyName: string }[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [partyId, setPartyId] = useState('');
+  const [invoiceNo, setInvoiceNo] = useState('');
+  const [amount, setAmount] = useState('');
+  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [isPending, startTransition] = useTransition();
+
+  function submit() {
+    if (!partyId) { toast.error('Select a party'); return; }
+    if (!invoiceNo.trim()) { toast.error('Enter an invoice number'); return; }
+    const amt = parseFloat(amount);
+    if (!Number.isFinite(amt) || amt <= 0) { toast.error('Enter a valid amount'); return; }
+    if (!date) { toast.error('Select a date'); return; }
+
+    startTransition(async () => {
+      const res = await createManualOutstandingEntry({ partyId, invoiceNo: invoiceNo.trim(), amount: amt, date });
+      if (res && 'error' in res) { toast.error(res.error as string); return; }
+      toast.success('Outstanding entry added');
+      onDone();
+    });
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" style={{maxWidth:420}}>
+        <div style={{fontSize:16,fontWeight:800,marginBottom:16}}>Add Manual Outstanding Entry</div>
+
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          <div>
+            <label style={{fontSize:11,fontWeight:600,color:'var(--text-muted)',display:'block',marginBottom:4}}>Party</label>
+            <select className="input" style={{width:'100%',height:38,fontSize:13}} value={partyId} onChange={e=>setPartyId(e.target.value)}>
+              <option value="">Select a party…</option>
+              {parties.map(p=><option key={p.id} value={p.id}>{p.partyName}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{fontSize:11,fontWeight:600,color:'var(--text-muted)',display:'block',marginBottom:4}}>Invoice Number</label>
+            <input className="input" style={{width:'100%',height:38,fontSize:13}} value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} placeholder="e.g. INV-2026-00123" />
+          </div>
+          <div>
+            <label style={{fontSize:11,fontWeight:600,color:'var(--text-muted)',display:'block',marginBottom:4}}>Amount</label>
+            <input className="input" type="number" min="0" step="0.01" style={{width:'100%',height:38,fontSize:13}} value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0.00" />
+          </div>
+          <div>
+            <label style={{fontSize:11,fontWeight:600,color:'var(--text-muted)',display:'block',marginBottom:4}}>Date</label>
+            <input className="input" type="date" style={{width:'100%',height:38,fontSize:13}} value={date} onChange={e=>setDate(e.target.value)} />
+          </div>
+        </div>
+
+        <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:22}}>
+          <button className="btn btn-secondary" onClick={onClose} disabled={isPending}>Cancel</button>
+          <button className="btn btn-primary" onClick={submit} disabled={isPending}>{isPending ? 'Adding…' : 'Add Entry'}</button>
+        </div>
+      </div>
     </div>
   );
 }
