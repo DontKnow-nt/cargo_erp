@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const wb = XLSX.read(buffer, { type: 'buffer' });
-    const results = { outstanding: 0, skipped: 0, errors: [] as string[], skipReasons: {} as Record<string, number>, detectedHeaders: {} as Record<string, string[]> };
+    const results = { outstanding: 0, skipped: 0, errors: [] as string[], skipReasons: {} as Record<string, number>, detectedHeaders: {} as Record<string, string[]>, rowsFound: {} as Record<string, number> };
     const noteSkip = (reason: string) => { results.skipped++; results.skipReasons[reason] = (results.skipReasons[reason] ?? 0) + 1; };
 
     for (const sheetName of wb.SheetNames) {
@@ -49,15 +49,26 @@ export async function POST(req: NextRequest) {
       const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
       if (rows.length < 2) continue;
 
-      // Find header row
+      // Find header row: scan the first 20 rows and score each by how many recognizable
+      // column-name keywords it contains (date, awb, docket, amount, party, rate, weight, etc.).
+      // The old heuristic (raw non-empty cell count) misfired on files with a letterhead/company
+      // name as row 0 -- a single merged title cell can still look "non-empty enough" to some
+      // scoring, or the real header simply lives further down than the old 6-row window checked.
+      const HEADER_KEYWORDS = ['sno','date','awb','docket','invoice','amount','amt','total','party','shipper','consignee','origin','dest','weight','rate','freight','box','pkt','sector'];
       let headerIdx = 0;
-      for (let i = 0; i < Math.min(6, rows.length); i++) {
+      let bestScore = -1;
+      for (let i = 0; i < Math.min(20, rows.length); i++) {
         const row = rows[i] as unknown[];
-        const nonEmpty = row.filter(c => String(c||'').trim().length > 0).length;
-        const hasDateOrSno = row.some(c => /sno|s\.no|date/i.test(String(c||'')));
-        if (nonEmpty >= 4 && hasDateOrSno) { headerIdx = i; break; }
-        if (nonEmpty >= 6) { headerIdx = i; break; }
+        const cells = row.map(c => nh(String(c || '')));
+        const nonEmpty = cells.filter(c => c.length > 0).length;
+        if (nonEmpty < 3) continue; // a title/letterhead row rarely has 3+ populated cells
+        const score = cells.filter(c => HEADER_KEYWORDS.some(k => c.includes(k))).length;
+        if (score > bestScore) { bestScore = score; headerIdx = i; }
       }
+      // Require at least 2 recognizable column names -- otherwise this sheet doesn't look like
+      // a data table we understand, and we fall back to row 0 (previous behavior) rather than
+      // silently guessing wrong.
+      if (bestScore < 2) headerIdx = 0;
 
       const headers = (rows[headerIdx] as unknown[]).map(h => str(h));
       const h = headers.map(nh);
@@ -71,12 +82,14 @@ export async function POST(req: NextRequest) {
         return '';
       };
 
-      // Sort rows by date ascending (oldest first)
+      // Sort rows by date ascending (oldest first). A row counts as real data if it has at least
+      // 2 non-empty cells anywhere (not just the first 5 columns -- column order varies by file).
       const dataRows = rows.slice(headerIdx + 1).filter(r => {
         const row = r as unknown[];
-        return row.slice(0, 5).some(c => String(c||'').trim()) && /\d/.test(row.slice(0,5).join(''));
+        return row.filter(c => String(c||'').trim()).length >= 2;
       });
       dataRows.sort((a, b) => parseDate(get(a as unknown[], 'date')).localeCompare(parseDate(get(b as unknown[], 'date'))));
+      results.rowsFound[sheetName] = dataRows.length;
 
       for (const rawRow of dataRows) {
         const row = rawRow as unknown[];

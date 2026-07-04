@@ -3,7 +3,7 @@ import { useState, useRef } from 'react';
 import { Upload, CheckCircle, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-type Result = { outstanding: number; skipped: number; errors: string[]; skipReasons?: Record<string, number>; detectedHeaders?: Record<string, string[]> };
+type Result = { outstanding: number; skipped: number; errors: string[]; skipReasons?: Record<string, number>; detectedHeaders?: Record<string, string[]>; rowsFound?: Record<string, number> };
 
 const SKIP_REASON_LABELS: Record<string, string> = {
   zero_or_missing_amount: 'Row had no readable amount (check column headers match)',
@@ -109,7 +109,7 @@ export default function ExcelImportPage() {
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>Columns detected in your file:</div>
                 {Object.entries(result.detectedHeaders).map(([sheet, cols]) => (
                   <div key={sheet} style={{ fontSize: 11, color: 'var(--text-muted)', padding: '2px 0' }}>
-                    <strong>{sheet}:</strong> {cols.join(', ') || '(none found)'}
+                    <strong>{sheet}:</strong> {cols.join(', ') || '(none found)'} {result.rowsFound?.[sheet] !== undefined && <span>· {result.rowsFound[sheet]} data rows found</span>}
                   </div>
                 ))}
               </div>
