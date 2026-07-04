@@ -3,7 +3,14 @@ import { useState, useRef } from 'react';
 import { Upload, CheckCircle, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-type Result = { outstanding: number; skipped: number; errors: string[] };
+type Result = { outstanding: number; skipped: number; errors: string[]; skipReasons?: Record<string, number> };
+
+const SKIP_REASON_LABELS: Record<string, string> = {
+  zero_or_missing_amount: 'Row had no readable amount (check column headers match)',
+  already_imported: 'Booking already marked IMPORTED (re-upload of same file)',
+  already_invoiced: 'Booking already INVOICED — has its own outstanding entry',
+  duplicate_invoice_no: 'Invoice number already exists in the system',
+};
 
 export default function ExcelImportPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -97,6 +104,17 @@ export default function ExcelImportPage() {
                 </div>
               ))}
             </div>
+            {result.skipReasons && Object.keys(result.skipReasons).length > 0 && (
+              <div style={{ padding: '0 16px 12px' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>Why rows were skipped:</div>
+                {Object.entries(result.skipReasons).map(([reason, count]) => (
+                  <div key={reason} style={{ fontSize: 11, color: 'var(--text-muted)', padding: '2px 0', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>{SKIP_REASON_LABELS[reason] ?? reason}</span>
+                    <strong style={{ fontFamily: 'var(--font-mono)' }}>{count}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
             {result.errors.length > 0 && (
               <div style={{ padding: '0 16px 12px' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--warning)', marginBottom: 6 }}>Warnings ({result.errors.length}):</div>

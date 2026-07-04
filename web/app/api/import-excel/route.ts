@@ -41,7 +41,8 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const wb = XLSX.read(buffer, { type: 'buffer' });
-    const results = { outstanding: 0, skipped: 0, errors: [] as string[] };
+    const results = { outstanding: 0, skipped: 0, errors: [] as string[], skipReasons: {} as Record<string, number> };
+    const noteSkip = (reason: string) => { results.skipped++; results.skipReasons[reason] = (results.skipReasons[reason] ?? 0) + 1; };
 
     for (const sheetName of wb.SheetNames) {
       const ws = wb.Sheets[sheetName];
@@ -87,7 +88,7 @@ export async function POST(req: NextRequest) {
           const totalAmt = num(get(row, 'totalamt','amount','total')) || num(row[row.length - 1]);
           let partyName = str(get(row, 'party','shipper','consignee')) || sheetName;
 
-          if (totalAmt <= 0) { results.skipped++; continue; }
+          if (totalAmt <= 0) { noteSkip('zero_or_missing_amount'); continue; }
 
           // Match this row against an EXISTING AWB or Docket booking already in the system
           // (not against the Invoice table -- a booking may exist without ever having been
@@ -105,18 +106,18 @@ export async function POST(req: NextRequest) {
             matchedDocket = await prisma.docketBooking.findFirst({ where: { docketNo: { equals: docketNo, mode: 'insensitive' } }, select: { id: true, docketNo: true, partyName: true, status: true } });
           }
 
-          if (matchedAwb?.status === 'IMPORTED' || matchedDocket?.status === 'IMPORTED') { results.skipped++; continue; }
+          if (matchedAwb?.status === 'IMPORTED' || matchedDocket?.status === 'IMPORTED') { noteSkip('already_imported'); continue; }
           // A booking already billed through the normal invoicing flow (status INVOICED) already
           // has its own real Invoice + OutstandingEntry. Adding this row would double-count that
           // amount, so skip it -- but a BOOKED (not yet invoiced) match still gets processed below.
-          if (matchedAwb?.status === 'INVOICED' || matchedDocket?.status === 'INVOICED') { results.skipped++; continue; }
+          if (matchedAwb?.status === 'INVOICED' || matchedDocket?.status === 'INVOICED') { noteSkip('already_invoiced'); continue; }
 
           // Safety guard: if this row's own invoice number already belongs to a real invoice
           // (e.g. the Excel file repeats the same invoice number, or it collides with one already
           // in the system), skip -- Invoice.invoiceNo is unique and creating it again would fail.
           if (invoiceNo) {
             const dupeInvoiceNo = await prisma.invoice.findFirst({ where: { invoiceNo }, select: { id: true } });
-            if (dupeInvoiceNo) { results.skipped++; continue; }
+            if (dupeInvoiceNo) { noteSkip('duplicate_invoice_no'); continue; }
           }
 
           if (matchedAwb) partyName = matchedAwb.partyName;
