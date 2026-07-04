@@ -11,6 +11,7 @@ function parseDate(val: unknown): string {
     return d.toISOString().split('T')[0];
   }
   const s = String(val).trim();
+  // DD.MM.YY or DD.MM.YYYY or DD/MM/YY(YY) or DD-MM-YY(YY)
   const m = s.match(/^(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{2,4})$/);
   if (m) { const y = m[3].length === 2 ? `20${m[3]}` : m[3]; return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; }
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
@@ -19,7 +20,6 @@ function parseDate(val: unknown): string {
 
 function num(v: unknown): number { return parseFloat(String(v||0).replace(/,/g,''))||0; }
 function str(v: unknown): string { return String(v||'').trim(); }
-function nh(h: string): string { return h.toLowerCase().replace(/[^a-z0-9]/g,''); }
 
 async function ensureParty(name: string, userId: string): Promise<{id:string;name:string}> {
   const n = name.trim() || 'Unknown';
@@ -27,6 +27,76 @@ async function ensureParty(name: string, userId: string): Promise<{id:string;nam
   if (ex) return { id: ex.id, name: ex.partyName };
   const cr = await prisma.party.create({ data: { partyName: n, status: 'ACTIVE', createdBy: userId } });
   return { id: cr.id, name: cr.partyName };
+}
+
+/**
+ * Each sheet in the workbook represents ONE invoice printout (letterhead, bill-to block,
+ * line items, totals, terms). We only need 4 facts out of the whole sheet:
+ *   - Company name   : the cell containing "M/s" (the bill-to party), stripped of the "M/s" label
+ *   - Bill No.        : the cell containing "Bill NO" / "Bill No." / "Invoice No.", stripped of its label
+ *   - Date            : the cell right after/below the Bill No. cell that looks like a date
+ *   - Net Amount      : the value next to a "Net Amount" label (falls back to "Grand Total" / the
+ *                       row labeled "TOTAL" if no explicit Net Amount row exists)
+ * Everything else on the sheet (line items, GST breakup, terms) is ignored.
+ */
+function extractInvoiceFacts(rows: unknown[][]): { company: string; billNo: string; date: string; netAmount: number } | null {
+  let company = '';
+  let billNo = '';
+  let date = '';
+  let netAmount = 0;
+
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
+    for (let c = 0; c < row.length; c++) {
+      const cell = str(row[c]);
+      if (!cell) continue;
+
+      if (!company) {
+        const mCompany = cell.match(/M\/s\.?\s*[:\-]?\s*(.+)/i);
+        if (mCompany) company = mCompany[1].trim();
+      }
+
+      if (!billNo) {
+        const mBill = cell.match(/bill\s*no\.?\s*[:\-]*\s*(\S.*)?$/i) || cell.match(/invoice\s*no\.?\s*[:\-]*\s*(\S.*)?$/i);
+        if (mBill) {
+          const inline = mBill[1]?.trim();
+          if (inline) {
+            billNo = inline;
+          } else {
+            // value is in a later column of the same row, or the row right below
+            for (let c2 = c + 1; c2 < row.length; c2++) { const v = str(row[c2]); if (v) { billNo = v; break; } }
+            if (!billNo && rows[r + 1]) { for (const v of rows[r + 1]) { const s = str(v); if (s) { billNo = s; break; } } }
+          }
+          // Also look for a date on this same row or the next row (bill-to blocks usually pair Bill No with Date)
+          if (!date) {
+            for (let c2 = c + 1; c2 < row.length; c2++) {
+              const v = str(row[c2]);
+              if (/^\d{1,2}[.\/\-]\d{1,2}[.\/\-]\d{2,4}$/.test(v)) { date = v; break; }
+            }
+            if (!date && rows[r + 1]) {
+              for (const v of rows[r + 1]) { const s = str(v); if (/^\d{1,2}[.\/\-]\d{1,2}[.\/\-]\d{2,4}$/.test(s)) { date = s; break; } }
+            }
+          }
+        }
+      }
+
+      if (/net\s*amount/i.test(cell)) {
+        for (let c2 = c + 1; c2 < row.length; c2++) { const v = num(row[c2]); if (v > 0) { netAmount = v; break; } }
+      }
+    }
+  }
+
+  // Fallback: no explicit "Net Amount" row -- use the "TOTAL" row's last non-empty numeric cell.
+  if (netAmount <= 0) {
+    const totalRow = rows.find(row => row.some(c => /^total$/i.test(str(c))));
+    if (totalRow) {
+      const nums = totalRow.map(num).filter(n => n > 0);
+      if (nums.length) netAmount = nums[nums.length - 1];
+    }
+  }
+
+  if (!company && !billNo && netAmount <= 0) return null; // this sheet doesn't look like an invoice at all
+  return { company, billNo, date, netAmount };
 }
 
 export async function POST(req: NextRequest) {
@@ -41,7 +111,7 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const wb = XLSX.read(buffer, { type: 'buffer' });
-    const results = { outstanding: 0, skipped: 0, errors: [] as string[], skipReasons: {} as Record<string, number>, detectedHeaders: {} as Record<string, string[]>, rowsFound: {} as Record<string, number> };
+    const results = { outstanding: 0, skipped: 0, errors: [] as string[], skipReasons: {} as Record<string, number> };
     const noteSkip = (reason: string) => { results.skipped++; results.skipReasons[reason] = (results.skipReasons[reason] ?? 0) + 1; };
 
     for (const sheetName of wb.SheetNames) {
@@ -49,135 +119,52 @@ export async function POST(req: NextRequest) {
       const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
       if (rows.length < 2) continue;
 
-      // Find header row: scan the first 20 rows and score each by how many recognizable
-      // column-name keywords it contains (date, awb, docket, amount, party, rate, weight, etc.).
-      // The old heuristic (raw non-empty cell count) misfired on files with a letterhead/company
-      // name as row 0 -- a single merged title cell can still look "non-empty enough" to some
-      // scoring, or the real header simply lives further down than the old 6-row window checked.
-      const HEADER_KEYWORDS = ['sno','date','awb','docket','invoice','amount','amt','total','party','shipper','consignee','origin','dest','weight','rate','freight','box','pkt','sector'];
-      let headerIdx = 0;
-      let bestScore = -1;
-      for (let i = 0; i < Math.min(20, rows.length); i++) {
-        const row = rows[i] as unknown[];
-        const cells = row.map(c => nh(String(c || '')));
-        const nonEmpty = cells.filter(c => c.length > 0).length;
-        if (nonEmpty < 3) continue; // a title/letterhead row rarely has 3+ populated cells
-        const score = cells.filter(c => HEADER_KEYWORDS.some(k => c.includes(k))).length;
-        if (score > bestScore) { bestScore = score; headerIdx = i; }
-      }
-      // Require at least 2 recognizable column names -- otherwise this sheet doesn't look like
-      // a data table we understand, and we fall back to row 0 (previous behavior) rather than
-      // silently guessing wrong.
-      if (bestScore < 2) headerIdx = 0;
+      try {
+        const facts = extractInvoiceFacts(rows);
+        if (!facts) { noteSkip('not_an_invoice_sheet'); continue; }
+        const { company, billNo, date, netAmount } = facts;
 
-      const headers = (rows[headerIdx] as unknown[]).map(h => str(h));
-      const h = headers.map(nh);
-      results.detectedHeaders[sheetName] = headers.filter(hh => hh);
+        if (netAmount <= 0) { noteSkip('zero_or_missing_amount'); continue; }
+        if (!company) { noteSkip('missing_company_name'); continue; }
 
-      const get = (row: unknown[], ...names: string[]): unknown => {
-        for (const n of names) {
-          const idx = h.findIndex(x => x.includes(n));
-          if (idx >= 0 && String(row[idx]||'').trim()) return row[idx];
-        }
-        return '';
-      };
+        const bookingDate = parseDate(date);
+        const finalBillNo = billNo || `IMP-${sheetName}-${Date.now()}`;
 
-      // Sort rows by date ascending (oldest first). A row counts as real data if it has at least
-      // 2 non-empty cells anywhere (not just the first 5 columns -- column order varies by file).
-      const dataRows = rows.slice(headerIdx + 1).filter(r => {
-        const row = r as unknown[];
-        return row.filter(c => String(c||'').trim()).length >= 2;
-      });
-      dataRows.sort((a, b) => parseDate(get(a as unknown[], 'date')).localeCompare(parseDate(get(b as unknown[], 'date'))));
-      results.rowsFound[sheetName] = dataRows.length;
+        // Skip only if this exact bill number was already imported before (idempotent re-upload).
+        const dupe = await prisma.invoice.findFirst({ where: { invoiceNo: finalBillNo }, select: { id: true } });
+        if (dupe) { noteSkip('already_imported'); continue; }
 
-      for (const rawRow of dataRows) {
-        const row = rawRow as unknown[];
-        try {
-          const invoiceNo = str(get(row, 'invoice'));
-          const docketNo  = str(get(row, 'docket'));
-          const awbNo     = str(get(row, 'awbno','awb'));
-          const bookingRef = invoiceNo || docketNo || awbNo || `REF-${Date.now()}`;
-          const bookingDate = parseDate(get(row, 'date'));
-          const totalAmt = num(get(row, 'totalamt','totalamount','netamount','netpayable','grandtotal','billamount','freightamount','amount','total','amt')) || num(row[row.length - 1]);
-          let partyName = str(get(row, 'party','shipper','consignee')) || sheetName;
+        const party = await ensureParty(company, userId);
+        const due = new Date(bookingDate); due.setDate(due.getDate() + 30);
 
-          if (totalAmt <= 0) { noteSkip('zero_or_missing_amount'); continue; }
-
-          // Match this row against an EXISTING AWB or Docket booking already in the system
-          // (not against the Invoice table -- a booking may exist without ever having been
-          // invoiced). When matched, use the booking's own party name (more reliable than the
-          // Excel row's free-text party column) and mark that booking as "IMPORTED" so it's
-          // visible in the AWB/Docket lists. If this exact booking was already marked IMPORTED
-          // by an earlier run of this same import, skip it -- re-uploading the same file must
-          // not add the same amount to Outstanding twice.
-          let matchedAwb: { id: string; awbNo: string; partyName: string; status: string } | null = null;
-          let matchedDocket: { id: string; docketNo: string; partyName: string; status: string } | null = null;
-          if (awbNo) {
-            matchedAwb = await prisma.awbBooking.findFirst({ where: { awbNo: { equals: awbNo, mode: 'insensitive' } }, select: { id: true, awbNo: true, partyName: true, status: true } });
+        const inv = await prisma.invoice.create({
+          data: {
+            invoiceNo: finalBillNo,
+            partyId: party.id, partyName: party.name,
+            bookingType: 'AWB',
+            bookingRef: finalBillNo,
+            invoiceDate: bookingDate,
+            dueDate: due.toISOString().split('T')[0],
+            subtotal: netAmount, gstTotal: 0, grandTotal: netAmount,
+            paidTotal: 0, outstandingTotal: netAmount,
+            status: 'FINALIZED', createdBy: userId,
+            lines: { create: [{ description: `Imported invoice ${finalBillNo}`, qty: 1, rate: netAmount, amount: netAmount, taxRate: 0, taxAmount: 0, lineTotal: netAmount }] }
           }
-          if (!matchedAwb && docketNo) {
-            matchedDocket = await prisma.docketBooking.findFirst({ where: { docketNo: { equals: docketNo, mode: 'insensitive' } }, select: { id: true, docketNo: true, partyName: true, status: true } });
+        });
+
+        await prisma.outstandingEntry.create({
+          data: {
+            partyId: party.id, partyName: party.name,
+            invoiceId: inv.id, invoiceNo: finalBillNo,
+            bookingRef: finalBillNo,
+            originalAmount: netAmount, paidAmount: 0, outstandingAmount: netAmount,
+            invoiceDate: bookingDate, dueDate: due.toISOString().split('T')[0],
+            agingBucket: 'CURRENT', creditLimit: 0,
           }
-
-          if (matchedAwb?.status === 'IMPORTED' || matchedDocket?.status === 'IMPORTED') { noteSkip('already_imported'); continue; }
-          // A booking already billed through the normal invoicing flow (status INVOICED) already
-          // has its own real Invoice + OutstandingEntry. Adding this row would double-count that
-          // amount, so skip it -- but a BOOKED (not yet invoiced) match still gets processed below.
-          if (matchedAwb?.status === 'INVOICED' || matchedDocket?.status === 'INVOICED') { noteSkip('already_invoiced'); continue; }
-
-          // Safety guard: if this row's own invoice number already belongs to a real invoice
-          // (e.g. the Excel file repeats the same invoice number, or it collides with one already
-          // in the system), skip -- Invoice.invoiceNo is unique and creating it again would fail.
-          if (invoiceNo) {
-            const dupeInvoiceNo = await prisma.invoice.findFirst({ where: { invoiceNo }, select: { id: true } });
-            if (dupeInvoiceNo) { noteSkip('duplicate_invoice_no'); continue; }
-          }
-
-          if (matchedAwb) partyName = matchedAwb.partyName;
-          if (matchedDocket) partyName = matchedDocket.partyName;
-
-          const party = await ensureParty(partyName, userId);
-
-          // Create a draft invoice to anchor the outstanding entry
-          const finalInvoiceNo = invoiceNo || `IMP-${bookingRef}-${Date.now()}`;
-          const due = new Date(bookingDate); due.setDate(due.getDate() + 30);
-          const inv = await prisma.invoice.create({
-            data: {
-              invoiceNo: finalInvoiceNo,
-              partyId: party.id, partyName: party.name,
-              bookingType: docketNo ? 'DOCKET' : 'AWB',
-              bookingRef,
-              invoiceDate: bookingDate,
-              dueDate: due.toISOString().split('T')[0],
-              subtotal: totalAmt, gstTotal: 0, grandTotal: totalAmt,
-              paidTotal: 0, outstandingTotal: totalAmt,
-              status: 'FINALIZED', createdBy: userId,
-              lines: { create: [{ description: bookingRef, qty: 1, rate: totalAmt, amount: totalAmt, taxRate: 0, taxAmount: 0, lineTotal: totalAmt }] }
-            }
-          });
-          const invoiceId = inv.id;
-
-          // Mark the matched booking as IMPORTED so it's clearly flagged in the AWB/Docket lists.
-          if (matchedAwb) await prisma.awbBooking.update({ where: { id: matchedAwb.id }, data: { status: 'IMPORTED' } });
-          if (matchedDocket) await prisma.docketBooking.update({ where: { id: matchedDocket.id }, data: { status: 'IMPORTED' } });
-
-          // Create outstanding entry
-          const due2 = new Date(bookingDate); due2.setDate(due2.getDate() + 30);
-          await prisma.outstandingEntry.create({
-            data: {
-              partyId: party.id, partyName: party.name,
-              invoiceId, invoiceNo: finalInvoiceNo,
-              bookingRef,
-              originalAmount: totalAmt, paidAmount: 0, outstandingAmount: totalAmt,
-              invoiceDate: bookingDate, dueDate: due2.toISOString().split('T')[0],
-              agingBucket: 'CURRENT', creditLimit: 0,
-            }
-          });
-          results.outstanding++;
-        } catch (err) {
-          results.errors.push(`Row error: ${String(err).slice(0, 80)}`);
-        }
+        });
+        results.outstanding++;
+      } catch (err) {
+        results.errors.push(`Sheet ${sheetName}: ${String(err).slice(0, 80)}`);
       }
     }
 

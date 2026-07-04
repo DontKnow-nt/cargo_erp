@@ -3,13 +3,13 @@ import { useState, useRef } from 'react';
 import { Upload, CheckCircle, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-type Result = { outstanding: number; skipped: number; errors: string[]; skipReasons?: Record<string, number>; detectedHeaders?: Record<string, string[]>; rowsFound?: Record<string, number> };
+type Result = { outstanding: number; skipped: number; errors: string[]; skipReasons?: Record<string, number> };
 
 const SKIP_REASON_LABELS: Record<string, string> = {
-  zero_or_missing_amount: 'Row had no readable amount (check column headers match)',
-  already_imported: 'Booking already marked IMPORTED (re-upload of same file)',
-  already_invoiced: 'Booking already INVOICED — has its own outstanding entry',
-  duplicate_invoice_no: 'Invoice number already exists in the system',
+  not_an_invoice_sheet: "Sheet didn't look like an invoice (no company/bill no./amount found)",
+  zero_or_missing_amount: 'No readable Net Amount found on this sheet',
+  missing_company_name: 'No company name (M/s ...) found on this sheet',
+  already_imported: 'This Bill No. was already imported before',
 };
 
 export default function ExcelImportPage() {
@@ -28,8 +28,8 @@ export default function ExcelImportPage() {
       const data = await res.json();
       if (data.error) { toast.error(data.error); return; }
       setResult(data);
-      if (data.dockets + data.awbs > 0) toast.success(`Import complete!`);
-      else toast('No new records found — all may already exist', { icon: 'ℹ️' });
+      if (data.outstanding > 0) toast.success(`Import complete! ${data.outstanding} invoice(s) added to Outstanding.`);
+      else toast('No invoices could be read from this file — see details below', { icon: 'ℹ️' });
     } catch (e) {
       toast.error('Upload failed: ' + String(e));
     } finally { setLoading(false); }
@@ -42,7 +42,7 @@ export default function ExcelImportPage() {
           <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <FileSpreadsheet size={20} color="var(--accent-dark)" /> Import Old Data (Excel)
           </h1>
-          <p className="page-subtitle">Upload .xlsx files to import outstanding balances from old data.</p>
+          <p className="page-subtitle">Upload old invoice printouts (.xlsx) — each sheet is treated as one invoice.</p>
         </div>
       </div>
 
@@ -60,7 +60,7 @@ export default function ExcelImportPage() {
           ) : (
             <div>
               <div style={{ fontSize: 14, fontWeight: 600 }}>Click to select or drag & drop</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Supports .xlsx files with AWB, Docket, Invoice sheets</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Each sheet = one old invoice printout (letterhead, bill-to, totals)</div>
             </div>
           )}
           <input ref={ref} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={e => { if (e.target.files?.[0]) setFile(e.target.files[0]); }} />
@@ -69,14 +69,13 @@ export default function ExcelImportPage() {
         <div style={{ marginTop: 16, padding: '12px 14px', background: 'var(--info-bg)', border: '1px solid var(--info-border)', borderRadius: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
           <strong>What it does:</strong>
           <ul style={{ margin: '6px 0 0 16px', lineHeight: 1.8 }}>
-            <li>Reads each row from all sheets</li>
-            <li>Matches each row's AWB/Docket number against existing AWB/Docket bookings</li>
-            <li>On a match with a <strong>BOOKED</strong> booking: uses that booking's Party name, adds Total Amount to Outstanding, and marks the booking <strong>IMPORTED</strong></li>
-            <li>On a match with an <strong>INVOICED</strong> booking: skipped — that booking already has a real invoice + outstanding entry, adding again would double-count it</li>
-            <li>No match: still adds the row's Total Amount to Outstanding using the Excel row's own party name</li>
-            <li>Rows sorted by date — oldest first</li>
-            <li>Re-uploading the same file won&apos;t double-count — bookings already marked IMPORTED are skipped</li>
-            <li><strong>Does NOT create new AWB bookings or Docket bookings</strong></li>
+            <li>Each sheet in the file is treated as <strong>one old invoice</strong></li>
+            <li>Pulls exactly 4 things from each sheet: <strong>Company name</strong> (the &quot;M/s ...&quot; line), <strong>Bill No.</strong>, <strong>Date</strong>, and <strong>Net Amount</strong> (after tax)</li>
+            <li>Finds or creates the Party by that company name</li>
+            <li>Adds the Net Amount to Outstanding against that Bill No. and Date</li>
+            <li>Nothing else from the sheet is read — no line items, no GST breakup, no AWB numbers</li>
+            <li>Re-uploading a sheet with the same Bill No. is skipped — won&apos;t double-count</li>
+            <li><strong>Does NOT create AWB bookings or Docket bookings</strong></li>
           </ul>
         </div>
 
@@ -104,16 +103,6 @@ export default function ExcelImportPage() {
                 </div>
               ))}
             </div>
-            {result.detectedHeaders && Object.keys(result.detectedHeaders).length > 0 && (
-              <div style={{ padding: '0 16px 12px' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>Columns detected in your file:</div>
-                {Object.entries(result.detectedHeaders).map(([sheet, cols]) => (
-                  <div key={sheet} style={{ fontSize: 11, color: 'var(--text-muted)', padding: '2px 0' }}>
-                    <strong>{sheet}:</strong> {cols.join(', ') || '(none found)'} {result.rowsFound?.[sheet] !== undefined && <span>· {result.rowsFound[sheet]} data rows found</span>}
-                  </div>
-                ))}
-              </div>
-            )}
             {result.skipReasons && Object.keys(result.skipReasons).length > 0 && (
               <div style={{ padding: '0 16px 12px' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>Why rows were skipped:</div>
