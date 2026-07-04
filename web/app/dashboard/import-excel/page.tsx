@@ -3,7 +3,7 @@ import { useState, useRef } from 'react';
 import { Upload, CheckCircle, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-type Result = { outstanding: number; skipped: number; errors: string[]; skipReasons?: Record<string, number> };
+type Result = { outstanding: number; skipped: number; errors: string[]; skipReasons?: Record<string, number>; detectedHeaders?: Record<string, string[]> };
 
 const SKIP_REASON_LABELS: Record<string, string> = {
   zero_or_missing_amount: 'Row had no readable amount (check column headers match)',
@@ -104,6 +104,16 @@ export default function ExcelImportPage() {
                 </div>
               ))}
             </div>
+            {result.detectedHeaders && Object.keys(result.detectedHeaders).length > 0 && (
+              <div style={{ padding: '0 16px 12px' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>Columns detected in your file:</div>
+                {Object.entries(result.detectedHeaders).map(([sheet, cols]) => (
+                  <div key={sheet} style={{ fontSize: 11, color: 'var(--text-muted)', padding: '2px 0' }}>
+                    <strong>{sheet}:</strong> {cols.join(', ') || '(none found)'}
+                  </div>
+                ))}
+              </div>
+            )}
             {result.skipReasons && Object.keys(result.skipReasons).length > 0 && (
               <div style={{ padding: '0 16px 12px' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>Why rows were skipped:</div>

@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const wb = XLSX.read(buffer, { type: 'buffer' });
-    const results = { outstanding: 0, skipped: 0, errors: [] as string[], skipReasons: {} as Record<string, number> };
+    const results = { outstanding: 0, skipped: 0, errors: [] as string[], skipReasons: {} as Record<string, number>, detectedHeaders: {} as Record<string, string[]> };
     const noteSkip = (reason: string) => { results.skipped++; results.skipReasons[reason] = (results.skipReasons[reason] ?? 0) + 1; };
 
     for (const sheetName of wb.SheetNames) {
@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
 
       const headers = (rows[headerIdx] as unknown[]).map(h => str(h));
       const h = headers.map(nh);
+      results.detectedHeaders[sheetName] = headers.filter(hh => hh);
 
       const get = (row: unknown[], ...names: string[]): unknown => {
         for (const n of names) {
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
           const awbNo     = str(get(row, 'awbno','awb'));
           const bookingRef = invoiceNo || docketNo || awbNo || `REF-${Date.now()}`;
           const bookingDate = parseDate(get(row, 'date'));
-          const totalAmt = num(get(row, 'totalamt','amount','total')) || num(row[row.length - 1]);
+          const totalAmt = num(get(row, 'totalamt','totalamount','netamount','netpayable','grandtotal','billamount','freightamount','amount','total','amt')) || num(row[row.length - 1]);
           let partyName = str(get(row, 'party','shipper','consignee')) || sheetName;
 
           if (totalAmt <= 0) { noteSkip('zero_or_missing_amount'); continue; }
