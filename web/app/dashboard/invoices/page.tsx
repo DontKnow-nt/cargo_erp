@@ -273,6 +273,7 @@ const STATUS_COLORS: Record<string, [string, string]> = {
   DRAFT:['#94a3b8','#f8fafc'], REVIEWED:['#7c3aed','#f5f3ff'], FINALIZED:['#2563eb','#eff6ff'],
   SENT:['#0891b2','#ecfeff'], PARTIALLY_PAID:['#d97706','#fffbeb'],
   PAID:['#059669','#ecfdf5'], CANCELLED:['#dc2626','#fef2f2'], OVERDUE:['#ea580c','#fff7ed'],
+  IMPORTED:['#7c3aed','#f5f3ff'],
 };
 
 function InvBadge({ status }: { status: string }) {

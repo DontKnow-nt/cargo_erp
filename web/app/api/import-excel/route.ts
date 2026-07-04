@@ -141,13 +141,16 @@ export async function POST(req: NextRequest) {
           data: {
             invoiceNo: finalBillNo,
             partyId: party.id, partyName: party.name,
-            bookingType: 'AWB',
+            bookingType: 'IMPORTED',
             bookingRef: finalBillNo,
             invoiceDate: bookingDate,
             dueDate: due.toISOString().split('T')[0],
             subtotal: netAmount, gstTotal: 0, grandTotal: netAmount,
             paidTotal: 0, outstandingTotal: netAmount,
-            status: 'FINALIZED', createdBy: userId,
+            // IMPORTED (not FINALIZED/DRAFT): this is a historical invoice that was already
+            // issued in the past, not a new live invoice needing review/finalize/cancel actions.
+            // Keeps it out of the Invoices page's active-status KPI tiles and action buttons.
+            status: 'IMPORTED', createdBy: userId,
             lines: { create: [{ description: `Imported invoice ${finalBillNo}`, qty: 1, rate: netAmount, amount: netAmount, taxRate: 0, taxAmount: 0, lineTotal: netAmount }] }
           }
         });

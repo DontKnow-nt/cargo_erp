@@ -72,7 +72,7 @@ export default function ExcelImportPage() {
             <li>Each sheet in the file is treated as <strong>one old invoice</strong></li>
             <li>Pulls exactly 4 things from each sheet: <strong>Company name</strong> (the &quot;M/s ...&quot; line), <strong>Bill No.</strong>, <strong>Date</strong>, and <strong>Net Amount</strong> (after tax)</li>
             <li>Finds or creates the Party by that company name</li>
-            <li>Adds the Net Amount to Outstanding against that Bill No. and Date</li>
+            <li>Adds the Net Amount to Outstanding against that Bill No. and Date, marked <strong>IMPORTED</strong> — it's historical data, not a new live invoice, so it won&apos;t show up needing Finalize/Review/Cancel actions</li>
             <li>Nothing else from the sheet is read — no line items, no GST breakup, no AWB numbers</li>
             <li>Re-uploading a sheet with the same Bill No. is skipped — won&apos;t double-count</li>
             <li><strong>Does NOT create AWB bookings or Docket bookings</strong></li>
