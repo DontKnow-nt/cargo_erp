@@ -12,20 +12,24 @@ export type HotColDef = {
   numeric?: boolean;
   computed?: boolean; // auto-calculated column (Freight / Total)
   align?: 'left' | 'center' | 'right';
+  /** Canonical field name shared across formats (date, rate, origin, dest, weight, boxes, refNo, sl)
+   *  used to carry data between formats when switching. Columns with no canonical tag (format-specific
+   *  charge fields like ODA, GMR, Pickup/Delivery) have no equivalent elsewhere and stay blank on switch. */
+  canonical?: string;
 };
 
 export type FormatKey = 'format1' | 'format2' | 'format3' | 'musashi' | 'custom';
 
 export const FORMAT_COLUMNS: Record<'format1'|'format2'|'format3'|'musashi', HotColDef[]> = {
   format1: [
-    { header: 'Sl#', key: 'sl', align: 'center' },
-    { header: 'Origin', key: 'origin', align: 'center' },
-    { header: 'AWB#/Ref. Number', key: 'awbNo', align: 'center' },
-    { header: 'Date', key: 'date', align: 'center' },
-    { header: 'Dest#', key: 'dest', align: 'center' },
-    { header: 'Boxes', key: 'boxes', numeric: true, align: 'center' },
-    { header: 'Charg. Weight', key: 'chgWt', numeric: true, align: 'right' },
-    { header: 'Rate', key: 'rate', numeric: true, align: 'right' },
+    { header: 'Sl#', key: 'sl', align: 'center', canonical: 'sl' },
+    { header: 'Origin', key: 'origin', align: 'center', canonical: 'origin' },
+    { header: 'AWB#/Ref. Number', key: 'awbNo', align: 'center', canonical: 'refNo' },
+    { header: 'Date', key: 'date', align: 'center', canonical: 'date' },
+    { header: 'Dest#', key: 'dest', align: 'center', canonical: 'dest' },
+    { header: 'Boxes', key: 'boxes', numeric: true, align: 'center', canonical: 'boxes' },
+    { header: 'Charg. Weight', key: 'chgWt', numeric: true, align: 'right', canonical: 'weight' },
+    { header: 'Rate', key: 'rate', numeric: true, align: 'right', canonical: 'rate' },
     { header: 'Freight', key: 'freight', numeric: true, computed: true, align: 'right' },
     { header: 'AWB & DO', key: 'awbDo', numeric: true, align: 'right' },
     { header: 'Due Carrier', key: 'carrier', numeric: true, align: 'right' },
@@ -34,30 +38,30 @@ export const FORMAT_COLUMNS: Record<'format1'|'format2'|'format3'|'musashi', Hot
     { header: 'Taxable Amount', key: 'taxable', numeric: true, computed: true, align: 'right' },
   ],
   format2: [
-    { header: 'S.No', key: 'sl', align: 'center' },
-    { header: 'Date', key: 'date', align: 'center' },
-    { header: 'Docket No.', key: 'docketNo', align: 'center' },
+    { header: 'S.No', key: 'sl', align: 'center', canonical: 'sl' },
+    { header: 'Date', key: 'date', align: 'center', canonical: 'date' },
+    { header: 'Docket No.', key: 'docketNo', align: 'center', canonical: 'refNo' },
     { header: 'Invoice no', key: 'invoiceNo', align: 'center' },
-    { header: 'Origin', key: 'origin', align: 'center' },
+    { header: 'Origin', key: 'origin', align: 'center', canonical: 'origin' },
     { header: 'Origin Airport', key: 'originAirport', align: 'center' },
-    { header: 'Dest', key: 'dest', align: 'center' },
+    { header: 'Dest', key: 'dest', align: 'center', canonical: 'dest' },
     { header: 'Destination Airport', key: 'destAirport', align: 'center' },
-    { header: 'Box', key: 'box', numeric: true, align: 'center' },
-    { header: 'Weight', key: 'weight', numeric: true, align: 'right' },
-    { header: 'Rate', key: 'rate', numeric: true, align: 'right' },
+    { header: 'Box', key: 'box', numeric: true, align: 'center', canonical: 'boxes' },
+    { header: 'Weight', key: 'weight', numeric: true, align: 'right', canonical: 'weight' },
+    { header: 'Rate', key: 'rate', numeric: true, align: 'right', canonical: 'rate' },
     { header: 'Freight', key: 'freight', numeric: true, computed: true, align: 'right' },
     { header: 'ODA', key: 'oda', numeric: true, align: 'right' },
     { header: 'Docket chg', key: 'docketChg', numeric: true, align: 'right' },
     { header: 'Amount', key: 'amount', numeric: true, computed: true, align: 'right' },
   ],
   format3: [
-    { header: 'S.No', key: 'sl', align: 'center' },
-    { header: 'Date', key: 'date', align: 'center' },
-    { header: 'AWB NO', key: 'awbNo', align: 'center' },
+    { header: 'S.No', key: 'sl', align: 'center', canonical: 'sl' },
+    { header: 'Date', key: 'date', align: 'center', canonical: 'date' },
+    { header: 'AWB NO', key: 'awbNo', align: 'center', canonical: 'refNo' },
     { header: 'Invoice', key: 'invoice', align: 'center' },
     { header: 'Sector', key: 'sector', align: 'center' },
-    { header: 'Pkt', key: 'pkt', numeric: true, align: 'center' },
-    { header: 'Wt.', key: 'wt', numeric: true, align: 'right' },
+    { header: 'Pkt', key: 'pkt', numeric: true, align: 'center', canonical: 'boxes' },
+    { header: 'Wt.', key: 'wt', numeric: true, align: 'right', canonical: 'weight' },
     { header: 'Freight', key: 'freight', numeric: true, align: 'right' },
     { header: 'F/C', key: 'fc', numeric: true, align: 'right' },
     { header: 'GMR', key: 'gmr', numeric: true, align: 'right' },
@@ -68,15 +72,15 @@ export const FORMAT_COLUMNS: Record<'format1'|'format2'|'format3'|'musashi', Hot
     { header: 'Amount', key: 'amount', numeric: true, computed: true, align: 'right' },
   ],
   musashi: [
-    { header: 'S.No', key: 'sl', align: 'center' },
-    { header: 'Date', key: 'date', align: 'center' },
-    { header: 'Docket No.', key: 'docketNo', align: 'center' },
+    { header: 'S.No', key: 'sl', align: 'center', canonical: 'sl' },
+    { header: 'Date', key: 'date', align: 'center', canonical: 'date' },
+    { header: 'Docket No.', key: 'docketNo', align: 'center', canonical: 'refNo' },
     { header: 'Invoice No.', key: 'invoiceNo', align: 'center' },
-    { header: 'Origin', key: 'origin', align: 'center' },
-    { header: 'Destination', key: 'destination', align: 'center' },
-    { header: 'Pkt', key: 'pkt', numeric: true, align: 'center' },
-    { header: 'Wt.', key: 'wt', numeric: true, align: 'right' },
-    { header: 'Rate', key: 'rate', numeric: true, align: 'right' },
+    { header: 'Origin', key: 'origin', align: 'center', canonical: 'origin' },
+    { header: 'Destination', key: 'destination', align: 'center', canonical: 'dest' },
+    { header: 'Pkt', key: 'pkt', numeric: true, align: 'center', canonical: 'boxes' },
+    { header: 'Wt.', key: 'wt', numeric: true, align: 'right', canonical: 'weight' },
+    { header: 'Rate', key: 'rate', numeric: true, align: 'right', canonical: 'rate' },
     { header: 'Freight', key: 'freight', numeric: true, computed: true, align: 'right' },
     { header: 'AWB', key: 'awb', numeric: true, align: 'right' },
     { header: 'Pickup', key: 'pickup', numeric: true, align: 'right' },
@@ -84,6 +88,25 @@ export const FORMAT_COLUMNS: Record<'format1'|'format2'|'format3'|'musashi', Hot
     { header: 'Total Amt', key: 'totalAmt', numeric: true, computed: true, align: 'right' },
   ],
 };
+
+/**
+ * Convert row data from one format's columns into another format's columns, mapping by
+ * canonical field tags (date, rate, origin, dest, weight, boxes, refNo, sl). Non-canonical
+ * fields (format-specific charge columns like ODA, GMR, Pickup/Delivery) have no equivalent
+ * in the target format and come out blank -- this is a genuine limitation of switching between
+ * formats with structurally different charge breakdowns, not a bug.
+ */
+export function mapRowsBetweenFormats(
+  sourceRows: string[][],
+  sourceCols: HotColDef[],
+  targetCols: HotColDef[],
+): string[][] {
+  return sourceRows.map(row => {
+    const canonMap: Record<string, string> = {};
+    sourceCols.forEach((c, i) => { if (c.canonical && row[i]) canonMap[c.canonical] = row[i]; });
+    return targetCols.map(tc => (tc.canonical && canonMap[tc.canonical]) ? canonMap[tc.canonical] : '');
+  });
+}
 
 export type HotInvoiceHandle = {
   toHtmlTable: () => string;
@@ -94,6 +117,10 @@ export type HotInvoiceHandle = {
   removeCol: () => void;
   undo: () => void;
   redo: () => void;
+  /** Current live grid data as a raw string matrix, in the same column order as `columns` prop. */
+  getRowsMatrix: () => string[][];
+  /** The current columns (base + any ad-hoc "extra" columns added this session). */
+  getColumns: () => HotColDef[];
 };
 
 type Props = {
@@ -370,6 +397,17 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
     },
     undo: () => { const i = hotRef.current?.hotInstance; if (i && !i.isDestroyed) i.getPlugin('undoRedo')?.undo(); },
     redo: () => { const i = hotRef.current?.hotInstance; if (i && !i.isDestroyed) i.getPlugin('undoRedo')?.redo(); },
+    getRowsMatrix: () => {
+      const inst = hotRef.current?.hotInstance;
+      if (!inst || inst.isDestroyed) return [];
+      const rc = inst.countRows();
+      const out: string[][] = [];
+      for (let r = 0; r < rc; r++) {
+        out.push(columns.map(c => String(inst.getDataAtRowProp(r, c.key) ?? '')));
+      }
+      return out;
+    },
+    getColumns: () => columns,
   }), [columns, formatAttr]);
 
   return (

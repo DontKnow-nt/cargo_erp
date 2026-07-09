@@ -5,9 +5,23 @@ import { Printer } from 'lucide-react';
 import { useSharedData } from '@/lib/useSharedData';
 import { listCustomFormats, saveCustomFormat, deleteCustomFormat, type CustomFormatCol } from '@/lib/actions/customFormats';
 import { amountToWords } from '@/lib/invoiceAmounts';
-import HotInvoiceTable, { FORMAT_COLUMNS, parseHtmlTableToRows, parseExtraColumnsFromHtmlTable, type HotInvoiceHandle } from '@/components/HotInvoiceTable';
+import HotInvoiceTable, { FORMAT_COLUMNS, parseHtmlTableToRows, parseExtraColumnsFromHtmlTable, mapRowsBetweenFormats, type HotColDef, type HotInvoiceHandle } from '@/components/HotInvoiceTable';
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
+// Extract canonical (shared-field) row values directly from a live DOM table (formats 2/3/
+// musashi/custom render as real contentEditable <table> elements, not Handsontable). Returns
+// one string[] matrix, positionally aligned with `columns`, containing ONLY the canonical
+// value per column (blank for non-canonical/format-specific columns) -- ready to feed into
+// mapRowsBetweenFormats().
+function extractCanonicalRowsFromDom(table: HTMLTableElement, columns: HotColDef[]): string[][] {
+  const trs = Array.from(table.querySelectorAll('tbody > tr, tr'));
+  const dataRows = trs.filter((tr, i) => i !== 0 && !tr.hasAttribute('data-grand-total'));
+  return dataRows.map(tr => {
+    const cells = Array.from(tr.querySelectorAll('td'));
+    return columns.map((_, idx) => cells[idx]?.querySelector('[contenteditable]')?.textContent?.trim() ?? cells[idx]?.textContent?.trim() ?? '');
+  });
+}
+
 function Toolbar({ paperRef, hotRef, isHotActive }: {
   paperRef: React.RefObject<HTMLDivElement | null>;
   hotRef?: React.RefObject<HotInvoiceHandle | null>;
@@ -1077,6 +1091,7 @@ function InvoiceEditorInner() {
   // (needed because saved-HTML loading via innerHTML breaks React reconciliation)
   useEffect(() => {
     if (_prevFmtRef.current === invoiceFormat) return; // no actual change
+    const prevFormat = _prevFmtRef.current;
     _prevFmtRef.current = invoiceFormat;
 
     const paper = paperRef.current;
@@ -1084,12 +1099,71 @@ function InvoiceEditorInner() {
     if (!paper || !currentInv) return;
 
     const oldTable = paper.querySelector('#awb-body');
+
+    // Switching TO Format 1 is exclusively React's job (the {invoiceFormat === 'format1' ? ... }
+    // conditional JSX mounts <HotInvoiceTable> itself). This imperative effect must never touch
+    // the DOM in that case -- doing so races with React's own mount/unmount of that same node,
+    // which is exactly what caused the "removeChild: node not a child of this node" crash.
+    // Instead, capture whatever canonical (shared-field) data is in the OLD table right now and
+    // hand it to HotInvoiceTable via savedFormat1Rows, so edits made in the previous format
+    // still show up in the right cells after switching to Format 1.
+    if (invoiceFormat === 'format1') {
+      if (oldTable && prevFormat !== 'format1') {
+        const prevCols = prevFormat === 'custom'
+          ? (customFormats.find(f => f.id === activeCfId)?.columns.map(c => ({ header: c.header, key: c.header, numeric: c.isNumeric })) ?? [])
+          : FORMAT_COLUMNS[prevFormat as 'format2'|'format3'|'musashi'];
+        const canonRows = extractCanonicalRowsFromDom(oldTable as HTMLTableElement, prevCols);
+        const mapped = mapRowsBetweenFormats(canonRows, prevCols, FORMAT_COLUMNS.format1);
+        setSavedFormat1Rows(mapped);
+        setSavedExtraColumns(null);
+      }
+      setLoadGen(g => g + 1); // force HotInvoiceTable to remount fresh with the mapped data
+      return;
+    }
+
     if (!oldTable) return;
 
     const rows   = _lineRowsRef.current;
     const awbBks = _awbBkRef.current;
     const dktBks = _dktBkRef.current;
     const tspTotal = _runningTSPRef.current || _markupAmtRef.current;
+
+    // Pull whatever canonical (shared-field) values are CURRENTLY on screen in the previous
+    // format -- from the live Handsontable instance if we're leaving Format 1, or straight
+    // from the DOM table otherwise -- and overlay them onto `rows` by row position, so edits
+    // made in the previous format (changed Rate, Date, Origin, added/removed rows, etc.) carry
+    // into the new format instead of being discarded and rebuilt from the original booking data.
+    const CANON_TARGET: HotColDef[] = [
+      { header: '', key: 'origin', canonical: 'origin' },
+      { header: '', key: 'awbNo', canonical: 'refNo' },
+      { header: '', key: 'date', canonical: 'date' },
+      { header: '', key: 'dest', canonical: 'dest' },
+      { header: '', key: 'boxes', canonical: 'boxes' },
+      { header: '', key: 'chgWt', canonical: 'weight' },
+      { header: '', key: 'rate', canonical: 'rate' },
+    ];
+    let mergedRows = rows;
+    if (prevFormat === 'format1' && hotRef.current) {
+      const liveMatrix = hotRef.current.getRowsMatrix();
+      const liveCols = hotRef.current.getColumns();
+      const canon = mapRowsBetweenFormats(liveMatrix, liveCols, CANON_TARGET);
+      mergedRows = rows.map((r, i) => canon[i] ? {
+        ...r,
+        origin: canon[i][0] || r.origin, awbNo: canon[i][1] || r.awbNo, date: canon[i][2] || r.date,
+        dest: canon[i][3] || r.dest, boxes: canon[i][4] || r.boxes, chgWt: canon[i][5] || r.chgWt, rate: canon[i][6] || r.rate,
+      } : r);
+    } else if (prevFormat !== 'format1') {
+      const prevCols = prevFormat === 'custom'
+        ? (customFormats.find(f => f.id === activeCfId)?.columns.map(c => ({ header: c.header, key: c.header, numeric: c.isNumeric })) ?? [])
+        : FORMAT_COLUMNS[prevFormat as 'format2'|'format3'|'musashi'];
+      const domCanon = extractCanonicalRowsFromDom(oldTable as HTMLTableElement, prevCols);
+      const canon = mapRowsBetweenFormats(domCanon, prevCols, CANON_TARGET);
+      mergedRows = rows.map((r, i) => canon[i] ? {
+        ...r,
+        origin: canon[i][0] || r.origin, awbNo: canon[i][1] || r.awbNo, date: canon[i][2] || r.date,
+        dest: canon[i][3] || r.dest, boxes: canon[i][4] || r.boxes, chgWt: canon[i][5] || r.chgWt, rate: canon[i][6] || r.rate,
+      } : r);
+    }
 
     // Helper: content-editable <td>
     const ce = (text: string | number, align: string, bold = false) => {
@@ -1105,7 +1179,7 @@ function InvoiceEditorInner() {
       const headers = ['S.No','Date','Docket No.','Invoice no','Origin','Origin Airport','Dest','Destination Airport','Box','Weight','Rate','Freight','ODA','Docket chg','Amount'];
       let body = `<tr style="background:#f0f0f0">${headers.map(hdCell).join('')}</tr>`;
 
-      rows.forEach((row, i) => {
+      mergedRows.forEach((row, i) => {
         const awbBk: any = awbBks.find((a: any) => a.awbNo === row.awbNo);
         const linkedDkt: any = awbBk
           ? dktBks.find((d: any) => d.linkedAwbId === awbBk.id)
@@ -1120,11 +1194,11 @@ function InvoiceEditorInner() {
       });
 
       // Pad to at least 5 rows
-      for (let i = 0; i < Math.max(0, 5 - rows.length); i++) {
+      for (let i = 0; i < Math.max(0, 5 - mergedRows.length); i++) {
         body += '<tr>' + Array.from({length:15}).map((_,j) => ce('', j>=9?'right':'center')).join('') + '</tr>';
       }
 
-      const tf = rows.reduce((s,r) => s+(parseFloat(r.freight.replace(/,/g,''))||0), 0);
+      const tf = mergedRows.reduce((s,r) => s+(parseFloat(r.freight.replace(/,/g,''))||0), 0);
       body += `<tr style="background:#f8f8f8;font-weight:700" data-grand-total="1">
         ${emptyTd()}${emptyTd()}
         <td style="border:1px solid #000;padding:4px 6px;font-size:10px;background:#f8f8f8;font-weight:700"><div contenteditable="true" style="outline:none;font-family:Arial,sans-serif;font-size:10px;font-weight:700">TOTAL</div></td>
@@ -1138,7 +1212,7 @@ function InvoiceEditorInner() {
       const headers = ['S.No','Date','AWB NO','Invoice','Sector','Pkt','Wt.','Freight','F/C','GMR','TSP','Clearance','Awb Fees','H Chge','Amount'];
       let body = `<tr style="background:#f0f0f0">${headers.map(hdCell).join('')}</tr>`;
 
-      rows.forEach((row, i) => {
+      mergedRows.forEach((row, i) => {
         body += `<tr>
           ${ce(i+1,'center')}${ce(row.date,'center')}${ce(row.awbNo,'center')}
           ${ce(currentInv?.invoiceNo??'','center')}${ce(`${row.origin}-${row.dest}`,'center')}${ce(row.boxes,'center')}
@@ -1149,15 +1223,15 @@ function InvoiceEditorInner() {
       });
 
       // Pad to at least 5 rows
-      for (let i = 0; i < Math.max(0, 5 - rows.length); i++) {
+      for (let i = 0; i < Math.max(0, 5 - mergedRows.length); i++) {
         body += '<tr>' + Array.from({length:15}).map((_,j) => ce('', j>=6?'right':'center')).join('') + '</tr>';
       }
 
-      const tb3   = rows.reduce((s,r) => s+(parseInt(r.boxes)||0), 0);
-      const tcw3  = rows.reduce((s,r) => s+(parseFloat(r.chgWt)||0), 0);
-      const tf3   = rows.reduce((s,r) => s+(parseFloat(r.freight.replace(/,/g,''))||0), 0);
-      const ttsp3 = rows.reduce((s,r) => s+(parseFloat(r.tsp.replace(/,/g,''))||0), 0);
-      const ttax3 = rows.reduce((s,r) => s+(parseFloat(r.taxable.replace(/,/g,''))||0), 0);
+      const tb3   = mergedRows.reduce((s,r) => s+(parseInt(r.boxes)||0), 0);
+      const tcw3  = mergedRows.reduce((s,r) => s+(parseFloat(r.chgWt)||0), 0);
+      const tf3   = mergedRows.reduce((s,r) => s+(parseFloat(r.freight.replace(/,/g,''))||0), 0);
+      const ttsp3 = mergedRows.reduce((s,r) => s+(parseFloat(r.tsp.replace(/,/g,''))||0), 0);
+      const ttax3 = mergedRows.reduce((s,r) => s+(parseFloat(r.taxable.replace(/,/g,''))||0), 0);
 
       body += `<tr style="background:#f8f8f8;font-weight:700" data-grand-total="1">
         ${emptyTd()}${emptyTd()}${emptyTd()}${emptyTd()}
@@ -1173,7 +1247,7 @@ function InvoiceEditorInner() {
       // Musashi: S.No | Date | Docket No. | Invoice No. | Origin | Destination | Pkt | Wt. | Rate | Freight | AWB | Pickup | Delivery | Total Amt
       const headers = ['S.No','Date','Docket No.','Invoice No.','Origin','Destination','Pkt','Wt.','Rate','Freight','AWB','Pickup','Delivery','Total Amt'];
       let body = `<tr style="background:#f0f0f0">${headers.map(hdCell).join('')}</tr>`;
-      rows.forEach((row, i) => {
+      mergedRows.forEach((row, i) => {
         const dktBk: any = dktBks.find((d: any) => d.docketNo === row.awbNo);
         const freight = parseFloat(row.freight.replace(/,/g,'')) || 0;
         body += `<tr>
@@ -1187,11 +1261,11 @@ function InvoiceEditorInner() {
         </tr>`;
       });
       // Pad to at least 5 rows
-      for (let i = 0; i < Math.max(0, 5 - rows.length); i++) {
+      for (let i = 0; i < Math.max(0, 5 - mergedRows.length); i++) {
         body += '<tr>' + Array.from({length:14}).map((_,j) => ce('', j>=6?'right':'center')).join('') + '</tr>';
       }
-      const twt  = rows.reduce((s,r) => s+(parseFloat(r.chgWt)||0), 0);
-      const tf_m = rows.reduce((s,r) => s+(parseFloat(r.freight.replace(/,/g,''))||0), 0);
+      const twt  = mergedRows.reduce((s,r) => s+(parseFloat(r.chgWt)||0), 0);
+      const tf_m = mergedRows.reduce((s,r) => s+(parseFloat(r.freight.replace(/,/g,''))||0), 0);
       // Cols: 0=S.No,1=Date,2=Docket No,3=Invoice No,4=Origin,5=Dest,6=Pkt,7=Wt,8=Rate,9=Freight,10=AWB,11=Pickup,12=Delivery,13=Total Amt
       body += `<tr style="background:#f8f8f8;font-weight:700" data-grand-total="1">
         ${emptyTd()}${emptyTd()}${emptyTd()}
@@ -1227,35 +1301,8 @@ function InvoiceEditorInner() {
       tableHtml = `<table id="awb-body" data-custom-fmt="1" data-cf-id="${cf.id}" style="border-collapse:collapse;width:100%;table-layout:fixed"><tbody>${body}</tbody></table>`;
 
     } else {
-      // Format 1
-      const headers = ['Sl#','Origin','AWB#/Ref.\nNumber','Date','Dest#','Boxes','Charg.\nWeight','Rate','Freight','AWB &\nDO','Due\nCarrier','Forwrd &\nOthers','TSP &\nOthers','Taxable\nAmount'];
-      let body = `<tr style="background:#f0f0f0">${headers.map(hdCell).join('')}</tr>`;
-
-      rows.forEach((row, i) => {
-        body += `<tr>
-          ${ce(i+1,'center')}${ce(row.origin,'center')}${ce(row.awbNo,'center')}
-          ${ce(row.date,'center')}${ce(row.dest,'center')}${ce(row.boxes,'center')}
-          ${ce(row.chgWt,'center')}${ce(row.rate,'right')}${ce(row.freight,'right')}
-          ${ce('0.00','right')}${ce('0.00','right')}${ce('0','right')}
-          ${ce(row.tsp,'right')}${ce(row.taxable,'right')}
-        </tr>`;
-      });
-
-      const tb  = rows.reduce((s,r) => s+(parseInt(r.boxes)||0), 0);
-      const tcw = rows.reduce((s,r) => s+(parseFloat(r.chgWt)||0), 0);
-      const tf  = rows.reduce((s,r) => s+(parseFloat(r.freight.replace(/,/g,''))||0), 0);
-
-      body += `<tr style="background:#f8f8f8;font-weight:700" data-grand-total="1">
-        ${emptyTd()}${emptyTd()}${emptyTd()}
-        <td style="border:1px solid #000;padding:4px 6px;text-align:right;font-weight:700;font-size:10px;background:#f8f8f8"><div contenteditable="true" style="outline:none;font-family:Arial,sans-serif;font-size:10px;font-weight:700;text-align:right">Grand Total</div></td>
-        ${emptyTd()}
-        ${ce(tb,'center',true)}${ce(tcw.toFixed(2),'center',true)}
-        ${emptyTd()}
-        ${ce(tf.toFixed(2),'right',true)}${ce('0.00','right',true)}${ce('0.00','right',true)}${ce('0','right',true)}
-        ${ce(fmt(tspTotal),'right',true)}${ce(fmt(currentInv.subtotal),'right',true)}
-      </tr>`;
-
-      tableHtml = `<table id="awb-body" style="border-collapse:collapse;width:100%;table-layout:fixed"><tbody>${body}</tbody></table>`;
+      // invoiceFormat === 'format1' already returned early above; nothing else to build here.
+      return;
     }
 
     // Inject into DOM
