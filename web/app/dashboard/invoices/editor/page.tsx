@@ -311,6 +311,10 @@ function InvoiceEditorInner() {
   ]);
   const [activeCfId, setActiveCfId] = useState<string | null>(null); // which custom fmt is active
   const _activeCfColsRef = useRef<CustomFormatCol[]>([]);
+  // Holds a custom-format id detected from saved HTML while customFormats is still loading,
+  // so the restore can complete once the list actually arrives (avoids a load-order race).
+  const [pendingCfRestore, setPendingCfRestore] = useState<string | null>(null);
+  const _pendingCfHtmlRef = useRef<string | null>(null);
 
   useEffect(() => {
     listCustomFormats().then(rows => {
@@ -428,25 +432,64 @@ function InvoiceEditorInner() {
   // ── Load saved HTML, then re-apply current bank on top ───────────────────
   const [savedFormat1Rows, setSavedFormat1Rows] = useState<string[][] | null>(null);
   const [savedExtraColumns, setSavedExtraColumns] = useState<{ extraColumns: import('@/components/HotInvoiceTable').HotColDef[]; extraValues: string[][] } | null>(null);
+  // Bumped once the saved HTML has actually been fetched and applied to state, so
+  // HotInvoiceTable (Format 1) mounts fresh with the real saved data instead of
+  // capturing whatever was present at first paint (its initialData is only read once
+  // per mount). Without this, saved edits could silently be replaced by stale/fallback
+  // data on next open because Handsontable never re-reads props after mounting.
+  const [loadGen, setLoadGen] = useState(0);
   useEffect(() => {
     if (!inv || !paperRef.current) return;
     fetch(`/api/invoices/${inv.id}/editor-html`)
       .then(r => r.json())
       .then(data => {
-        if (!data.html || !paperRef.current) return;
+        if (!data.html || !paperRef.current) {
+          setLoadGen(g => g + 1);
+          return;
+        }
         const temp = document.createElement('div');
         temp.innerHTML = data.html;
         const savedTable = temp.querySelector<HTMLTableElement>('#awb-body');
 
-        if (invoiceFormat === 'format1') {
+        // Detect which format this invoice was actually last saved in, from the saved
+        // table's own marker attribute, and restore that -- instead of always reopening
+        // in Format 1 regardless of what was last used.
+        let detectedFormat: 'format1'|'format2'|'format3'|'musashi'|'custom' = 'format1';
+        let detectedCfId: string | null = null;
+        if (savedTable) {
+          if (savedTable.hasAttribute('data-format2')) detectedFormat = 'format2';
+          else if (savedTable.hasAttribute('data-format3')) detectedFormat = 'format3';
+          else if (savedTable.hasAttribute('data-musashi-fmt')) detectedFormat = 'musashi';
+          else if (savedTable.hasAttribute('data-custom-fmt')) {
+            detectedFormat = 'custom';
+            detectedCfId = savedTable.getAttribute('data-cf-id');
+          }
+        }
+
+        if (detectedFormat === 'custom' && detectedCfId) {
+          const cf = customFormats.find(f => f.id === detectedCfId);
+          if (cf) { _activeCfColsRef.current = cf.columns; setActiveCfId(detectedCfId); }
+          else {
+            // customFormats hasn't loaded yet -- cache the html and retry once it arrives,
+            // rendering Format 1 as a safe placeholder in the meantime.
+            _pendingCfHtmlRef.current = data.html;
+            setPendingCfRestore(detectedCfId);
+            detectedFormat = 'format1';
+          }
+        }
+        if (detectedFormat !== invoiceFormat) setInvoiceFormat(detectedFormat);
+
+        if (detectedFormat === 'format1') {
           // Never overwrite the paper's innerHTML while Handsontable (React-owned) is mounted.
-          // Just extract the row data and let the HotInvoiceTable component re-key/remount with it.
+          // Extract the row data into state, then bump loadGen so HotInvoiceTable remounts
+          // fresh with this data as its initialRows (its key includes loadGen).
           if (savedTable) {
             setSavedFormat1Rows(parseHtmlTableToRows(savedTable, FORMAT_COLUMNS.format1));
             setSavedExtraColumns(parseExtraColumnsFromHtmlTable(savedTable, FORMAT_COLUMNS.format1));
           }
           const currentBank = banks.find(b => b.id === selectedBankId) ?? banks[0];
           if (currentBank) applyBankToPaper(currentBank, paperRef.current);
+          setLoadGen(g => g + 1);
           return;
         }
 
@@ -458,10 +501,30 @@ function InvoiceEditorInner() {
         if (currentBank) applyBankToPaper(currentBank, paperRef.current);
         // Trigger recalc so Grand Total & Tax Summary sync with saved data (legacy formats only)
         paperRef.current.querySelector('#awb-body')?.dispatchEvent(new Event('input', { bubbles: true }));
+        setLoadGen(g => g + 1);
       })
-      .catch(() => {});
+      .catch(() => { setLoadGen(g => g + 1); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inv?.id]);
+
+  // Completes a custom-format restore that was deferred because customFormats hadn't
+  // finished loading yet when the saved HTML first arrived.
+  useEffect(() => {
+    if (!pendingCfRestore || !_pendingCfHtmlRef.current || !paperRef.current) return;
+    const cf = customFormats.find(f => f.id === pendingCfRestore);
+    if (!cf) return;
+    _activeCfColsRef.current = cf.columns;
+    setActiveCfId(pendingCfRestore);
+    setInvoiceFormat('custom');
+    const temp = document.createElement('div');
+    temp.innerHTML = _pendingCfHtmlRef.current;
+    paperRef.current.innerHTML = temp.innerHTML;
+    const currentBank = banks.find(b => b.id === selectedBankId) ?? banks[0];
+    if (currentBank) applyBankToPaper(currentBank, paperRef.current);
+    paperRef.current.querySelector('#awb-body')?.dispatchEvent(new Event('input', { bubbles: true }));
+    _pendingCfHtmlRef.current = null;
+    setPendingCfRestore(null);
+  }, [pendingCfRestore, customFormats, banks, selectedBankId, applyBankToPaper]);
 
   // Auto-calculate Freight = ChgWeight × Rate, Taxable = Freight + other cols, Grand Total
   useEffect(() => {
@@ -1161,7 +1224,7 @@ function InvoiceEditorInner() {
       </tr>`;
       // suppress unused var warning
       void emptyGT;
-      tableHtml = `<table id="awb-body" data-custom-fmt="1" style="border-collapse:collapse;width:100%;table-layout:fixed"><tbody>${body}</tbody></table>`;
+      tableHtml = `<table id="awb-body" data-custom-fmt="1" data-cf-id="${cf.id}" style="border-collapse:collapse;width:100%;table-layout:fixed"><tbody>${body}</tbody></table>`;
 
     } else {
       // Format 1
@@ -1557,7 +1620,7 @@ img{max-width:100%;object-fit:contain}
 
             {invoiceFormat === 'format1' ? (
             <HotInvoiceTable
-              key={`format1-${inv.id}`}
+              key={`format1-${inv.id}-${loadGen}`}
               ref={hotRef}
               columns={FORMAT_COLUMNS.format1}
               formatAttr="data-format1"
