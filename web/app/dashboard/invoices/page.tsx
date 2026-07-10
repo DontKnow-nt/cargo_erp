@@ -319,6 +319,17 @@ export default function InvoicesPage() {
       if (def) setSelectedBankId(def.id);
     }).catch(()=>{});
   }, []);
+
+  // Auto-repair stale invoice totals on page mount (runs silently in background).
+  // This fixes invoices whose DB subtotal/grandTotal was saved before the charge-
+  // deduplication fix, without requiring the user to manually click "Fix Totals".
+  useEffect(() => {
+    fetch('/api/admin/repair-invoice-totals', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => { if (data.updated > 0) refresh(); })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [showGenerate, setShowGenerate] = useState(false);
   const [showBulkInv, setShowBulkInv] = useState(false);
   const [genBookingType, setGenBookingType] = useState<'AWB'|'DOCKET'>('AWB');
