@@ -264,6 +264,9 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
     const n = parseInt(c.key.replace('extra', ''), 10);
     return Number.isFinite(n) ? Math.max(max, n) : max;
   }, 0));
+  // Tracks which column index (physical) the user most recently clicked/interacted with,
+  // so removeCol removes that specific column rather than guessing from getSelectedLast().
+  const lastClickedColRef = useRef(-1);
 
   const colDefs = useMemo(() => columns.map(c => ({
     data: c.key,
@@ -426,21 +429,30 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
     },
     removeCol: () => {
       if (columns.length <= 1) { alert('Must keep at least one column.'); return; }
-      // Remove the column that is currently selected/active in the grid.
-      // Falls back to the last column if nothing is selected.
+      // Use the column that was most recently interacted with (clicked header or active cell).
+      // lastClickedColRef tracks the column index from the most recent header click or cell selection.
       const inst = hotRef.current?.hotInstance;
-      const sel = inst?.getSelectedLast();
-      // sel: [row, col, row2, col2] -- col of -1 means a row header was selected
-      const rawColIdx = sel ? Math.min(sel[1], sel[3]) : columns.length - 1;
-      const colIdx = rawColIdx < 0 ? 0 : Math.min(rawColIdx, columns.length - 1);
-      if (colIdx < 0 || colIdx >= columns.length) return;
+      let colIdx = lastClickedColRef.current;
+      if (colIdx < 0) {
+        // Fallback: read from current cell selection
+        const sel = inst?.getSelectedLast();
+        if (sel) {
+          // Convert visual column to physical in case manualColumnMove reordered them
+          const visualCol = Math.min(sel[1], sel[3]);
+          colIdx = visualCol >= 0 ? (inst?.toPhysicalColumn(visualCol) ?? visualCol) : columns.length - 1;
+        } else {
+          colIdx = columns.length - 1;
+        }
+      }
+      colIdx = Math.max(0, Math.min(colIdx, columns.length - 1));
       const targetCol = columns[colIdx];
-      if (columns.length <= 1) { alert('Must keep at least one column.'); return; }
+      if (!targetCol) return;
       const isBase = !targetCol.key.startsWith('extra');
       const confirmed = isBase
         ? window.confirm(`Remove the "${targetCol.header}" column? This is a base format column — removing it may affect calculations. Continue?`)
         : true;
       if (!confirmed) return;
+      lastClickedColRef.current = -1;
       setColumns(prev => prev.filter((_, i) => i !== colIdx));
       setTimeout(() => onTotalChange?.(grandTotal()), 0);
     },
@@ -459,37 +471,48 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
     getColumns: () => columns,
   }), [columns, formatAttr]);
 
-  // Column headers are editable with a single click — exactly like typing in data cells.
-  // Clicking a header makes it contentEditable; pressing Enter or clicking away commits
-  // the change, Escape cancels. The new name is saved with the invoice on next Save.
+  // SINGLE CLICK on column header → edit the header title (like clicking a cell to edit it).
+  //   The column is NOT selected, and the cell below the header is NOT activated.
+  // DOUBLE CLICK on column header → select the whole column (standard Handsontable behavior).
   function afterGetColHeader(col: number, th: HTMLTableCellElement) {
     if (col < 0) return;
-    if ((th as HTMLElement & { __hdrClick?: boolean }).__hdrClick) return;
-    (th as HTMLElement & { __hdrClick?: boolean }).__hdrClick = true;
-    th.addEventListener('click', (e) => {
-      // Don't activate editing if the user is dragging to move/resize
-      if ((e.target as HTMLElement).classList.contains('colHeader') === false &&
-          !(e.target as HTMLElement).closest('.colHeader')) return;
-      if (th.querySelector('[contenteditable="true"]')) return;
+    if ((th as HTMLElement & { __hdrBound?: boolean }).__hdrBound) return;
+    (th as HTMLElement & { __hdrBound?: boolean }).__hdrBound = true;
+
+    th.addEventListener('mousedown', (e) => {
+      // On single click: intercept and start header editing instead of column selection.
+      // On double click: let it through so Handsontable selects the whole column.
+      if (e.detail >= 2) {
+        // Double click — track column index and let Handsontable handle it normally
+        lastClickedColRef.current = col;
+        return;
+      }
+      // Single click — prevent Handsontable from selecting the column / activating cell below
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      lastClickedColRef.current = col; // track for -Col button
+
+      if ((th as HTMLElement).querySelector('[contenteditable="true"]')) return;
       const current = columns[col]?.header ?? '';
-      const div = th.querySelector<HTMLElement>('.colHeader') ?? th;
+      const div = (th as HTMLElement).querySelector<HTMLElement>('.colHeader') ?? th as unknown as HTMLElement;
       div.setAttribute('contenteditable', 'true');
       div.style.outline = '2px solid #2563eb';
-      div.style.background = '#fffbe6';
+      div.style.minWidth = '30px';
       div.style.cursor = 'text';
-      div.focus();
-      // Select all text in the div
-      const range = document.createRange();
-      range.selectNodeContents(div);
-      const sel = window.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
+      // Put focus inside the div after a tick so the mousedown doesn't instantly blur it
+      requestAnimationFrame(() => {
+        div.focus();
+        const range = document.createRange();
+        range.selectNodeContents(div);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      });
 
       const commit = () => {
         const newHeader = div.innerText.trim() || current;
         div.removeAttribute('contenteditable');
         div.style.outline = '';
-        div.style.background = '';
         div.style.cursor = '';
         if (newHeader !== current) {
           setColumns(prev => prev.map((c, i) => i === col ? { ...c, header: newHeader } : c));
@@ -499,9 +522,17 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
       div.addEventListener('keydown', (ke) => {
         if (ke.key === 'Enter') { ke.preventDefault(); div.blur(); }
         if (ke.key === 'Escape') { div.innerText = current; div.blur(); }
+        ke.stopPropagation(); // don't let Handsontable swallow keystrokes while editing header
       });
-      e.stopPropagation();
     });
+  }
+
+  // Track which column the user last clicked a cell in, so -Col removes the right column.
+  function afterSelectionEnd(row: number, col: number) {
+    if (row >= 0 && col >= 0) {
+      const inst = hotRef.current?.hotInstance;
+      lastClickedColRef.current = inst ? (inst.toPhysicalColumn(col) ?? col) : col;
+    }
   }
 
   return (
@@ -521,6 +552,7 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
         afterChange={afterChange}
         beforeKeyDown={beforeKeyDown}
         afterGetColHeader={afterGetColHeader}
+        afterSelectionEnd={afterSelectionEnd}
         contextMenu={['row_above', 'row_below', 'remove_row', '---------', 'copy', 'cut', 'undo', 'redo']}
         copyPaste={true}
         undo={true}
