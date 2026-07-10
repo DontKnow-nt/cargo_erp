@@ -464,6 +464,12 @@ export default function InvoicesPage() {
         ) : (
           <>
             <button className="btn btn-secondary btn-sm" onClick={()=>setShowBulkInv(true)}><Download size={12}/> Bulk Download</button>
+            <button className="btn btn-secondary btn-sm" style={{color:'#059669',borderColor:'#059669'}} onClick={async()=>{
+              const res = await fetch('/api/admin/repair-invoice-totals', { method: 'POST' });
+              const data = await res.json();
+              if (data.updated > 0) { toast.success(`Fixed ${data.updated} invoice totals`); window.location.reload(); }
+              else toast('All invoice totals are already correct', { icon: 'ℹ️' });
+            }}>⚙ Fix Totals</button>
             <button className="btn btn-primary btn-sm" onClick={()=>setShowGenerate(true)}><Plus size={12}/> Generate Invoice</button>
           </>
         )}
