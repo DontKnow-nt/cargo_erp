@@ -509,23 +509,19 @@ function InvoiceEditorInner() {
           if (!freshRow) return savedRow;
           return savedRow.map((savedVal, colIdx) => {
             const fresh = freshRow[colIdx];
-            // Always use fresh value for blank/zero saved cells
+            const tc = activeColumns[colIdx];
+            // For numeric charge columns that have a canonical tag: always use the fresh
+            // value from AWB booking data -- this prevents stale/duplicated charge amounts
+            // (e.g. TSP showing the same value as GMR due to an old consolidation bug).
+            // Exception: if the column is computed (Freight/Amount auto-calc), skip it.
+            // User-edited values are preserved only for columns WITHOUT a canonical tag
+            // (those are format-specific free-form entries like Awb Fees, H Chge, etc.).
+            if (tc?.canonical && tc.numeric && !tc.computed && !tc.excludeFromTotal && fresh !== undefined) {
+              return fresh; // fresh from AWB = always authoritative for canonical charge cols
+            }
+            // For non-canonical columns: preserve user edits, only fill blanks/zeros
             const isBlankOrZero = !savedVal || savedVal === '0' || savedVal === '0.00';
             if (isBlankOrZero && fresh && fresh !== '0' && fresh !== '0.00') return fresh;
-            // Detect bug-introduced duplicates: if this charge column's saved value equals
-            // another charge column's saved value AND the fresh value differs, use fresh.
-            // This fixes e.g. TSP=2128.80 when Due Carrier=2128.80 (carrier was wrongly
-            // consolidated into TSP by an old version of the code).
-            const tc = activeColumns[colIdx];
-            if (tc?.numeric && !tc.computed && !tc.excludeFromTotal && fresh && fresh !== savedVal) {
-              const isDuplicate = savedRow.some((otherVal, otherIdx) => {
-                if (otherIdx === colIdx) return false;
-                const otherCol = activeColumns[otherIdx];
-                return otherCol?.numeric && !otherCol.computed && !otherCol.excludeFromTotal
-                  && otherVal === savedVal && otherVal !== '0' && otherVal !== '0.00';
-              });
-              if (isDuplicate) return fresh; // reset to correct fresh value
-            }
             return savedVal;
           });
         });
