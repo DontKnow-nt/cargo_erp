@@ -18,15 +18,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const { html, grandTotalHint } = await req.json();
-  const totals = typeof html === 'string' ? extractEditorInvoiceTotals(html) : null;
-  // If the HTML doesn't contain parseable tax summary text (e.g. first save before the
-  // tax summary was properly populated), fall back to the client-sent grandTotalHint
-  // (= hotGrandTotal, the Handsontable grid's live computed total).
-  const effectiveTotals = totals ?? (
-    typeof grandTotalHint === 'number' && grandTotalHint > 0
-      ? { subtotal: grandTotalHint, gstTotal: 0, grandTotal: grandTotalHint }
-      : null
-  );
+  const parsed = typeof html === 'string' ? extractEditorInvoiceTotals(html) : null;
+  // grandTotalHint is the Handsontable grid's live computed total (hotGrandTotal).
+  // Always prefer it over HTML text parsing when available -- the HTML may contain stale
+  // values from old saves, while hotGrandTotal is always the correct live computation.
+  // Use HTML-parsed GST breakdown (sgst/cgst/igst) since that comes from the user's
+  // GST rate selectors, but override the grandTotal with the authoritative hint.
+  let effectiveTotals: { subtotal: number; gstTotal: number; grandTotal: number } | null = null;
+  if (typeof grandTotalHint === 'number' && grandTotalHint > 0) {
+    const gstTotal = parsed ? parsed.gstTotal : 0;
+    effectiveTotals = { subtotal: grandTotalHint, gstTotal, grandTotal: grandTotalHint + gstTotal };
+  } else if (parsed) {
+    effectiveTotals = parsed;
+  }
 
   await prisma.$transaction(async (tx) => {
     const inv = await tx.invoice.findUnique({
