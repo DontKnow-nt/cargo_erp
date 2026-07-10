@@ -351,6 +351,16 @@ function InvoiceEditorInner() {
   const [extraColsByFormat, setExtraColsByFormat] = useState<Record<string, { extraColumns: HotColDef[]; extraValues: string[][] }>>({});
   const [loadGen, setLoadGen] = useState(0);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  // When lineRows transitions from empty to populated (awbBookings finished loading),
+  // bump loadGen so HotInvoiceTable remounts with the correct merged charge data.
+  // Without this, the grid would mount with stale saved data before AWB data arrives.
+  const hadLineRowsRef = useRef(false);
+  useEffect(() => {
+    if (!hadLineRowsRef.current && lineRows.length > 0 && hasLoadedOnce) {
+      hadLineRowsRef.current = true;
+      setLoadGen(g => g + 1);
+    }
+  }, [lineRows.length, hasLoadedOnce]);
 
   useEffect(() => {
     if (!inv || !paperRef.current) return;
