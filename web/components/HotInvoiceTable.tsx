@@ -227,7 +227,10 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
   // "removeChild: node not a child of this node" crash. All row/column/data changes are made
   // through the instance API instead (inst.alter, inst.setDataAtRowProp, undoRedo plugin).
   const [columns, setColumns] = useState<HotColDef[]>(() => [...baseColumns, ...(extraColumns ?? [])]);
-  const extraCounter = useRef((extraColumns ?? []).length);
+  const extraCounter = useRef((extraColumns ?? []).reduce((max, c) => {
+    const n = parseInt(c.key.replace('extra', ''), 10);
+    return Number.isFinite(n) ? Math.max(max, n) : max;
+  }, 0));
 
   const colDefs = useMemo(() => columns.map(c => ({
     data: c.key,

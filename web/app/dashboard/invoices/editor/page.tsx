@@ -1,36 +1,44 @@
 'use client';
-import { Suspense, useRef, useCallback, useEffect, useState } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { Suspense, useRef, useCallback, useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Printer } from 'lucide-react';
 import { useSharedData } from '@/lib/useSharedData';
 import { listCustomFormats, saveCustomFormat, deleteCustomFormat, type CustomFormatCol } from '@/lib/actions/customFormats';
 import { amountToWords } from '@/lib/invoiceAmounts';
 import HotInvoiceTable, { FORMAT_COLUMNS, parseHtmlTableToRows, parseExtraColumnsFromHtmlTable, mapRowsBetweenFormats, type HotColDef, type HotInvoiceHandle } from '@/components/HotInvoiceTable';
 
-// ── Toolbar ───────────────────────────────────────────────────────────────────
-// Extract canonical (shared-field) row values directly from a live DOM table (formats 2/3/
-// musashi/custom render as real contentEditable <table> elements, not Handsontable). Returns
-// one string[] matrix, positionally aligned with `columns`, containing ONLY the canonical
-// value per column (blank for non-canonical/format-specific columns) -- ready to feed into
-// mapRowsBetweenFormats().
-function extractCanonicalRowsFromDom(table: HTMLTableElement, columns: HotColDef[]): string[][] {
-  const trs = Array.from(table.querySelectorAll('tbody > tr, tr'));
-  const dataRows = trs.filter((tr, i) => i !== 0 && !tr.hasAttribute('data-grand-total'));
-  return dataRows.map(tr => {
-    const cells = Array.from(tr.querySelectorAll('td'));
-    return columns.map((_, idx) => cells[idx]?.querySelector('[contenteditable]')?.textContent?.trim() ?? cells[idx]?.textContent?.trim() ?? '');
+type FormatKey = 'format1' | 'format2' | 'format3' | 'musashi' | 'custom';
+
+// Build a HotColDef[] for a user-defined custom format. Column keys are sanitized from the
+// header text (falls back to a positional key if the header is blank/duplicate). The column
+// marked isTotal becomes the computed "grand total" column, matching the same computeRow()
+// convention used by the built-in formats (its key must be one of taxable/amount/totalAmt for
+// computeRow to recognize it as the auto-summed total -- we use "amount" for all custom formats).
+function buildCustomColumns(cols: CustomFormatCol[]): HotColDef[] {
+  const seen = new Set<string>();
+  return cols.map((c, i) => {
+    let key = c.header.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || `col${i}`;
+    while (seen.has(key)) key = `${key}_${i}`;
+    seen.add(key);
+    if (c.isTotal) key = 'amount'; // computeRow looks for this exact key to auto-sum
+    return { header: c.header || `Column ${i + 1}`, key, numeric: c.isNumeric, computed: c.isTotal, align: c.isNumeric ? 'right' : 'center' } as HotColDef;
   });
 }
 
-function Toolbar({ paperRef, hotRef, isHotActive }: {
-  paperRef: React.RefObject<HTMLDivElement | null>;
-  hotRef?: React.RefObject<HotInvoiceHandle | null>;
-  isHotActive?: boolean;
-}) {
+const CANON_FIELDS: HotColDef[] = [
+  { header: '', key: 'origin', canonical: 'origin' },
+  { header: '', key: 'awbNo', canonical: 'refNo' },
+  { header: '', key: 'date', canonical: 'date' },
+  { header: '', key: 'dest', canonical: 'dest' },
+  { header: '', key: 'boxes', canonical: 'boxes' },
+  { header: '', key: 'chgWt', canonical: 'weight' },
+  { header: '', key: 'rate', canonical: 'rate' },
+];
+
+// ── Toolbar ───────────────────────────────────────────────────────────────────
+function Toolbar({ hotRef }: { hotRef: React.RefObject<HotInvoiceHandle | null> }) {
   const [fontSize, setFontSize] = useState('3');
   const savedRange = useRef<Range | null>(null);
-  const undoStack = useRef<string[]>([]);
-  const redoStack = useRef<string[]>([]);
 
   function saveSelection() {
     const sel = window.getSelection();
@@ -44,99 +52,6 @@ function Toolbar({ paperRef, hotRef, isHotActive }: {
     restoreSelection();
     // eslint-disable-next-line @typescript-eslint/no-deprecated
     document.execCommand(cmd, false, value);
-  }
-
-  // Snapshot the paper HTML for undo/redo
-  function snapshot() {
-    if (!paperRef.current) return;
-    undoStack.current.push(paperRef.current.innerHTML);
-    if (undoStack.current.length > 50) undoStack.current.shift();
-    redoStack.current = [];
-  }
-  function undo() {
-    if (isHotActive) { hotRef?.current?.undo(); return; }
-    if (!paperRef.current || !undoStack.current.length) return;
-    redoStack.current.push(paperRef.current.innerHTML);
-    paperRef.current.innerHTML = undoStack.current.pop()!;
-  }
-  function redo() {
-    if (isHotActive) { hotRef?.current?.redo(); return; }
-    if (!paperRef.current || !redoStack.current.length) return;
-    undoStack.current.push(paperRef.current.innerHTML);
-    paperRef.current.innerHTML = redoStack.current.pop()!;
-  }
-
-  // Get the AWB data tbody (id="awb-body") from inside the paper
-  function getAwbTbody(): HTMLTableSectionElement | null {
-    return paperRef.current?.querySelector<HTMLTableSectionElement>('#awb-body') ?? null;
-  }
-
-  function getSelectedTd(): HTMLTableCellElement | null {
-    const sel = window.getSelection();
-    const node = sel?.anchorNode;
-    if (!node) return null;
-    const el = (node.nodeType === 3 ? node.parentElement : node) as Element;
-    return el?.closest?.('td') ?? null;
-  }
-
-  function addRow() {
-    if (isHotActive) { hotRef?.current?.insertRow(); return; }
-    const tbody = getAwbTbody();
-    if (!tbody) return;
-    const td = getSelectedTd();
-    const tr = td?.closest('tr');
-    // Must be inside awb-body
-    if (!tr || !tbody.contains(tr)) { alert('Click inside an AWB data row first.'); return; }
-    snapshot();
-    const newRow = tr.cloneNode(true) as HTMLTableRowElement;
-    newRow.querySelectorAll('[contenteditable]').forEach(el => { (el as HTMLElement).innerText = ''; });
-    tr.after(newRow);
-  }
-
-  function delRow() {
-    if (isHotActive) { hotRef?.current?.removeRow(); return; }
-    const tbody = getAwbTbody();
-    if (!tbody) return;
-    const td = getSelectedTd();
-    const tr = td?.closest('tr');
-    if (!tr || !tbody.contains(tr)) { alert('Click inside an AWB data row first.'); return; }
-    if (tbody.querySelectorAll('tr').length <= 1) return;
-    snapshot();
-    tr.remove();
-  }
-
-  function addCol() {
-    if (isHotActive) { hotRef?.current?.insertCol(); return; }
-    const tbody = getAwbTbody();
-    if (!tbody) return;
-    const td = getSelectedTd();
-    if (!td || !tbody.contains(td)) { alert('Click inside an AWB data cell first.'); return; }
-    const tr = td.closest('tr')!;
-    const colIdx = Array.from(tr.children).indexOf(td);
-    snapshot();
-    tbody.querySelectorAll('tr').forEach(row => {
-      const refCell = row.children[colIdx] as HTMLTableCellElement | undefined;
-      if (!refCell) return;
-      const newCell = refCell.cloneNode(true) as HTMLTableCellElement;
-      newCell.querySelectorAll('[contenteditable]').forEach(el => { (el as HTMLElement).innerText = ''; });
-      refCell.after(newCell);
-    });
-  }
-
-  function delCol() {
-    if (isHotActive) { hotRef?.current?.removeCol(); return; }
-    const tbody = getAwbTbody();
-    if (!tbody) return;
-    const td = getSelectedTd();
-    if (!td || !tbody.contains(td)) { alert('Click inside an AWB data cell first.'); return; }
-    const tr = td.closest('tr')!;
-    const colIdx = Array.from(tr.children).indexOf(td);
-    if (tbody.querySelectorAll('tr')[0]?.children.length <= 1) return;
-    snapshot();
-    tbody.querySelectorAll('tr').forEach(row => {
-      const cell = row.children[colIdx] as HTMLTableCellElement | undefined;
-      if (cell) cell.remove();
-    });
   }
 
   const [activeCommands, setActiveCommands] = useState<Set<string>>(new Set());
@@ -160,7 +75,6 @@ function Toolbar({ paperRef, hotRef, isHotActive }: {
 
   const sep = <div style={{ width: 1, background: '#e5e7eb', margin: '0 4px', alignSelf: 'stretch' }} />;
 
-  // Track active formatting on selection change
   useEffect(() => {
     document.addEventListener('selectionchange', updateActiveState);
     return () => document.removeEventListener('selectionchange', updateActiveState);
@@ -169,12 +83,12 @@ function Toolbar({ paperRef, hotRef, isHotActive }: {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, padding: '6px 12px', background: '#f0f4ff', borderBottom: '1px solid #e5e7eb' }}>
-      {btn('↩ Undo', 'Undo row/col changes', undo)}
-      {btn('↪ Redo', 'Redo row/col changes', redo)}
+      {btn('↩ Undo', 'Undo grid changes', () => hotRef.current?.undo())}
+      {btn('↪ Redo', 'Redo grid changes', () => hotRef.current?.redo())}
       {sep}
-      {btn('B', 'Bold', () => exec('bold'), '#111', 'bold')}
-      {btn('I', 'Italic', () => exec('italic'), '#111', 'italic')}
-      {btn('U̲', 'Underline', () => exec('underline'), '#111', 'underline')}
+      {btn('B', 'Bold (header/notes text)', () => exec('bold'), '#111', 'bold')}
+      {btn('I', 'Italic (header/notes text)', () => exec('italic'), '#111', 'italic')}
+      {btn('U̲', 'Underline (header/notes text)', () => exec('underline'), '#111', 'underline')}
       {sep}
       <span style={{ fontSize: 11, color: '#6b7280' }}>Size:</span>
       <select value={fontSize}
@@ -190,64 +104,11 @@ function Toolbar({ paperRef, hotRef, isHotActive }: {
       {btn('≡', 'Align Center', () => exec('justifyCenter'))}
       {btn('➡', 'Align Right', () => exec('justifyRight'))}
       {sep}
-      {btn('+ Row', 'Add AWB row below (click a data row first)', addRow, '#059669')}
-      {btn('− Row', 'Delete AWB row (click a data row first)', delRow, '#dc2626')}
-      {btn('+ Col', 'Add AWB column right (click a data cell first)', addCol, '#059669')}
-      {btn('− Col', 'Delete AWB column (click a data cell first)', delCol, '#dc2626')}
+      {btn('+ Row', 'Add grid row', () => hotRef.current?.insertRow(), '#059669')}
+      {btn('− Row', 'Delete grid row', () => hotRef.current?.removeRow(), '#dc2626')}
+      {btn('+ Col', 'Add ad-hoc column to this invoice', () => hotRef.current?.insertCol(), '#059669')}
+      {btn('− Col', 'Delete last ad-hoc column', () => hotRef.current?.removeCol(), '#dc2626')}
     </div>
-  );
-}
-
-// ── Editable cell with Excel-formula support ──────────────────────────────────
-// Typing "4*8=" or "100+50=" evaluates the math and replaces with result
-function evalFormula(text: string): string | null {
-  const expr = text.trim();
-  if (!expr) return null;
-  // Only allow safe math characters (BODMAS + percentage)
-  if (!/^[\d\s+\-*/().%]+$/.test(expr)) return null;
-  try {
-    const normalized = expr.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');
-    // eslint-disable-next-line no-new-func
-    const result = Function('"use strict"; return (' + normalized + ')')() as number;
-    if (!isFinite(result)) return null;
-    return Number(result.toFixed(2)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  } catch { return null; }
-}
-
-function EC({ children, style, colSpan, rowSpan }: {
-  children?: string | number;
-  style?: React.CSSProperties;
-  colSpan?: number;
-  rowSpan?: number;
-}) {
-  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (e.key !== 'Enter') return;
-    const el = e.currentTarget;
-    const text = el.innerText.trim();
-    const result = evalFormula(text);
-    if (result !== null) {
-      e.preventDefault();
-      el.innerText = result;
-      // Move caret to end
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      range.collapse(false);
-      window.getSelection()?.removeAllRanges();
-      window.getSelection()?.addRange(range);
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    // else: let Enter do nothing (prevent newline in table cells)
-    else { e.preventDefault(); }
-  }
-
-  return (
-    <td colSpan={colSpan} rowSpan={rowSpan} style={{ border: '1px solid #000', padding: '3px 5px', fontSize: 10, verticalAlign: 'top', ...style }}>
-      <div contentEditable suppressContentEditableWarning
-        onKeyDown={handleKeyDown}
-        style={{ outline: 'none', minHeight: 14, fontFamily: 'Arial, sans-serif', fontSize: 10, whiteSpace: 'pre-wrap' }}>
-        {children != null ? String(children) : ''}
-      </div>
-    </td>
   );
 }
 
@@ -259,22 +120,14 @@ function fmt(n: number) {
 // ── Inner editor ──────────────────────────────────────────────────────────────
 function InvoiceEditorInner() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const invId = searchParams.get('id');
   const { invoices, parties, awbBookings, docketBookings } = useSharedData();
   const paperRef = useRef<HTMLDivElement>(null);
+  const hotRef = useRef<HotInvoiceHandle>(null);
 
   const [saving, setSaving] = useState(false);
-  const [invoiceFormat, setInvoiceFormat] = useState<'format1'|'format2'|'format3'|'musashi'|'custom'>('format1');
-
-  // Refs so the format-switch effect can read latest rendered data without re-firing
-  const _lineRowsRef   = useRef<{origin:string;dest:string;boxes:string;chgWt:string;rate:string;freight:string;tsp:string;taxable:string;awbNo:string;date:string}[]>([]);
-  const _invRef        = useRef<typeof inv>(undefined);
-  const _awbBkRef      = useRef<typeof awbBookings>([]);
-  const _dktBkRef      = useRef<typeof docketBookings>([]);
-  const _runningTSPRef = useRef(0);
-  const _markupAmtRef  = useRef(0);
-  const _prevFmtRef    = useRef('format1'); // track last-applied format
+  const [invoiceFormat, setInvoiceFormat] = useState<FormatKey>('format1');
+  const [hotGrandTotal, setHotGrandTotal] = useState(0);
 
   const [banks, setBanks] = useState<{id:string;bank_name:string;account_name:string;account_number:string;ifsc:string;branch:string;is_default:number}[]>([]);
   const [selectedBankId, setSelectedBankId] = useState('');
@@ -284,10 +137,6 @@ function InvoiceEditorInner() {
   const [isRounded, setIsRounded] = useState(false);
   const isRoundedRef = useRef(isRounded);
   useEffect(() => { isRoundedRef.current = isRounded; }, [isRounded]);
-
-  // ── Handsontable-driven data grid (Format 1 pilot) ──────────────────────────
-  const hotRef = useRef<HotInvoiceHandle>(null);
-  const [hotGrandTotal, setHotGrandTotal] = useState(0);
 
   function updateGstSummaryFromTotal(totalTaxable: number) {
     const paper = paperRef.current;
@@ -323,12 +172,7 @@ function InvoiceEditorInner() {
     { header: 'Freight', isNumeric: true,  isTotal: false },
     { header: 'Total',   isNumeric: true,  isTotal: true  },
   ]);
-  const [activeCfId, setActiveCfId] = useState<string | null>(null); // which custom fmt is active
-  const _activeCfColsRef = useRef<CustomFormatCol[]>([]);
-  // Holds a custom-format id detected from saved HTML while customFormats is still loading,
-  // so the restore can complete once the list actually arrives (avoids a load-order race).
-  const [pendingCfRestore, setPendingCfRestore] = useState<string | null>(null);
-  const _pendingCfHtmlRef = useRef<string | null>(null);
+  const [activeCfId, setActiveCfId] = useState<string | null>(null);
 
   useEffect(() => {
     listCustomFormats().then(rows => {
@@ -353,7 +197,7 @@ function InvoiceEditorInner() {
   async function handleDeleteCf(id: string) {
     await deleteCustomFormat(id);
     setCustomFormats(prev => prev.filter(f => f.id !== id));
-    if (activeCfId === id) { setActiveCfId(null); setInvoiceFormat('format1'); }
+    if (activeCfId === id) { setActiveCfId(null); switchFormat('format1'); }
   }
   function openNewCf() { setCfEditId(null); setCfName(''); setCfCols([
     { header: 'S.No', isNumeric: false, isTotal: false },
@@ -363,29 +207,6 @@ function InvoiceEditorInner() {
     { header: 'Total', isNumeric: true, isTotal: true },
   ]); setShowCfModal(true); }
   function openEditCf(f: SavedCustomFmt) { setCfEditId(f.id); setCfName(f.name); setCfCols([...f.columns]); setShowCfModal(true); }
-  function applyGstRates(ig: number, cg: number, sg: number) {
-    const taxEl = paperRef.current?.querySelector<HTMLElement>('[data-tax-summary]');
-    if (!taxEl) return;
-    const totalM = (taxEl.innerText || '').match(/Total Taxable Amount\s*:\s*([\d,.]+)/i);
-    const taxable = totalM ? parseFloat(totalM[1].replace(/,/g,'')) : 0;
-    const fmtN = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const igstAmt = parseFloat((taxable * ig / 100).toFixed(2));
-    const cgstAmt = parseFloat((taxable * cg / 100).toFixed(2));
-    const sgstAmt = parseFloat((taxable * sg / 100).toFixed(2));
-    const exactNet = taxable + igstAmt + cgstAmt + sgstAmt;
-    const roundedNet = isRoundedRef.current ? Math.round(exactNet) : exactNet;
-    const roundOff = isRoundedRef.current ? parseFloat((roundedNet - exactNet).toFixed(2)) : 0;
-
-    let roundOffText = '';
-    if (isRoundedRef.current) {
-      roundOffText = `Round Off              : ${roundOff >= 0 ? '+' : ''}${roundOff.toFixed(2)}\n`;
-    }
-
-    taxEl.innerText = `Total Taxable Amount : ${fmtN(taxable)}\nSGST @ ${sg}%              : ${fmtN(sgstAmt)}\nCGST @ ${cg}%              : ${fmtN(cgstAmt)}\nIGST @ ${ig}%             : ${fmtN(igstAmt)}\n${roundOffText}Net Payable Amount  : ${fmtN(roundedNet)}`;
-    // Update Amount in Words
-    const wordsEl = paperRef.current?.querySelector<HTMLElement>('[data-words]');
-    if (wordsEl && roundedNet > 0) wordsEl.innerText = amountToWords(roundedNet);
-  }
 
   useEffect(() => {
     fetch('/api/banks').then(r => r.json()).then(data => {
@@ -397,78 +218,143 @@ function InvoiceEditorInner() {
 
   const inv = invoices.find(i => i.id === invId);
   const party = inv ? parties.find(p => p.id === inv.partyId) : undefined;
-  // Init GST rate from invoice lines
   useEffect(() => { if (inv?.lines?.[0]?.taxRate) setIgstRate(inv.lines[0].taxRate); }, [inv?.id]);
   const bank = banks.find(b => b.id === selectedBankId) ?? banks[0];
 
-  // ── Helper: write bank into paper DOM ────────────────────────────────────
   const applyBankToPaper = useCallback((b: typeof banks[number] | undefined, paper: HTMLElement) => {
     if (!b) return;
     const bankText = `Bank           : ${b.bank_name}\nA/c Name     : ${b.account_name}\nAccount No.  : ${b.account_number}\nIFSC Code    : ${b.ifsc}\nBranch         : ${b.branch}`;
     const bankFooter = `${b.bank_name}, A/c Name: ${b.account_name}, A/C No. - ${b.account_number}, IFSC Code - ${b.ifsc}, Branch - ${b.branch}`;
-
-    // Try data-attribute selectors first (new HTML)
     const bankDiv = paper.querySelector<HTMLElement>('[data-bank-detail]');
     const footerDiv = paper.querySelector<HTMLElement>('[data-bank-footer]');
-
-    if (bankDiv) {
-      bankDiv.innerText = bankText;
-    } else {
-      // Fallback: find the contentEditable div containing "Bank" and "IFSC"
-      paper.querySelectorAll<HTMLElement>('[contenteditable]').forEach(el => {
-        const t = el.innerText;
-        if (t.includes('Bank') && t.includes('IFSC') && !t.includes('A/C No.')) {
-          el.innerText = bankText;
-        }
-      });
-    }
-
-    if (footerDiv) {
-      footerDiv.innerText = bankFooter;
-    } else {
-      // Fallback: find the footer line containing "A/C No."
-      paper.querySelectorAll<HTMLElement>('[contenteditable]').forEach(el => {
-        const t = el.innerText;
-        if (t.includes('A/C No.') && t.includes('IFSC Code')) {
-          el.innerText = bankFooter;
-        }
-      });
-    }
+    if (bankDiv) bankDiv.innerText = bankText;
+    if (footerDiv) footerDiv.innerText = bankFooter;
   }, []);
 
-  // ── Update bank cells whenever bank selection changes ─────────────────────
   useEffect(() => {
     const paper = paperRef.current;
     if (!paper || !bank) return;
     applyBankToPaper(bank, paper);
   }, [selectedBankId, bank, applyBankToPaper]);
 
-  // ── Load saved HTML, then re-apply current bank on top ───────────────────
-  const [savedFormat1Rows, setSavedFormat1Rows] = useState<string[][] | null>(null);
-  const [savedExtraColumns, setSavedExtraColumns] = useState<{ extraColumns: import('@/components/HotInvoiceTable').HotColDef[]; extraValues: string[][] } | null>(null);
-  // Bumped once the saved HTML has actually been fetched and applied to state, so
-  // HotInvoiceTable (Format 1) mounts fresh with the real saved data instead of
-  // capturing whatever was present at first paint (its initialData is only read once
-  // per mount). Without this, saved edits could silently be replaced by stale/fallback
-  // data on next open because Handsontable never re-reads props after mounting.
+  function applyGstRates(ig: number, cg: number, sg: number) {
+    setIgstRate(ig); setCgstRate(cg); setSgstRate(sg);
+  }
+
+  // ── Column set for whichever format is currently active ──────────────────
+  const activeColumns: HotColDef[] = useMemo(() => {
+    if (invoiceFormat === 'custom') {
+      const cf = customFormats.find(f => f.id === activeCfId);
+      return cf ? buildCustomColumns(cf.columns) : [];
+    }
+    return FORMAT_COLUMNS[invoiceFormat];
+  }, [invoiceFormat, activeCfId, customFormats]);
+
+  // ── Build line rows from AWB/docket bookings (used only for a BRAND NEW invoice
+  //    that has never been saved before -- once saved, the grid's own data is authoritative) ──
+  type LineRow = { origin:string; dest:string; boxes:string; chgWt:string; rate:string; freight:string; tsp:string; taxable:string; awbNo:string; date:string };
+  const lineRows: LineRow[] = useMemo(() => {
+    if (!inv) return [];
+    const rows: LineRow[] = [];
+    let runningTSP = 0;
+    const mainLines = inv.lines.filter(l => !l.description.toLowerCase().includes('handling') && !l.description.toLowerCase().includes('markup'));
+    const markupLines = inv.lines.filter(l => l.description.toLowerCase().includes('handling') || l.description.toLowerCase().includes('markup'));
+    const useLines = mainLines.length > 0 ? mainLines : inv.lines;
+
+    useLines.forEach((line, i) => {
+      const metaMatch = line.description.match(/\|\|META\|\|(.+)$/);
+      if (metaMatch) {
+        try {
+          const meta = JSON.parse(metaMatch[1]) as {
+            docketNo: string; origin: string; destination: string;
+            weight: number; pieces: number; rate: number; freight: number;
+            bookingDate: string;
+          };
+          const markupLine = markupLines.find(ml =>
+            ml.description.includes(meta.docketNo) ||
+            ml.description.includes(inv.bookingRef.split(',')[i]?.trim() ?? '')
+          );
+          const tspAmt = markupLine?.amount ?? 0;
+          if (mainLines.length > 0) runningTSP += tspAmt;
+          const [dy, dm, dd] = (meta.bookingDate || inv.invoiceDate).split('-');
+          rows.push({
+            origin: meta.origin, dest: meta.destination,
+            boxes: String(meta.pieces || 1),
+            chgWt: meta.weight > 0 ? String(meta.weight) : '',
+            rate: meta.rate > 0 ? String(meta.rate) : '',
+            freight: fmt(line.amount), awbNo: meta.docketNo,
+            date: `${dd}/${dm}/${dy.slice(-2)}`,
+            tsp: tspAmt > 0 ? fmt(tspAmt) : '0.00',
+            taxable: fmt(line.amount + tspAmt),
+          });
+          return;
+        } catch { /* fall through */ }
+      }
+
+      const m    = line.description.match(/([A-Z]{3})[→\->]([A-Z]{3})/i);
+      const rm   = line.description.match(/@\s*₹?([\d.]+)/i);
+      const awbM = line.description.match(/\b(\d{3}-\d{7,8})\b/);
+      const refs = inv.bookingRef.split(',');
+      const ref  = (awbM?.[1] ?? refs[i]?.trim() ?? refs[0]?.trim() ?? '').trim();
+
+      const awbBk  = awbBookings.find(a => a.awbNo === ref || a.awbNo === awbM?.[1]);
+      const dktRef = refs[i]?.trim() ?? refs[0]?.trim() ?? '';
+      const dktBk  = !awbBk ? docketBookings.find(d => d.docketNo === dktRef || d.docketNo === ref) : undefined;
+      const booking = awbBk ?? dktBk;
+
+      const boxes = booking ? String(awbBk ? awbBk.pieces : (dktBk?.pieces ?? 1)) : String(Math.round(line.qty));
+      const dktWeight = dktBk?.weight ?? 0;
+      const awbWeight = awbBk?.weight ?? 0;
+      const chgWt = booking
+        ? String(awbBk ? awbWeight : (dktWeight > 0 ? dktWeight : ''))
+        : (line.description.match(/(\d+(?:\.\d+)?)\s*kg/i)?.[1] ?? '');
+
+      let rate: string;
+      if (awbBk) rate = rm?.[1] ?? String(awbBk.baseRate);
+      else if (dktBk) {
+        const dktRate = dktWeight > 0 ? parseFloat((dktBk.rateFittedAmount / dktWeight).toFixed(2)) : 0;
+        rate = rm?.[1] ?? (dktRate > 0 ? String(dktRate) : '');
+      } else rate = rm?.[1] ?? String(line.rate);
+
+      const myMarkup = markupLines.find(ml => ml.description.includes(ref) || ml.description.includes(dktRef));
+      const tspAmt = myMarkup?.amount ?? 0;
+      if (mainLines.length > 0) runningTSP += tspAmt;
+
+      const originVal = awbBk?.origin ?? dktBk?.origin ?? m?.[1] ?? '';
+      const destVal   = awbBk?.destination ?? dktBk?.destination ?? m?.[2] ?? '';
+      const displayRef = dktBk?.docketNo ?? awbBk?.awbNo ?? ref;
+
+      rows.push({
+        origin: originVal, dest: destVal, boxes, chgWt, rate,
+        freight: fmt(line.amount), awbNo: displayRef,
+        date: (() => { const rawDate = dktBk?.bookingDate ?? awbBk?.bookingDate ?? inv.invoiceDate; const [ry,rm2,rd] = rawDate.split('-'); return `${rd}/${rm2}/${ry.slice(-2)}`; })(),
+        tsp: tspAmt > 0 ? fmt(tspAmt) : '0.00',
+        taxable: fmt(line.amount + tspAmt),
+      });
+    });
+    return rows;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inv?.id]);
+
+  // ── Load saved HTML: detect saved format + extract row data for the active grid ──
+  const [savedRowsByFormat, setSavedRowsByFormat] = useState<Record<string, string[][]>>({});
+  const [extraColsByFormat, setExtraColsByFormat] = useState<Record<string, { extraColumns: HotColDef[]; extraValues: string[][] }>>({});
   const [loadGen, setLoadGen] = useState(0);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+
   useEffect(() => {
     if (!inv || !paperRef.current) return;
     fetch(`/api/invoices/${inv.id}/editor-html`)
       .then(r => r.json())
       .then(data => {
-        if (!data.html || !paperRef.current) {
-          setLoadGen(g => g + 1);
-          return;
-        }
+        if (!paperRef.current) return;
+        if (!data.html) { setHasLoadedOnce(true); setLoadGen(g => g + 1); return; }
+
         const temp = document.createElement('div');
         temp.innerHTML = data.html;
         const savedTable = temp.querySelector<HTMLTableElement>('#awb-body');
 
-        // Detect which format this invoice was actually last saved in, from the saved
-        // table's own marker attribute, and restore that -- instead of always reopening
-        // in Format 1 regardless of what was last used.
-        let detectedFormat: 'format1'|'format2'|'format3'|'musashi'|'custom' = 'format1';
+        let detectedFormat: FormatKey = 'format1';
         let detectedCfId: string | null = null;
         if (savedTable) {
           if (savedTable.hasAttribute('data-format2')) detectedFormat = 'format2';
@@ -480,844 +366,126 @@ function InvoiceEditorInner() {
           }
         }
 
-        if (detectedFormat === 'custom' && detectedCfId) {
-          const cf = customFormats.find(f => f.id === detectedCfId);
-          if (cf) { _activeCfColsRef.current = cf.columns; setActiveCfId(detectedCfId); }
-          else {
-            // customFormats hasn't loaded yet -- cache the html and retry once it arrives,
-            // rendering Format 1 as a safe placeholder in the meantime.
-            _pendingCfHtmlRef.current = data.html;
-            setPendingCfRestore(detectedCfId);
-            detectedFormat = 'format1';
-          }
-        }
-        if (detectedFormat !== invoiceFormat) setInvoiceFormat(detectedFormat);
-
-        if (detectedFormat === 'format1') {
-          // Never overwrite the paper's innerHTML while Handsontable (React-owned) is mounted.
-          // Extract the row data into state, then bump loadGen so HotInvoiceTable remounts
-          // fresh with this data as its initialRows (its key includes loadGen).
-          if (savedTable) {
-            setSavedFormat1Rows(parseHtmlTableToRows(savedTable, FORMAT_COLUMNS.format1));
-            setSavedExtraColumns(parseExtraColumnsFromHtmlTable(savedTable, FORMAT_COLUMNS.format1));
-          }
-          const currentBank = banks.find(b => b.id === selectedBankId) ?? banks[0];
-          if (currentBank) applyBankToPaper(currentBank, paperRef.current);
-          setLoadGen(g => g + 1);
-          return;
+        if (detectedFormat === 'custom') {
+          if (detectedCfId) setActiveCfId(detectedCfId);
+          else detectedFormat = 'format1';
         }
 
-        setSavedFormat1Rows(null);
-        setSavedExtraColumns(null);
-        paperRef.current.innerHTML = temp.innerHTML;
-        // Re-apply the currently selected bank AFTER html is restored
+        if (savedTable) {
+          const cfForCols = detectedCfId ? customFormats.find(f => f.id === detectedCfId) : undefined;
+          const cols = detectedFormat === 'custom'
+            ? (cfForCols ? buildCustomColumns(cfForCols.columns) : [])
+            : FORMAT_COLUMNS[detectedFormat as 'format1'|'format2'|'format3'|'musashi'];
+          if (cols.length > 0) {
+            const parsedRows = parseHtmlTableToRows(savedTable, cols);
+            setSavedRowsByFormat(prev => ({ ...prev, [detectedFormat === 'custom' ? `custom:${detectedCfId}` : detectedFormat]: parsedRows }));
+            const extra = parseExtraColumnsFromHtmlTable(savedTable, cols);
+            if (extra) {
+              const key = detectedFormat === 'custom' ? `custom:${detectedCfId}` : detectedFormat;
+              setExtraColsByFormat(prev => ({ ...prev, [key]: extra }));
+            }
+          }
+        }
+
+        setInvoiceFormat(detectedFormat);
         const currentBank = banks.find(b => b.id === selectedBankId) ?? banks[0];
         if (currentBank) applyBankToPaper(currentBank, paperRef.current);
-        // Trigger recalc so Grand Total & Tax Summary sync with saved data (legacy formats only)
-        paperRef.current.querySelector('#awb-body')?.dispatchEvent(new Event('input', { bubbles: true }));
+        setHasLoadedOnce(true);
         setLoadGen(g => g + 1);
       })
-      .catch(() => { setLoadGen(g => g + 1); });
+      .catch(() => { setHasLoadedOnce(true); setLoadGen(g => g + 1); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inv?.id]);
 
-  // Completes a custom-format restore that was deferred because customFormats hadn't
-  // finished loading yet when the saved HTML first arrived.
-  useEffect(() => {
-    if (!pendingCfRestore || !_pendingCfHtmlRef.current || !paperRef.current) return;
-    const cf = customFormats.find(f => f.id === pendingCfRestore);
-    if (!cf) return;
-    _activeCfColsRef.current = cf.columns;
-    setActiveCfId(pendingCfRestore);
-    setInvoiceFormat('custom');
-    const temp = document.createElement('div');
-    temp.innerHTML = _pendingCfHtmlRef.current;
-    paperRef.current.innerHTML = temp.innerHTML;
-    const currentBank = banks.find(b => b.id === selectedBankId) ?? banks[0];
-    if (currentBank) applyBankToPaper(currentBank, paperRef.current);
-    paperRef.current.querySelector('#awb-body')?.dispatchEvent(new Event('input', { bubbles: true }));
-    _pendingCfHtmlRef.current = null;
-    setPendingCfRestore(null);
-  }, [pendingCfRestore, customFormats, banks, selectedBankId, applyBankToPaper]);
-
-  // Auto-calculate Freight = ChgWeight × Rate, Taxable = Freight + other cols, Grand Total
-  useEffect(() => {
-    const paper = paperRef.current;
-    if (!paper) return;
-
-    function isNumericCell(td: HTMLTableCellElement): boolean {
-      const tr = td.parentElement;
-      if (!tr) return false;
-      const tbody = tr.parentElement;
-      if (!tbody || tbody.tagName.toLowerCase() !== 'tbody') return false;
-      
-      // Skip header row
-      if (tr === tbody.firstElementChild) return false;
-      
-      // Skip grand total row
-      if (tr.hasAttribute('data-grand-total')) return false;
-      
-      const table = tbody.closest('table');
-      if (!table) return false;
-      
-      const colIdx = Array.from(tr.children).indexOf(td);
-      
-      if (table.hasAttribute('data-format2')) {
-        // Format 2: Box (8), Weight (9), Rate (10), Freight (11), ODA (12), Docket chg (13), Amount (14)
-        return [8, 9, 10, 11, 12, 13, 14].includes(colIdx);
-      } else if (table.hasAttribute('data-format3')) {
-        // Format 3: Pkt (5), Wt (6), Freight (7), F/C (8), GMR (9), TSP (10), Clearance (11), Awb Fees (12), H Chge (13), Amount (14)
-        return [5, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(colIdx);
-      } else if (table.hasAttribute('data-musashi-fmt')) {
-        // Musashi: Pkt (6), Wt (7), Rate (8), Freight (9), AWB (10), Pickup (11), Delivery (12), Total Amt (13)
-        return [6, 7, 8, 9, 10, 11, 12, 13].includes(colIdx);
-      } else if (table.hasAttribute('data-custom-fmt')) {
-        const cols = _activeCfColsRef.current;
-        return cols.length > 0 ? (cols[colIdx]?.isNumeric ?? false) : false;
-      } else {
-        // Format 1: Boxes (5), Charg. Weight (6), Rate (7), Freight (8), AWB & DO (9), Due Carrier (10), Forwrd & Others (11), TSP & Others (12), Taxable Amount (13)
-        return [5, 6, 7, 8, 9, 10, 11, 12, 13].includes(colIdx);
-      }
-    }
-
-    const parseNum = (s: string) => {
-      const clean = s.replace(/,/g, '').trim();
-      if (!clean) return null;
-      // Evaluate mathematical formulas (BODMAS + %)
-      if (/[+\-*/%]/.test(clean) && /^[\d\s+\-*/().%]+$/.test(clean)) {
-        try {
-          const normalized = clean.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');
-          // eslint-disable-next-line no-new-func
-          const result = Function('"use strict"; return (' + normalized + ')')() as number;
-          if (isFinite(result)) return result;
-        } catch {}
-      }
-      const n = parseFloat(clean);
-      return isNaN(n) ? null : n;
-    };
-
-    function recalcFormat1() {
-      const awbBody = paper!.querySelector<HTMLTableSectionElement>('#awb-body tbody');
-      if (!awbBody) return;
-      const rows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')].filter(r => !r.dataset.grandTotal && r !== awbBody.firstElementChild);
-
-      let totalBoxes = 0, totalChgWt = 0, totalFreight = 0, totalAwbDo = 0, totalCarrier = 0, totalForwrd = 0, totalTsp = 0, totalTaxable = 0;
-
-      rows.forEach(row => {
-        const cells = row.querySelectorAll<HTMLTableCellElement>('td');
-        if (cells.length < 14) return;
-        const getCellText = (idx: number) => cells[idx]?.querySelector('[contenteditable]')?.textContent?.trim() ?? cells[idx]?.textContent?.trim() ?? '';
-        const setCellText = (idx: number, val: string) => {
-          const ce = cells[idx]?.querySelector('[contenteditable]') as HTMLElement | null;
-          if (ce) ce.textContent = val;
-        };
-
-        const awbNo = getCellText(2);
-        const boxesText = getCellText(5);
-        const chgWtText = getCellText(6);
-
-        // Skip completely blank padded rows
-        if (!awbNo && !boxesText && !chgWtText) {
-          setCellText(8, '');
-          setCellText(13, '');
-          return;
-        }
-
-        const boxes = parseNum(boxesText) ?? 0;
-        const chgWt = parseNum(chgWtText) ?? 0;
-        const rateRaw = getCellText(7);
-        const rateNum = parseNum(rateRaw); // null if 'na' or empty
-
-        // Freight = ChgWeight × Rate (only if rate is numeric)
-        let freight = parseNum(getCellText(8)) ?? 0;
-        if (rateNum !== null && chgWt > 0) {
-          freight = parseFloat((chgWt * rateNum).toFixed(2));
-          setCellText(8, freight.toFixed(2));
-        }
-
-        const awbDo    = parseNum(getCellText(9))  ?? 0;
-        const carrier  = parseNum(getCellText(10)) ?? 0;
-        const forwrd   = parseNum(getCellText(11)) ?? 0;
-        const tsp      = parseNum(getCellText(12)) ?? 0;
-
-        // Taxable = Freight + AWB&DO + Carrier + Forwrd + TSP
-        const taxable = parseFloat((freight + awbDo + carrier + forwrd + tsp).toFixed(2));
-        setCellText(13, taxable.toFixed(2));
-
-        totalBoxes    += boxes;
-        totalChgWt    += chgWt;
-        totalFreight  += freight;
-        totalAwbDo    += awbDo;
-        totalCarrier  += carrier;
-        totalForwrd   += forwrd;
-        totalTsp      += tsp;
-        totalTaxable  += taxable;
-      });
-
-      // Update grand total row
-      const gtRow = awbBody.querySelector<HTMLTableRowElement>('[data-grand-total]');
-      if (gtRow) {
-        const gcells = gtRow.querySelectorAll<HTMLTableCellElement>('td');
-        const setGT = (idx: number, val: string) => {
-          const ce = gcells[idx]?.querySelector('[contenteditable]') as HTMLElement | null;
-          if (ce) ce.textContent = val;
-          else if (gcells[idx]) gcells[idx].textContent = val;
-        };
-        setGT(5, totalBoxes.toString());
-        setGT(6, totalChgWt.toFixed(2));
-        setGT(8, totalFreight.toFixed(2));
-        setGT(9, totalAwbDo.toFixed(2));
-        setGT(10, totalCarrier.toFixed(2));
-        setGT(11, totalForwrd.toFixed(2));
-        setGT(12, totalTsp.toFixed(2));
-        setGT(13, totalTaxable.toFixed(2));
-      }
-
-      return totalTaxable;
-    }
-
-    function recalcFormat2() {
-      const awbBody = paper!.querySelector<HTMLTableSectionElement>('#awb-body tbody');
-      if (!awbBody) return;
-      const rows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')].filter(r => !r.dataset.grandTotal && r !== awbBody.firstElementChild);
-
-      // Format 2 columns: 0=S.No, 1=Date, 2=Docket No, 3=Invoice no, 4=Origin, 5=Origin Airport, 6=Dest, 7=Dest Airport, 8=Box, 9=Weight, 10=Rate, 11=Freight, 12=ODA, 13=Docket chg, 14=Amount
-      let totalBox = 0, totalWeight = 0, totalFreight = 0, totalODA = 0, totalDocketChg = 0, totalAmount = 0;
-
-      rows.forEach(row => {
-        const cells = row.querySelectorAll<HTMLTableCellElement>('td');
-        if (cells.length < 15) return;
-        const getCellText = (idx: number) => cells[idx]?.querySelector('[contenteditable]')?.textContent?.trim() ?? cells[idx]?.textContent?.trim() ?? '';
-        const setCellText = (idx: number, val: string) => {
-          const ce = cells[idx]?.querySelector('[contenteditable]') as HTMLElement | null;
-          if (ce) ce.textContent = val;
-        };
-
-        const docketNo = getCellText(2);
-        const weightText = getCellText(9);
-        const rateText = getCellText(10);
-
-        // Skip completely blank padded rows
-        if (!docketNo && !weightText && !rateText) {
-          setCellText(11, '');
-          setCellText(14, '');
-          return;
-        }
-
-        const box = parseNum(getCellText(8)) ?? 0;
-        const weight = parseNum(weightText) ?? 0;
-        const rateRaw = getCellText(10);
-        const rateNum = parseNum(rateRaw);
-
-        // Freight = Weight × Rate
-        let freight = parseNum(getCellText(11)) ?? 0;
-        if (rateNum !== null && weight > 0) {
-          freight = parseFloat((weight * rateNum).toFixed(2));
-          setCellText(11, freight.toFixed(2));
-        }
-
-        const oda = parseNum(getCellText(12)) ?? 0;
-        const docketChg = parseNum(getCellText(13)) ?? 0;
-
-        // Amount = Freight + ODA + Docket chg
-        const amount = parseFloat((freight + oda + docketChg).toFixed(2));
-        setCellText(14, amount.toFixed(2));
-
-        totalBox       += box;
-        totalWeight    += weight;
-        totalFreight   += freight;
-        totalODA       += oda;
-        totalDocketChg += docketChg;
-        totalAmount    += amount;
-      });
-
-      // Update grand total row
-      const gtRow = awbBody.querySelector<HTMLTableRowElement>('[data-grand-total]');
-      if (gtRow) {
-        const gcells = gtRow.querySelectorAll<HTMLTableCellElement>('td');
-        const setGT = (idx: number, val: string) => {
-          const ce = gcells[idx]?.querySelector('[contenteditable]') as HTMLElement | null;
-          if (ce) ce.textContent = val;
-          else if (gcells[idx]) gcells[idx].textContent = val;
-        };
-        setGT(8,  totalBox.toString());
-        setGT(9,  totalWeight.toFixed(2));
-        setGT(11, totalFreight.toFixed(2));
-        setGT(12, totalODA.toFixed(2));
-        setGT(13, totalDocketChg.toFixed(2));
-        setGT(14, totalAmount.toFixed(2));
-      }
-
-      return totalAmount;
-    }
-
-    function recalcFormat3() {
-      const awbBody = paper!.querySelector<HTMLTableSectionElement>('#awb-body tbody');
-      if (!awbBody) return;
-      const rows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')].filter(r => !r.dataset.grandTotal && r !== awbBody.firstElementChild);
-      // Cols: 0=S.No, 1=Date, 2=AWB NO, 3=Invoice, 4=Sector, 5=Pkt, 6=Wt, 7=Freight, 8=F/C, 9=GMR, 10=TSP, 11=Clearance, 12=Awb Fees, 13=H Chge, 14=Amount
-      let totalPkt=0, totalWt=0, totalFreight=0, totalFC=0, totalGMR=0, totalTSP=0, totalClearance=0, totalAwbFees=0, totalHChge=0, totalAmount=0;
-
-      rows.forEach(row => {
-        const cells = row.querySelectorAll<HTMLTableCellElement>('td');
-        if (cells.length < 15) return;
-        const getCellText = (idx: number) => cells[idx]?.querySelector('[contenteditable]')?.textContent?.trim() ?? cells[idx]?.textContent?.trim() ?? '';
-        const setCellText = (idx: number, val: string) => {
-          const ce = cells[idx]?.querySelector('[contenteditable]') as HTMLElement | null;
-          if (ce) ce.textContent = val;
-        };
-
-        const awbNo = getCellText(2);
-        const pktText = getCellText(5);
-        const wtText = getCellText(6);
-
-        // Skip completely blank padded rows
-        if (!awbNo && !pktText && !wtText) {
-          setCellText(14, '');
-          return;
-        }
-
-        const pkt       = parseNum(pktText)  ?? 0;
-        const wt        = parseNum(wtText)  ?? 0;
-        const freight   = parseNum(getCellText(7))  ?? 0;
-        const fc        = parseNum(getCellText(8))  ?? 0;
-        const gmr       = parseNum(getCellText(9))  ?? 0;
-        const tsp       = parseNum(getCellText(10)) ?? 0;
-        const clearance = parseNum(getCellText(11)) ?? 0;
-        const awbFees   = parseNum(getCellText(12)) ?? 0;
-        const hChge     = parseNum(getCellText(13)) ?? 0;
-
-        const amount = parseFloat((freight + fc + gmr + tsp + clearance + awbFees + hChge).toFixed(2));
-        setCellText(14, amount.toFixed(2));
-
-        totalPkt       += pkt;
-        totalWt        += wt;
-        totalFreight   += freight;
-        totalFC        += fc;
-        totalGMR       += gmr;
-        totalTSP       += tsp;
-        totalClearance += clearance;
-        totalAwbFees   += awbFees;
-        totalHChge     += hChge;
-        totalAmount    += amount;
-      });
-
-      // Update grand total row
-      const gtRow = awbBody.querySelector<HTMLTableRowElement>('[data-grand-total]');
-      if (gtRow) {
-        const gcells = gtRow.querySelectorAll<HTMLTableCellElement>('td');
-        const setGT = (idx: number, val: string) => {
-          const ce = gcells[idx]?.querySelector('[contenteditable]') as HTMLElement | null;
-          if (ce) ce.textContent = val;
-          else if (gcells[idx]) gcells[idx].textContent = val;
-        };
-        setGT(5,  totalPkt.toString());
-        setGT(6,  totalWt.toFixed(2));
-        setGT(7,  totalFreight.toFixed(2));
-        setGT(8,  totalFC.toFixed(2));
-        setGT(9,  totalGMR.toFixed(2));
-        setGT(10, totalTSP.toFixed(2));
-        setGT(11, totalClearance.toFixed(2));
-        setGT(12, totalAwbFees.toFixed(2));
-        setGT(13, totalHChge.toFixed(2));
-        setGT(14, totalAmount.toFixed(2));
-      }
-
-      return totalAmount;
-    }
-
-    function recalcMusashi() {
-      // Cols: 0=S.No, 1=Date, 2=Docket No, 3=Invoice No, 4=Origin, 5=Dest, 6=Pkt, 7=Wt, 8=Rate, 9=Freight, 10=AWB, 11=Pickup, 12=Delivery, 13=Total Amt
-      const awbBody = paper!.querySelector<HTMLTableSectionElement>('#awb-body tbody');
-      if (!awbBody) return;
-      const rows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')].filter(r => !r.dataset.grandTotal && r !== awbBody.firstElementChild);
-
-      let totalPkt = 0, totalWt = 0, totalFreight = 0, totalAwb = 0, totalPickup = 0, totalDelivery = 0, totalAmt = 0;
-
-      rows.forEach(row => {
-        const cells = row.querySelectorAll<HTMLTableCellElement>('td');
-        if (cells.length < 14) return;
-        const getT = (i: number) => cells[i]?.querySelector('[contenteditable]')?.textContent?.trim() ?? '';
-        const setT = (i: number, v: string) => {
-          const el = cells[i]?.querySelector('[contenteditable]') as HTMLElement | null;
-          if (el) el.textContent = v;
-        };
-
-        const docketNo = getT(2);
-        const pktText  = getT(6);
-        const wtText   = getT(7);
-        if (!docketNo && !pktText && !wtText) { setT(9, ''); setT(13, ''); return; }
-
-        const pkt      = parseNum(pktText) ?? 0;
-        const wt       = parseNum(wtText) ?? 0;
-        const rateNum  = parseNum(getT(8));
-
-        // Freight = Wt × Rate (auto-calc if rate is numeric)
-        let freight = parseNum(getT(9)) ?? 0;
-        if (rateNum !== null && wt > 0) {
-          freight = parseFloat((wt * rateNum).toFixed(2));
-          setT(9, freight.toFixed(2));
-        }
-
-        const awb      = parseNum(getT(10)) ?? 0;
-        const pickup   = parseNum(getT(11)) ?? 0;
-        const delivery = parseNum(getT(12)) ?? 0;
-        const total    = parseFloat((freight + awb + pickup + delivery).toFixed(2));
-        setT(13, total.toFixed(2));
-
-        totalPkt      += pkt;
-        totalWt       += wt;
-        totalFreight  += freight;
-        totalAwb      += awb;
-        totalPickup   += pickup;
-        totalDelivery += delivery;
-        totalAmt      += total;
-      });
-
-      const gtRow = awbBody.querySelector<HTMLTableRowElement>('[data-grand-total]');
-      if (gtRow) {
-        const gc = gtRow.querySelectorAll<HTMLTableCellElement>('td');
-        const setGT = (i: number, v: string) => {
-          const el = gc[i]?.querySelector('[contenteditable]') as HTMLElement | null;
-          if (el) el.textContent = v; else if (gc[i]) gc[i].textContent = v;
-        };
-        setGT(6,  totalPkt.toString());
-        setGT(7,  totalWt.toFixed(2));
-        setGT(9,  totalFreight.toFixed(2));
-        setGT(10, totalAwb.toFixed(2));
-        setGT(11, totalPickup.toFixed(2));
-        setGT(12, totalDelivery.toFixed(2));
-        setGT(13, totalAmt.toFixed(2));
-      }
-      return totalAmt;
-    }
-
-    function recalcCustom() {
-      // Dynamic: columns defined by user. Total col = isTotal. Numeric cols auto-summed into total.
-      const cols = _activeCfColsRef.current;
-      if (!cols.length) return;
-      const awbBody = paper!.querySelector<HTMLTableSectionElement>('#awb-body tbody');
-      if (!awbBody) return;
-      const dataRows = [...awbBody.querySelectorAll<HTMLTableRowElement>('tr')]
-        .filter(r => !r.dataset.grandTotal && r !== awbBody.firstElementChild);
-
-      const totalIdx = cols.findIndex(c => c.isTotal);
-      const numericIdxs = cols.map((c, i) => c.isNumeric && !c.isTotal ? i : -1).filter(i => i >= 0);
-      const colTotals: number[] = cols.map(() => 0);
-
-      dataRows.forEach(row => {
-        const cells = row.querySelectorAll<HTMLTableCellElement>('td');
-        const getT = (i: number) => cells[i]?.querySelector('[contenteditable]')?.textContent?.trim() ?? '';
-        const setT = (i: number, v: string) => { const el = cells[i]?.querySelector('[contenteditable]') as HTMLElement | null; if (el) el.textContent = v; };
-        // skip blank rows (check first non-S.No numeric col)
-        if (numericIdxs.length && !getT(numericIdxs[0])) { if (totalIdx >= 0) setT(totalIdx, ''); return; }
-        // auto-compute total = sum of all numeric (non-total) cols
-        let rowTotal = 0;
-        numericIdxs.forEach(i => { const v = parseNum(getT(i)) ?? 0; colTotals[i] += v; rowTotal += v; });
-        if (totalIdx >= 0) { const t = parseFloat(rowTotal.toFixed(2)); setT(totalIdx, t.toFixed(2)); colTotals[totalIdx] += t; }
-      });
-
-      const gtRow = awbBody.querySelector<HTMLTableRowElement>('[data-grand-total]');
-      if (gtRow) {
-        const gc = gtRow.querySelectorAll<HTMLTableCellElement>('td');
-        const setGT = (i: number, v: string) => { const el = gc[i]?.querySelector('[contenteditable]') as HTMLElement | null; if (el) el.textContent = v; else if (gc[i]) gc[i].textContent = v; };
-        [...numericIdxs, ...(totalIdx >= 0 ? [totalIdx] : [])].forEach(i => setGT(i, colTotals[i].toFixed(2)));
-      }
-      return totalIdx >= 0 ? colTotals[totalIdx] : colTotals[numericIdxs[numericIdxs.length - 1]] ?? 0;
-    }
-
-    function recalc() {
-      const isF2 = !!paper!.querySelector('[data-format2]');
-      const isF3 = !!paper!.querySelector('[data-format3]');
-      const isMusashi = !!paper!.querySelector('[data-musashi-fmt]');
-      const isCustom  = !!paper!.querySelector('[data-custom-fmt]');
-      const totalTaxable = isF3 ? (recalcFormat3() ?? 0) : isF2 ? (recalcFormat2() ?? 0) : isMusashi ? (recalcMusashi() ?? 0) : isCustom ? (recalcCustom() ?? 0) : (recalcFormat1() ?? 0);
-
-      // Update tax summary — detect GST structure from existing content
-      const taxSummaryEl = paper!.querySelector<HTMLElement>('[data-tax-summary]');
-      if (taxSummaryEl) {
-        const currentText = taxSummaryEl.innerText || '';
-        // Detect IGST rate (e.g. "IGST @ 18%")
-        const igstMatch  = currentText.match(/IGST\s*@\s*(\d+(?:\.\d+)?)/i);
-        const sgstMatch  = currentText.match(/SGST\s*@\s*(\d+(?:\.\d+)?)/i);
-        const igstRateVal = igstMatch  ? parseFloat(igstMatch[1])  : 18;
-        const sgstRate   = sgstMatch  ? parseFloat(sgstMatch[1])  : 0;
-        const cgstRate   = sgstRate; // always equal to SGST
-
-        const sgstAmt    = parseFloat((totalTaxable * sgstRate   / 100).toFixed(2));
-        const cgstAmt    = parseFloat((totalTaxable * cgstRate   / 100).toFixed(2));
-        const igstAmt    = parseFloat((totalTaxable * igstRateVal / 100).toFixed(2));
-        const exactNet   = totalTaxable + sgstAmt + cgstAmt + igstAmt;
-        const roundedNet = isRoundedRef.current ? Math.round(exactNet) : exactNet;
-        const roundOff   = isRoundedRef.current ? parseFloat((roundedNet - exactNet).toFixed(2)) : 0;
-
-        const fmtN = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        let roundOffText = '';
-        if (isRoundedRef.current) {
-          roundOffText = `Round Off              : ${roundOff >= 0 ? '+' : ''}${roundOff.toFixed(2)}\n`;
-        }
-
-        taxSummaryEl.innerText = `Total Taxable Amount : ${fmtN(totalTaxable)}\nSGST @ ${sgstRate}%              : ${fmtN(sgstAmt)}\nCGST @ ${cgstRate}%              : ${fmtN(cgstAmt)}\nIGST @ ${igstRateVal}%             : ${fmtN(igstAmt)}\n${roundOffText}Net Payable Amount  : ${fmtN(roundedNet)}`;
-        const wordsEl2 = paper!.querySelector<HTMLElement>('[data-words]');
-        if (wordsEl2 && roundedNet > 0) wordsEl2.innerText = amountToWords(roundedNet);
-      }
-    }
-
-    function handlePaperKeyDown(e: KeyboardEvent) {
-      if (e.key !== 'Enter') return;
-      const target = e.target as HTMLElement;
-      if (!target || !target.hasAttribute('contenteditable')) return;
-
-      const td = target.closest('td');
-      if (!td) return;
-
-      if (!isNumericCell(td)) return;
-
-      const text = target.innerText.trim();
-      // Only evaluate if it contains mathematical operators to avoid modifying plain text/integers
-      if (!/[+\-*/%]/.test(text)) {
-        e.preventDefault();
-        target.blur();
-        return;
-      }
-
-      const result = evalFormula(text);
-      if (result !== null) {
-        e.preventDefault();
-        target.innerText = result;
-        // Move caret to end
-        const range = document.createRange();
-        range.selectNodeContents(target);
-        range.collapse(false);
-        const sel = window.getSelection();
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-        target.dispatchEvent(new Event('input', { bubbles: true }));
-      } else {
-        e.preventDefault();
-        target.blur();
-      }
-    }
-
-    function handlePaperFocusOut(e: FocusEvent) {
-      const target = e.target as HTMLElement;
-      if (!target || !target.hasAttribute('contenteditable')) return;
-
-      const td = target.closest('td');
-      if (!td) return;
-
-      if (!isNumericCell(td)) return;
-
-      const text = target.innerText.trim();
-      // Only evaluate if it contains mathematical operators
-      if (!/[+\-*/%]/.test(text)) return;
-
-      const result = evalFormula(text);
-      if (result !== null) {
-        target.innerText = result;
-        target.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-    }
-
-    // ── Excel-style paste: distribute clipboard grid across cells ──────────
-    function handlePaperPaste(e: ClipboardEvent) {
-      const target = e.target as HTMLElement;
-      if (!target || !target.hasAttribute('contenteditable')) return;
-      const startTd = target.closest('td');
-      if (!startTd) return;
-      const awbBody = paper!.querySelector('#awb-body tbody') ?? paper!.querySelector('#awb-body');
-      if (!awbBody || !awbBody.contains(startTd)) return;
-
-      const clip = e.clipboardData?.getData('text/plain');
-      if (!clip) return;
-      // Excel/Sheets clipboard uses \r\n between rows and \t between columns
-      const grid = clip.replace(/\r/g, '').split('\n').filter((_, i, arr) => !(i === arr.length - 1 && arr[i] === ''))
-        .map(line => line.split('\t'));
-      if (grid.length === 1 && grid[0].length === 1) return; // single cell — let default paste happen
-
-      e.preventDefault();
-
-      const startTr = startTd.closest('tr');
-      if (!startTr) return;
-      let allRows = Array.from(awbBody.querySelectorAll('tr'));
-      const startRowIdx = allRows.indexOf(startTr as HTMLTableRowElement);
-      const startColIdx = Array.from(startTr.children).indexOf(startTd);
-      if (startRowIdx < 0 || startColIdx < 0) return;
-
-      const gtRow = awbBody.querySelector('[data-grand-total]');
-      const templateRow = (allRows.find(r => !r.hasAttribute('data-grand-total') && r !== awbBody.firstElementChild) ?? startTr) as HTMLTableRowElement;
-
-      grid.forEach((rowVals, ri) => {
-        let tr = allRows[startRowIdx + ri] as HTMLTableRowElement | undefined;
-        // If we've run out of rows (before the grand-total row), insert a new blank row
-        if (!tr || tr.hasAttribute('data-grand-total')) {
-          const newRow = templateRow.cloneNode(true) as HTMLTableRowElement;
-          newRow.querySelectorAll('[contenteditable]').forEach(el => { (el as HTMLElement).textContent = ''; });
-          if (gtRow) gtRow.before(newRow); else awbBody.appendChild(newRow);
-          allRows = Array.from(awbBody.querySelectorAll('tr'));
-          tr = newRow;
-        }
-        if (tr === awbBody.firstElementChild) return; // never overwrite header row
-        const cells = Array.from(tr.children) as HTMLTableCellElement[];
-        rowVals.forEach((val, ci) => {
-          const td = cells[startColIdx + ci];
-          if (!td) return;
-          const ce = td.querySelector<HTMLElement>('[contenteditable]');
-          if (ce) ce.textContent = val.trim();
-        });
-      });
-
-      startTr.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-
-    if (!paper.querySelector('#awb-body')) return;
-
-    paper.addEventListener('input', recalc);
-    paper.addEventListener('keydown', handlePaperKeyDown);
-    paper.addEventListener('focusout', handlePaperFocusOut);
-    paper.addEventListener('paste', handlePaperPaste as EventListener);
-
-    recalc(); // sync on initial load / after HTML restore
-
-    return () => {
-      paper.removeEventListener('input', recalc);
-      paper.removeEventListener('keydown', handlePaperKeyDown);
-      paper.removeEventListener('focusout', handlePaperFocusOut);
-      paper.removeEventListener('paste', handlePaperPaste as EventListener);
-    };
-  }, [inv?.id, invoiceFormat, isRounded]); // re-attach when invoice, format, or rounding changes
-
-  // ── Imperative format-switcher: replaces #awb-body directly in the DOM ────
-  // (needed because saved-HTML loading via innerHTML breaks React reconciliation)
-  useEffect(() => {
-    if (_prevFmtRef.current === invoiceFormat) return; // no actual change
-    const prevFormat = _prevFmtRef.current;
-    _prevFmtRef.current = invoiceFormat;
-
-    const paper = paperRef.current;
-    const currentInv = _invRef.current;
-    if (!paper || !currentInv) return;
-
-    const oldTable = paper.querySelector('#awb-body');
-
-    // Switching TO Format 1 is exclusively React's job (the {invoiceFormat === 'format1' ? ... }
-    // conditional JSX mounts <HotInvoiceTable> itself). This imperative effect must never touch
-    // the DOM in that case -- doing so races with React's own mount/unmount of that same node,
-    // which is exactly what caused the "removeChild: node not a child of this node" crash.
-    // Instead, capture whatever canonical (shared-field) data is in the OLD table right now and
-    // hand it to HotInvoiceTable via savedFormat1Rows, so edits made in the previous format
-    // still show up in the right cells after switching to Format 1.
-    if (invoiceFormat === 'format1') {
-      if (oldTable && prevFormat !== 'format1') {
-        const prevCols = prevFormat === 'custom'
-          ? (customFormats.find(f => f.id === activeCfId)?.columns.map(c => ({ header: c.header, key: c.header, numeric: c.isNumeric })) ?? [])
-          : FORMAT_COLUMNS[prevFormat as 'format2'|'format3'|'musashi'];
-        const canonRows = extractCanonicalRowsFromDom(oldTable as HTMLTableElement, prevCols);
-        const mapped = mapRowsBetweenFormats(canonRows, prevCols, FORMAT_COLUMNS.format1);
-        setSavedFormat1Rows(mapped);
-        setSavedExtraColumns(null);
-      }
-      setLoadGen(g => g + 1); // force HotInvoiceTable to remount fresh with the mapped data
-      return;
-    }
-
-    if (!oldTable) return;
-
-    const rows   = _lineRowsRef.current;
-    const awbBks = _awbBkRef.current;
-    const dktBks = _dktBkRef.current;
-    const tspTotal = _runningTSPRef.current || _markupAmtRef.current;
-
-    // Pull whatever canonical (shared-field) values are CURRENTLY on screen in the previous
-    // format -- from the live Handsontable instance if we're leaving Format 1, or straight
-    // from the DOM table otherwise -- and overlay them onto `rows` by row position, so edits
-    // made in the previous format (changed Rate, Date, Origin, added/removed rows, etc.) carry
-    // into the new format instead of being discarded and rebuilt from the original booking data.
-    const CANON_TARGET: HotColDef[] = [
-      { header: '', key: 'origin', canonical: 'origin' },
-      { header: '', key: 'awbNo', canonical: 'refNo' },
-      { header: '', key: 'date', canonical: 'date' },
-      { header: '', key: 'dest', canonical: 'dest' },
-      { header: '', key: 'boxes', canonical: 'boxes' },
-      { header: '', key: 'chgWt', canonical: 'weight' },
-      { header: '', key: 'rate', canonical: 'rate' },
-    ];
-    let mergedRows = rows;
-    if (prevFormat === 'format1' && hotRef.current) {
+  // ── Format switch: capture live canonical data from the CURRENT grid, then remount
+  //    with the new format's columns + mapped data ────────────────────────────────
+  function switchFormat(next: FormatKey, nextCfId?: string | null) {
+    if (next === invoiceFormat && (next !== 'custom' || nextCfId === activeCfId)) return;
+
+    if (hotRef.current) {
       const liveMatrix = hotRef.current.getRowsMatrix();
       const liveCols = hotRef.current.getColumns();
-      const canon = mapRowsBetweenFormats(liveMatrix, liveCols, CANON_TARGET);
-      mergedRows = rows.map((r, i) => canon[i] ? {
-        ...r,
-        origin: canon[i][0] || r.origin, awbNo: canon[i][1] || r.awbNo, date: canon[i][2] || r.date,
-        dest: canon[i][3] || r.dest, boxes: canon[i][4] || r.boxes, chgWt: canon[i][5] || r.chgWt, rate: canon[i][6] || r.rate,
-      } : r);
-    } else if (prevFormat !== 'format1') {
-      const prevCols = prevFormat === 'custom'
-        ? (customFormats.find(f => f.id === activeCfId)?.columns.map(c => ({ header: c.header, key: c.header, numeric: c.isNumeric })) ?? [])
-        : FORMAT_COLUMNS[prevFormat as 'format2'|'format3'|'musashi'];
-      const domCanon = extractCanonicalRowsFromDom(oldTable as HTMLTableElement, prevCols);
-      const canon = mapRowsBetweenFormats(domCanon, prevCols, CANON_TARGET);
-      mergedRows = rows.map((r, i) => canon[i] ? {
-        ...r,
-        origin: canon[i][0] || r.origin, awbNo: canon[i][1] || r.awbNo, date: canon[i][2] || r.date,
-        dest: canon[i][3] || r.dest, boxes: canon[i][4] || r.boxes, chgWt: canon[i][5] || r.chgWt, rate: canon[i][6] || r.rate,
-      } : r);
+
+      // 1) Persist the CURRENT format's own full-fidelity data (every column, not just the
+      //    shared/canonical ones) into savedRowsByFormat, keyed by the format we're LEAVING --
+      //    so its own format-specific columns (ODA, GMR, Pickup/Delivery, etc.) are never lost
+      //    when we come back to it later.
+      const leavingKey = rowsKey;
+      setSavedRowsByFormat(prev => ({ ...prev, [leavingKey]: liveMatrix }));
+      const leavingExtraIdxs = liveCols.map((c, i) => c.key.startsWith('extra') ? i : -1).filter(i => i >= 0);
+      if (leavingExtraIdxs.length > 0) {
+        setExtraColsByFormat(prev => ({ ...prev, [leavingKey]: {
+          extraColumns: leavingExtraIdxs.map(i => liveCols[i]),
+          extraValues: liveMatrix.map(row => leavingExtraIdxs.map(i => row[i] ?? '')),
+        } }));
+      }
+
+      // 2) Compute the canonical (shared-field) values from the live grid, then MERGE them into
+      //    the TARGET format's own previously-saved data (if any) -- never overwrite the target
+      //    format's format-specific columns with blanks. If the target has no saved data yet,
+      //    fall back to a fresh canonical-only projection (its format-specific columns will be
+      //    blank, which is correct since there's nothing else to seed them from).
+      if (liveMatrix.length > 0) {
+        const canonRows = mapRowsBetweenFormats(liveMatrix, liveCols, CANON_FIELDS);
+        const targetCols = next === 'custom'
+          ? (nextCfId ? buildCustomColumns(customFormats.find(f => f.id === nextCfId)?.columns ?? []) : [])
+          : FORMAT_COLUMNS[next as 'format1'|'format2'|'format3'|'musashi'];
+        if (targetCols.length > 0) {
+          const targetKey = next === 'custom' ? `custom:${nextCfId}` : next;
+          setSavedRowsByFormat(prev => {
+            const existingTarget = prev[targetKey];
+            const canonicalOnly = mapRowsBetweenFormats(canonRows, CANON_FIELDS, targetCols);
+            if (!existingTarget) return { ...prev, [targetKey]: canonicalOnly };
+            // Merge: keep the target's own existing values for as many rows as still exist,
+            // overwrite its canonical columns with the freshly-captured live values, and make
+            // the row COUNT match the live grid exactly (rows added/removed in the format being
+            // left must reflect the same way in every other format's saved data).
+            const merged = liveMatrix.map((_, i) => {
+              const canonForRow = canonRows[i];
+              const base = existingTarget[i] ? [...existingTarget[i]] : [...canonicalOnly[i]];
+              if (canonForRow) {
+                targetCols.forEach((tc, ci) => {
+                  if (tc.canonical) {
+                    const canonIdx = CANON_FIELDS.findIndex(cf => cf.canonical === tc.canonical);
+                    if (canonIdx >= 0 && canonForRow[canonIdx]) base[ci] = canonForRow[canonIdx];
+                  }
+                });
+              }
+              return base;
+            });
+            return { ...prev, [targetKey]: merged };
+          });
+        }
+      }
     }
 
-    // Helper: content-editable <td>
-    const ce = (text: string | number, align: string, bold = false) => {
-      const t = String(text ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      return `<td style="border:1px solid #000;padding:3px 5px;font-size:10px;vertical-align:top;text-align:${align}"><div contenteditable="true" style="outline:none;min-height:14px;font-family:Arial,sans-serif;font-size:10px;white-space:pre-wrap${bold?';font-weight:700':''}">${t}</div></td>`;
-    };
-    const emptyTd = () => `<td style="border:1px solid #000;padding:4px 6px;font-size:10px;background:#f8f8f8"></td>`;
-    const hdCell  = (h: string) => `<td style="border:1px solid #000;padding:4px 5px;font-size:9.5px;text-align:center;font-weight:700;white-space:pre-wrap;background:#f0f0f0"><div contenteditable="true" style="outline:none;min-height:14px;font-family:Arial,sans-serif;font-size:9.5px;font-weight:700;text-align:center;white-space:pre-wrap">${h}</div></td>`;
+    if (next === 'custom') setActiveCfId(nextCfId ?? null);
+    setInvoiceFormat(next);
+    setLoadGen(g => g + 1);
+  }
 
-    let tableHtml = '';
-
-    if (invoiceFormat === 'format2') {
-      const headers = ['S.No','Date','Docket No.','Invoice no','Origin','Origin Airport','Dest','Destination Airport','Box','Weight','Rate','Freight','ODA','Docket chg','Amount'];
-      let body = `<tr style="background:#f0f0f0">${headers.map(hdCell).join('')}</tr>`;
-
-      mergedRows.forEach((row, i) => {
-        const awbBk: any = awbBks.find((a: any) => a.awbNo === row.awbNo);
-        const linkedDkt: any = awbBk
-          ? dktBks.find((d: any) => d.linkedAwbId === awbBk.id)
-          : dktBks.find((d: any) => d.docketNo === row.awbNo);
-        body += `<tr>
-          ${ce(i+1,'center')}${ce(row.date,'center')}${ce(linkedDkt?.docketNo??'','center')}
-          ${ce(row.awbNo,'center')}${ce(row.origin,'center')}${ce(linkedDkt?.origin??row.origin,'center')}
-          ${ce(row.dest,'center')}${ce(linkedDkt?.destination??row.dest,'center')}${ce(row.boxes,'center')}
-          ${ce(row.chgWt,'right')}${ce(row.rate,'right')}${ce(row.freight,'right')}
-          ${ce('0.00','right')}${ce('0.00','right')}${ce(row.taxable,'right')}
-        </tr>`;
-      });
-
-      // Pad to at least 5 rows
-      for (let i = 0; i < Math.max(0, 5 - mergedRows.length); i++) {
-        body += '<tr>' + Array.from({length:15}).map((_,j) => ce('', j>=9?'right':'center')).join('') + '</tr>';
-      }
-
-      const tf = mergedRows.reduce((s,r) => s+(parseFloat(r.freight.replace(/,/g,''))||0), 0);
-      body += `<tr style="background:#f8f8f8;font-weight:700" data-grand-total="1">
-        ${emptyTd()}${emptyTd()}
-        <td style="border:1px solid #000;padding:4px 6px;font-size:10px;background:#f8f8f8;font-weight:700"><div contenteditable="true" style="outline:none;font-family:Arial,sans-serif;font-size:10px;font-weight:700">TOTAL</div></td>
-        ${emptyTd()}${emptyTd()}${emptyTd()}${emptyTd()}${emptyTd()}${emptyTd()}${emptyTd()}${emptyTd()}
-        ${ce(tf.toFixed(2),'right',true)}${ce('0.00','right',true)}${ce('0.00','right',true)}${ce(fmt(currentInv.subtotal),'right',true)}
-      </tr>`;
-
-      tableHtml = `<table id="awb-body" data-format2="1" style="border-collapse:collapse;width:100%;table-layout:fixed"><tbody>${body}</tbody></table>`;
-
-    } else if (invoiceFormat === 'format3') {
-      const headers = ['S.No','Date','AWB NO','Invoice','Sector','Pkt','Wt.','Freight','F/C','GMR','TSP','Clearance','Awb Fees','H Chge','Amount'];
-      let body = `<tr style="background:#f0f0f0">${headers.map(hdCell).join('')}</tr>`;
-
-      mergedRows.forEach((row, i) => {
-        body += `<tr>
-          ${ce(i+1,'center')}${ce(row.date,'center')}${ce(row.awbNo,'center')}
-          ${ce(currentInv?.invoiceNo??'','center')}${ce(`${row.origin}-${row.dest}`,'center')}${ce(row.boxes,'center')}
-          ${ce(row.chgWt,'right')}${ce(row.freight,'right')}
-          ${ce('0.00','right')}${ce('0.00','right')}${ce(row.tsp,'right')}
-          ${ce('0.00','right')}${ce('0.00','right')}${ce('0.00','right')}${ce(row.taxable,'right')}
-        </tr>`;
-      });
-
-      // Pad to at least 5 rows
-      for (let i = 0; i < Math.max(0, 5 - mergedRows.length); i++) {
-        body += '<tr>' + Array.from({length:15}).map((_,j) => ce('', j>=6?'right':'center')).join('') + '</tr>';
-      }
-
-      const tb3   = mergedRows.reduce((s,r) => s+(parseInt(r.boxes)||0), 0);
-      const tcw3  = mergedRows.reduce((s,r) => s+(parseFloat(r.chgWt)||0), 0);
-      const tf3   = mergedRows.reduce((s,r) => s+(parseFloat(r.freight.replace(/,/g,''))||0), 0);
-      const ttsp3 = mergedRows.reduce((s,r) => s+(parseFloat(r.tsp.replace(/,/g,''))||0), 0);
-      const ttax3 = mergedRows.reduce((s,r) => s+(parseFloat(r.taxable.replace(/,/g,''))||0), 0);
-
-      body += `<tr style="background:#f8f8f8;font-weight:700" data-grand-total="1">
-        ${emptyTd()}${emptyTd()}${emptyTd()}${emptyTd()}
-        <td style="border:1px solid #000;padding:4px 6px;font-size:10px;background:#f8f8f8;font-weight:700"><div contenteditable="true" style="outline:none;font-family:Arial,sans-serif;font-size:10px;font-weight:700">TOTAL</div></td>
-        ${ce(tb3,'center',true)}${ce(tcw3.toFixed(2),'right',true)}${ce(tf3.toFixed(2),'right',true)}
-        ${ce('0.00','right',true)}${ce('0.00','right',true)}${ce(fmt(ttsp3),'right',true)}
-        ${ce('0.00','right',true)}${ce('0.00','right',true)}${ce('0.00','right',true)}${ce(fmt(ttax3),'right',true)}
-      </tr>`;
-
-      tableHtml = `<table id="awb-body" data-format3="1" style="border-collapse:collapse;width:100%;table-layout:fixed"><tbody>${body}</tbody></table>`;
-
-    } else if (invoiceFormat === 'musashi') {
-      // Musashi: S.No | Date | Docket No. | Invoice No. | Origin | Destination | Pkt | Wt. | Rate | Freight | AWB | Pickup | Delivery | Total Amt
-      const headers = ['S.No','Date','Docket No.','Invoice No.','Origin','Destination','Pkt','Wt.','Rate','Freight','AWB','Pickup','Delivery','Total Amt'];
-      let body = `<tr style="background:#f0f0f0">${headers.map(hdCell).join('')}</tr>`;
-      mergedRows.forEach((row, i) => {
-        const dktBk: any = dktBks.find((d: any) => d.docketNo === row.awbNo);
-        const freight = parseFloat(row.freight.replace(/,/g,'')) || 0;
-        body += `<tr>
-          ${ce(i+1,'center')}${ce(row.date,'center')}
-          ${ce(dktBk?.docketNo ?? row.awbNo,'center')}${ce(dktBk?.wayBillNo ?? '','center')}
-          ${ce(row.origin,'center')}${ce(row.dest,'center')}
-          ${ce(row.boxes,'center')}${ce(row.chgWt,'right')}${ce(row.rate,'right')}
-          ${ce(freight.toFixed(2),'right')}
-          ${ce('0','right')}${ce('0','right')}${ce('0','right')}
-          ${ce(freight.toFixed(2),'right')}
-        </tr>`;
-      });
-      // Pad to at least 5 rows
-      for (let i = 0; i < Math.max(0, 5 - mergedRows.length); i++) {
-        body += '<tr>' + Array.from({length:14}).map((_,j) => ce('', j>=6?'right':'center')).join('') + '</tr>';
-      }
-      const twt  = mergedRows.reduce((s,r) => s+(parseFloat(r.chgWt)||0), 0);
-      const tf_m = mergedRows.reduce((s,r) => s+(parseFloat(r.freight.replace(/,/g,''))||0), 0);
-      // Cols: 0=S.No,1=Date,2=Docket No,3=Invoice No,4=Origin,5=Dest,6=Pkt,7=Wt,8=Rate,9=Freight,10=AWB,11=Pickup,12=Delivery,13=Total Amt
-      body += `<tr style="background:#f8f8f8;font-weight:700" data-grand-total="1">
-        ${emptyTd()}${emptyTd()}${emptyTd()}
-        <td style="border:1px solid #000;padding:4px 6px;font-size:10px;background:#f8f8f8;font-weight:700;text-align:center"><div contenteditable="true" style="outline:none;font-family:Arial,sans-serif;font-size:10px;font-weight:700">Grand Total</div></td>
-        ${emptyTd()}${emptyTd()}
-        ${ce('','center',true)}
-        ${ce(twt.toFixed(2),'right',true)}${emptyTd()}
-        ${ce(tf_m.toFixed(2),'right',true)}
-        ${ce('0.00','right',true)}${ce('0.00','right',true)}${ce('0.00','right',true)}
-        ${ce(tf_m.toFixed(2),'right',true)}
-      </tr>`;
-      tableHtml = `<table id="awb-body" data-musashi-fmt="1" style="border-collapse:collapse;width:100%;table-layout:fixed"><tbody>${body}</tbody></table>`;
-
-    } else if (invoiceFormat === 'custom' && activeCfId) {
-      const cf = customFormats.find(f => f.id === activeCfId);
-      if (!cf) return;
-      _activeCfColsRef.current = cf.columns;
-      const headers = cf.columns.map(c => c.header);
-      let body = `<tr style="background:#f0f0f0">${headers.map(hdCell).join('')}</tr>`;
-      // 5 blank rows
-      for (let i = 0; i < 5; i++) {
-        body += '<tr>' + cf.columns.map((c) => ce('', c.isNumeric ? 'right' : 'center')).join('') + '</tr>';
-      }
-      const emptyGT = cf.columns.map((_, i) => i);
-      body += `<tr style="background:#f8f8f8;font-weight:700" data-grand-total="1">
-        ${cf.columns.map((c, i) => i === 0
-          ? `<td style="border:1px solid #000;padding:4px 6px;font-size:10px;background:#f8f8f8;font-weight:700;text-align:right" colspan="1"><div contenteditable="true" style="outline:none;font-family:Arial,sans-serif;font-size:10px;font-weight:700">Grand Total</div></td>`
-          : ce(c.isNumeric ? '0.00' : '', c.isNumeric ? 'right' : 'center', true)
-        ).join('')}
-      </tr>`;
-      // suppress unused var warning
-      void emptyGT;
-      tableHtml = `<table id="awb-body" data-custom-fmt="1" data-cf-id="${cf.id}" style="border-collapse:collapse;width:100%;table-layout:fixed"><tbody>${body}</tbody></table>`;
-
-    } else {
-      // invoiceFormat === 'format1' already returned early above; nothing else to build here.
-      return;
+  const rowsKey = invoiceFormat === 'custom' ? `custom:${activeCfId}` : invoiceFormat;
+  const activeExtraCols = extraColsByFormat[rowsKey];
+  const gridInitialRows: string[][] = useMemo(() => {
+    const saved = savedRowsByFormat[rowsKey];
+    if (saved) {
+      if (!activeExtraCols) return saved;
+      return saved.map((r, i) => [...r, ...(activeExtraCols.extraValues[i] ?? activeExtraCols.extraColumns.map(() => ''))]);
     }
-
-    // Inject into DOM
-    const temp = document.createElement('div');
-    temp.innerHTML = tableHtml;
-    const newTable = temp.firstElementChild!;
-    oldTable.replaceWith(newTable);
-
-    // Trigger recalc on the new table
-    newTable.dispatchEvent(new Event('input', { bubbles: true }));
+    // No saved data for this format yet -- seed from the original booking rows (only meaningful
+    // the very first time a brand-new invoice is opened; once saved, savedRowsByFormat wins).
+    return lineRows.map((row, i) => {
+      const base: Record<string, string> = {
+        sl: String(i + 1), origin: row.origin, awbNo: row.awbNo, date: row.date, dest: row.dest,
+        boxes: row.boxes, chgWt: row.chgWt, rate: row.rate, freight: row.freight, tsp: row.tsp, taxable: row.taxable,
+      };
+      return activeColumns.map(c => base[c.key] ?? '');
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoiceFormat, activeCfId]);
+  }, [rowsKey, savedRowsByFormat, activeExtraCols, lineRows, activeColumns]);
 
   async function handleSave() {
-    if (!paperRef.current || !inv) return;
+    if (!paperRef.current || !inv || !hotRef.current) return;
     setSaving(true);
     const html = getSerializedPaperHtml();
     await fetch(`/api/invoices/${inv.id}/editor-html`, {
@@ -1325,26 +493,39 @@ function InvoiceEditorInner() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ html }),
     });
+
+    // Keep in-memory state in sync with what was just written to the DB, for THIS format --
+    // otherwise switching away and back re-derives stale/lossy data instead of what was saved.
+    const liveMatrix = hotRef.current.getRowsMatrix();
+    const liveCols = hotRef.current.getColumns();
+    setSavedRowsByFormat(prev => ({ ...prev, [rowsKey]: liveMatrix.map(row => activeColumns.map((c) => {
+      const idx = liveCols.findIndex(lc => lc.key === c.key);
+      return idx >= 0 ? (row[idx] ?? '') : '';
+    })) }));
+    const extraColIdxs = liveCols.map((c, i) => c.key.startsWith('extra') ? i : -1).filter(i => i >= 0);
+    if (extraColIdxs.length > 0) {
+      const extraColumns = extraColIdxs.map(i => liveCols[i]);
+      const extraValues = liveMatrix.map(row => extraColIdxs.map(i => row[i] ?? ''));
+      setExtraColsByFormat(prev => ({ ...prev, [rowsKey]: { extraColumns, extraValues } }));
+    } else {
+      setExtraColsByFormat(prev => { const next = { ...prev }; delete next[rowsKey]; return next; });
+    }
+
     setSaving(false);
     alert('Saved to database!');
   }
 
-  // Builds the paper's HTML for save/print, swapping in the live Handsontable grid HTML
-  // for the #awb-body placeholder when a Handsontable-driven format is active.
   function getSerializedPaperHtml(): string {
     const paper = paperRef.current;
     if (!paper) return '';
-    if (invoiceFormat === 'format1' && hotRef.current) {
-      const clone = paper.cloneNode(true) as HTMLElement;
-      const placeholder = clone.querySelector('.hot-invoice-wrap');
-      if (placeholder) {
-        const temp = document.createElement('div');
-        temp.innerHTML = hotRef.current.toHtmlTable();
-        placeholder.replaceWith(temp.firstElementChild!);
-      }
-      return clone.innerHTML;
+    const clone = paper.cloneNode(true) as HTMLElement;
+    const placeholder = clone.querySelector('.hot-invoice-wrap');
+    if (placeholder && hotRef.current) {
+      const temp = document.createElement('div');
+      temp.innerHTML = hotRef.current.toHtmlTable();
+      placeholder.replaceWith(temp.firstElementChild!);
     }
-    return paper.innerHTML;
+    return clone.innerHTML;
   }
 
   const handlePrint = useCallback(async () => {
@@ -1355,7 +536,6 @@ function InvoiceEditorInner() {
     temp.innerHTML = serializedHtml;
     const clone = temp;
 
-    // Convert logos to base64 so they work in blob URL context
     try {
       const [resp1, resp2] = await Promise.all([fetch('/logo.png'), fetch('/iata.png')]);
       const [blob1, blob2] = await Promise.all([resp1.blob(), resp2.blob()]);
@@ -1365,11 +545,8 @@ function InvoiceEditorInner() {
       ]);
       clone.querySelectorAll('img').forEach(img => {
         const htmlImg = img as HTMLImageElement;
-        if (htmlImg.alt.toLowerCase().includes('iata') || htmlImg.src.includes('iata.png')) {
-          htmlImg.src = b64_iata;
-        } else {
-          htmlImg.src = b64_triveni;
-        }
+        if (htmlImg.alt.toLowerCase().includes('iata') || htmlImg.src.includes('iata.png')) htmlImg.src = b64_iata;
+        else htmlImg.src = b64_triveni;
       });
     } catch { /* logo missing, skip */ }
 
@@ -1390,9 +567,7 @@ img{max-width:100%;object-fit:contain}
     const url = URL.createObjectURL(blob);
     const win = window.open(url, '_blank', 'width=1200,height=800');
     if (win) setTimeout(() => URL.revokeObjectURL(url), 15000);
-  }, [inv, invoiceFormat]);
-
-
+  }, [inv]);
 
   if (!inv) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'Arial', fontSize: 16, color: '#6b7280' }}>
@@ -1404,110 +579,6 @@ img{max-width:100%;object-fit:contain}
   const invIgstRate = inv.lines[0]?.taxRate ?? 18;
   const amtWords = amountToWords(inv.grandTotal);
 
-  // ── Build line rows: pull weight+pieces from actual AWB/docket bookings ──
-  type LineRow = { origin:string; dest:string; boxes:string; chgWt:string; rate:string; freight:string; tsp:string; taxable:string; awbNo:string; date:string };
-  const lineRows: LineRow[] = [];
-  let runningTSP = 0;
-
-  const mainLines = inv.lines.filter(l => !l.description.toLowerCase().includes('handling') && !l.description.toLowerCase().includes('markup'));
-  const markupLines = inv.lines.filter(l => l.description.toLowerCase().includes('handling') || l.description.toLowerCase().includes('markup'));
-  const useLines = mainLines.length > 0 ? mainLines : inv.lines;
-
-  useLines.forEach((line, i) => {
-    // ── 1. Try to extract embedded ||META|| JSON (new docket invoices) ────────
-    const metaMatch = line.description.match(/\|\|META\|\|(.+)$/);
-    if (metaMatch) {
-      try {
-        const meta = JSON.parse(metaMatch[1]) as {
-          docketNo: string; origin: string; destination: string;
-          weight: number; pieces: number; rate: number; freight: number;
-          bookingDate: string; description: string;
-          consignee: string; wayBillNo: string; methodOfPacking: string;
-        };
-        const markupLine = markupLines.find(ml =>
-          ml.description.includes(meta.docketNo) ||
-          ml.description.includes(inv.bookingRef.split(',')[i]?.trim() ?? '')
-        );
-        const tspAmt = markupLine?.amount ?? 0;
-        if (mainLines.length > 0) runningTSP += tspAmt;
-        const [dy, dm, dd] = (meta.bookingDate || inv.invoiceDate).split('-');
-        lineRows.push({
-          origin:  meta.origin,
-          dest:    meta.destination,
-          boxes:   String(meta.pieces || 1),
-          chgWt:   meta.weight > 0 ? String(meta.weight) : '',
-          rate:    meta.rate > 0    ? String(meta.rate)   : '',
-          freight: fmt(line.amount),
-          awbNo:   meta.docketNo,
-          date:    `${dd}/${dm}/${dy.slice(-2)}`,
-          tsp:     tspAmt > 0 ? fmt(tspAmt) : '0.00',
-          taxable: fmt(line.amount + tspAmt),
-        });
-        return; // skip fallback logic
-      } catch { /* fall through to legacy path */ }
-    }
-
-    // ── 2. Legacy path: regex + booking lookup ────────────────────────────────
-    const m    = line.description.match(/([A-Z]{3})[→\->]([A-Z]{3})/i);
-    const rm   = line.description.match(/@\s*₹?([\d.]+)/i);
-    const awbM = line.description.match(/\b(\d{3}-\d{7,8})\b/);
-    const refs = inv.bookingRef.split(',');
-    const ref  = (awbM?.[1] ?? refs[i]?.trim() ?? refs[0]?.trim() ?? '').trim();
-
-    const awbBk  = awbBookings.find(a => a.awbNo === ref || a.awbNo === awbM?.[1]);
-    const dktRef = refs[i]?.trim() ?? refs[0]?.trim() ?? '';
-    const dktBk  = !awbBk ? docketBookings.find(d => d.docketNo === dktRef || d.docketNo === ref) : undefined;
-    const booking = awbBk ?? dktBk;
-
-    const boxes   = booking
-      ? String(awbBk ? awbBk.pieces : (dktBk?.pieces ?? 1))
-      : String(Math.round(line.qty));
-
-    const dktWeight = dktBk?.weight ?? 0;
-    const awbWeight = awbBk?.weight ?? 0;
-    const chgWt = booking
-      ? String(awbBk ? awbWeight : (dktWeight > 0 ? dktWeight : ''))
-      : (line.description.match(/(\d+(?:\.\d+)?)\s*kg/i)?.[1] ?? '');
-
-    let rate: string;
-    if (awbBk) {
-      rate = rm?.[1] ?? String(awbBk.baseRate);
-    } else if (dktBk) {
-      const dktRate = dktWeight > 0
-        ? parseFloat((dktBk.rateFittedAmount / dktWeight).toFixed(2))
-        : 0;
-      rate = rm?.[1] ?? (dktRate > 0 ? String(dktRate) : '');
-    } else {
-      rate = rm?.[1] ?? String(line.rate);
-    }
-
-    const myMarkup = markupLines.find(ml => ml.description.includes(ref) || ml.description.includes(dktRef));
-    const tspAmt   = myMarkup?.amount ?? 0;
-    if (mainLines.length > 0) runningTSP += tspAmt;
-
-    const originVal = awbBk?.origin ?? dktBk?.origin ?? m?.[1] ?? '';
-    const destVal   = awbBk?.destination ?? dktBk?.destination ?? m?.[2] ?? '';
-
-    // Display ref: docket shows docketNo, AWB shows awbNo
-    const displayRef = dktBk?.docketNo ?? awbBk?.awbNo ?? ref;
-
-    lineRows.push({
-      origin: originVal,
-      dest:   destVal,
-      boxes, chgWt, rate,
-      freight: fmt(line.amount),
-      awbNo: displayRef,
-      date: (() => { const rawDate = dktBk?.bookingDate ?? awbBk?.bookingDate ?? inv.invoiceDate; const [ry,rm2,rd] = rawDate.split('-'); return `${rd}/${rm2}/${ry.slice(-2)}`; })(),
-      tsp: tspAmt > 0 ? fmt(tspAmt) : '0.00',
-      taxable: fmt(line.amount + tspAmt),
-    });
-  });
-
-  const totalBoxes   = lineRows.reduce((s, r) => s + (parseFloat(r.boxes) || 0), 0);
-  const totalChgWt   = lineRows.reduce((s, r) => s + (parseFloat(r.chgWt) || 0), 0);
-  const totalFreight = fmt(useLines.reduce((s, l) => s + l.amount, 0));
-  const totalTSP     = fmt(runningTSP || markupLines.reduce((s, l) => s + l.amount, 0));
-
   const bankText = bank
     ? `Bank           : ${bank.bank_name}\nA/c Name     : ${bank.account_name}\nAccount No.  : ${bank.account_number}\nIFSC Code    : ${bank.ifsc}\nBranch         : ${bank.branch}`
     : `Bank           : YES BANK Ltd.\nA/c Name     : TRIVENI CARGO EXPRESS INDIA PVT LTD\nAccount No.  : 008463700000641\nIFSC Code    : YESB0000283\nBranch         : Vasant Kunj, New Delhi`;
@@ -1516,24 +587,15 @@ img{max-width:100%;object-fit:contain}
     ? `${bank.bank_name}, A/c Name: ${bank.account_name}, A/C No. - ${bank.account_number}, IFSC Code - ${bank.ifsc}, Branch - ${bank.branch}`
     : `YES BANK Ltd., A/c Name: TRIVENI CARGO EXPRESS INDIA PVT LTD, A/C No. - 008463700000641, IFSC Code - YESB0000283, Branch - Vasant Kunj, New Delhi`;
 
-  // Determine if IGST or SGST+CGST split based on gstTotal vs igstRate
   const sgstAmt  = parseFloat((inv.subtotal * 9 / 100).toFixed(2));
-  const cgstAmt  = sgstAmt;
+  const cgstAmtV = sgstAmt;
   const igstAmt  = parseFloat((inv.subtotal * invIgstRate / 100).toFixed(2));
-  const useIgst  = Math.abs(inv.gstTotal - igstAmt) < Math.abs(inv.gstTotal - (sgstAmt + cgstAmt));
-  const taxSummary = useIgst
+  const useIgst  = Math.abs(inv.gstTotal - igstAmt) < Math.abs(inv.gstTotal - (sgstAmt + cgstAmtV));
+  const taxSummaryInitial = useIgst
     ? `Total Taxable Amount : ${fmt(inv.subtotal)}\nSGST @ 9%              : 0.00\nCGST @ 9%              : 0.00\nIGST @ ${invIgstRate}%             : ${fmt(inv.gstTotal)}\nNet Payable Amount  : ${fmt(inv.grandTotal)}`
-    : `Total Taxable Amount : ${fmt(inv.subtotal)}\nSGST @ 9%              : ${fmt(sgstAmt)}\nCGST @ 9%              : ${fmt(cgstAmt)}\nIGST @ 0%             : 0.00\nNet Payable Amount  : ${fmt(inv.grandTotal)}`;
+    : `Total Taxable Amount : ${fmt(inv.subtotal)}\nSGST @ 9%              : ${fmt(sgstAmt)}\nCGST @ 9%              : ${fmt(cgstAmtV)}\nIGST @ 0%             : 0.00\nNet Payable Amount  : ${fmt(inv.grandTotal)}`;
 
-
-
-  // ── Keep refs in sync with latest render data (read by format-switch effect) ──
-  _lineRowsRef.current   = lineRows;
-  _invRef.current        = inv;
-  _awbBkRef.current      = awbBookings;
-  _dktBkRef.current      = docketBookings;
-  _runningTSPRef.current = runningTSP;
-  _markupAmtRef.current  = markupLines.reduce((s, l) => s + l.amount, 0);
+  const wideFormats = invoiceFormat === 'format2' || invoiceFormat === 'format3';
 
   return (
     <div style={{ minHeight: '100vh', background: '#e5e7eb', fontFamily: 'Arial, sans-serif' }}>
@@ -1545,14 +607,9 @@ img{max-width:100%;object-fit:contain}
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
             <span style={{ fontWeight: 600, color: '#374151' }}>📋 Format:</span>
             <select value={invoiceFormat === 'custom' ? `custom:${activeCfId}` : invoiceFormat} onChange={e => {
-              const val = e.target.value as string;
-              if (val.startsWith('custom:')) {
-                const id = val.replace('custom:', '');
-                const cf = customFormats.find(f => f.id === id);
-                if (cf) { _activeCfColsRef.current = cf.columns; setActiveCfId(id); _prevFmtRef.current = ''; setInvoiceFormat('custom'); }
-              } else {
-                setActiveCfId(null); _prevFmtRef.current = ''; setInvoiceFormat(val as 'format1'|'format2'|'format3'|'musashi');
-              }
+              const val = e.target.value;
+              if (val.startsWith('custom:')) switchFormat('custom', val.replace('custom:', ''));
+              else switchFormat(val as FormatKey);
             }}
               style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>
               <option value="format1">Format 1 (Default)</option>
@@ -1577,9 +634,9 @@ img{max-width:100%;object-fit:contain}
           )}
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
             {[
-              { label: 'IGST', val: igstRate, set: (v: number) => { setIgstRate(v); applyGstRates(v, cgstRate, sgstRate); } },
-              { label: 'CGST', val: cgstRate, set: (v: number) => { setCgstRate(v); applyGstRates(igstRate, v, sgstRate); } },
-              { label: 'SGST', val: sgstRate, set: (v: number) => { setSgstRate(v); applyGstRates(igstRate, cgstRate, v); } },
+              { label: 'IGST', val: igstRate, set: (v: number) => applyGstRates(v, cgstRate, sgstRate) },
+              { label: 'CGST', val: cgstRate, set: (v: number) => applyGstRates(igstRate, v, sgstRate) },
+              { label: 'SGST', val: sgstRate, set: (v: number) => applyGstRates(igstRate, cgstRate, v) },
             ].map(({ label, val, set }) => (
               <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                 <span style={{ fontWeight: 600, color: '#374151', fontSize: 11 }}>{label}:</span>
@@ -1604,7 +661,7 @@ img{max-width:100%;object-fit:contain}
       </div>
 
       {/* Editing Toolbar */}
-      <Toolbar paperRef={paperRef} hotRef={hotRef} isHotActive={invoiceFormat === 'format1'} />
+      <Toolbar hotRef={hotRef} />
 
       {/* Invoice Paper */}
       <div ref={paperRef} style={{ background: '#fff', maxWidth: 1100, margin: '24px auto', padding: 12, boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}>
@@ -1613,7 +670,7 @@ img{max-width:100%;object-fit:contain}
 
             {/* ── HEADER: Logo + Company Info ── */}
             <tr>
-              <td colSpan={invoiceFormat === 'format2' || invoiceFormat === 'format3' ? 15 : 14} style={{ border: '1px solid #000', padding: '6px 10px' }}>
+              <td colSpan={wideFormats ? 15 : 14} style={{ border: '1px solid #000', padding: '6px 10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div style={{ width: 130, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
                     <img src="/logo.png" alt="Triveni" style={{ width: 90, height: 90, objectFit: 'contain' }} />
@@ -1636,14 +693,14 @@ img{max-width:100%;object-fit:contain}
 
             {/* ── TAX INVOICE title ── */}
             <tr>
-              <td colSpan={invoiceFormat === 'format2' || invoiceFormat === 'format3' ? 15 : 14} style={{ border: '1px solid #000', padding: '4px', textAlign: 'center', fontWeight: 700, fontSize: 13, textDecoration: 'underline' }}>
+              <td colSpan={wideFormats ? 15 : 14} style={{ border: '1px solid #000', padding: '4px', textAlign: 'center', fontWeight: 700, fontSize: 13, textDecoration: 'underline' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline: 'none', textAlign: 'center', fontWeight: 700, fontSize: 13, textDecoration: 'underline', fontFamily: 'Arial, sans-serif' }}>TAX INVOICE</div>
               </td>
             </tr>
 
             {/* ── Party Info (left) + Bill Info (right) ── */}
             <tr>
-              <td colSpan={invoiceFormat === 'format2' || invoiceFormat === 'format3' ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
+              <td colSpan={wideFormats ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
                   {`M/s : ${inv.partyName}\nGSTIN : ${party?.gstin || '—'}\nAddress : ${party?.billingAddress || '—'}`}
                 </div>
@@ -1657,124 +714,53 @@ img{max-width:100%;object-fit:contain}
 
             {/* ── SAC Code ── */}
             <tr>
-              <td colSpan={invoiceFormat === 'format2' || invoiceFormat === 'format3' ? 15 : 14} style={{ border: '1px solid #000', padding: '3px 7px', fontSize: 10, fontWeight: 700, textAlign: 'center' }}>
+              <td colSpan={wideFormats ? 15 : 14} style={{ border: '1px solid #000', padding: '3px 7px', fontSize: 10, fontWeight: 700, textAlign: 'center' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline: 'none', textAlign: 'center', fontWeight: 700, fontFamily: 'Arial, sans-serif', fontSize: 10 }}>SAC Code : 996531</div>
               </td>
             </tr>
 
-            {/* ── AWB Table (own full-width table so columns always fill width) ── */}
-            </tbody></table>
+          </tbody>
+        </table>
 
-            {invoiceFormat === 'format1' ? (
-            <HotInvoiceTable
-              key={`format1-${inv.id}-${loadGen}`}
-              ref={hotRef}
-              columns={FORMAT_COLUMNS.format1}
-              formatAttr="data-format1"
-              extraColumns={savedExtraColumns?.extraColumns}
-              initialRows={(() => {
-                const base = savedFormat1Rows ?? lineRows.map((row, i) => [
-                  String(i + 1), row.origin, row.awbNo, row.date, row.dest,
-                  row.boxes, row.chgWt, row.rate, row.freight, '0.00', '0.00', '0', row.tsp, row.taxable,
-                ]);
-                if (!savedExtraColumns) return base;
-                return base.map((r, i) => [...r, ...(savedExtraColumns.extraValues[i] ?? savedExtraColumns.extraColumns.map(() => ''))]);
-              })()}
-              onTotalChange={setHotGrandTotal}
-            />
-            ) : (
-            /* ── FORMAT 2: Docket-style table ── */
-            <table id="awb-body" data-format2="1" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
-              <tbody>
-              <tr style={{ background: '#f0f0f0' }}>
-                {['S.No','Date','Docket No.','Invoice no','Origin','Origin\nAirport','Dest','Destination\nAirport','Box','Weight','Rate','Freight','ODA','Docket\nchg','Amount'].map((h, i) => (
-                  <td key={i} style={{ border: '1px solid #000', padding: '4px 5px', fontSize: 9.5, textAlign: 'center', fontWeight: 700, whiteSpace: 'pre-wrap', background: '#f0f0f0' }}>
-                    <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 14, fontFamily: 'Arial, sans-serif', fontSize: 9.5, fontWeight: 700, textAlign: 'center', whiteSpace: 'pre-wrap' }}>{h}</div>
-                  </td>
-                ))}
-              </tr>
-              {lineRows.map((row, i) => {
-                // For Format 2: find linked docket if available
-                const awbBk = awbBookings.find(a => a.awbNo === row.awbNo);
-                const linkedDkt = awbBk ? docketBookings.find(d => d.linkedAwbId === awbBk.id) : docketBookings.find(d => d.docketNo === row.awbNo);
-                const docketNo = linkedDkt?.docketNo ?? '';
-                // Origin airport / Destination airport from the booking route (city names)
-                const originCity = row.origin;
-                const destCity = row.dest;
-                // Find airport names from the bookings
-                const originAirport = linkedDkt?.origin ?? row.origin;
-                const destAirport = linkedDkt?.destination ?? row.dest;
-                return (
-                <tr key={i}>
-                  <EC style={{ textAlign: 'center' }}>{i + 1}</EC>
-                  <EC style={{ textAlign: 'center' }}>{row.date}</EC>
-                  <EC style={{ textAlign: 'center' }}>{docketNo}</EC>
-                  <EC style={{ textAlign: 'center' }}>{row.awbNo}</EC>
-                  <EC style={{ textAlign: 'center' }}>{originCity}</EC>
-                  <EC style={{ textAlign: 'center' }}>{originAirport}</EC>
-                  <EC style={{ textAlign: 'center' }}>{destCity}</EC>
-                  <EC style={{ textAlign: 'center' }}>{destAirport}</EC>
-                  <EC style={{ textAlign: 'center' }}>{row.boxes}</EC>
-                  <EC style={{ textAlign: 'right' }}>{row.chgWt}</EC>
-                  <EC style={{ textAlign: 'right' }}>{row.rate}</EC>
-                  <EC style={{ textAlign: 'right' }}>{row.freight}</EC>
-                  <EC style={{ textAlign: 'right' }}>0.00</EC>
-                  <EC style={{ textAlign: 'right' }}>0.00</EC>
-                  <EC style={{ textAlign: 'right' }}>{row.taxable}</EC>
-                </tr>
-                );
-              })}
-              {/* ── Empty rows for manual entry ── */}
-              {Array.from({ length: Math.max(0, 5 - lineRows.length) }).map((_, i) => (
-                <tr key={`empty-${i}`}>
-                  {Array.from({ length: 15 }).map((_, j) => (
-                    <EC key={j} style={{ textAlign: j >= 9 ? 'right' : 'center' }}>{''}</EC>
-                  ))}
-                </tr>
-              ))}
-              {/* ── TOTAL Row ── */}
-              <tr style={{ background: '#f8f8f8', fontWeight: 700 }} data-grand-total="1">
-                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
-                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
-                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8', fontWeight: 700 }}>
-                  <div contentEditable suppressContentEditableWarning style={{ outline:'none', fontFamily:'Arial,sans-serif', fontSize:10, fontWeight:700 }}>TOTAL</div>
-                </td>
-                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
-                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
-                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
-                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
-                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
-                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
-                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
-                <td style={{ border: '1px solid #000', padding: '4px 6px', fontSize: 10, background: '#f8f8f8' }}></td>
-                <EC style={{ textAlign: 'right', background: '#f8f8f8', fontWeight: 700 }}>{totalFreight}</EC>
-                <EC style={{ textAlign: 'right', background: '#f8f8f8', fontWeight: 700 }}>0.00</EC>
-                <EC style={{ textAlign: 'right', background: '#f8f8f8', fontWeight: 700 }}>0.00</EC>
-                <EC style={{ textAlign: 'right', background: '#f8f8f8', fontWeight: 700 }}>{fmt(inv.subtotal)}</EC>
-              </tr>
-              </tbody>
-            </table>
-            )}
-            <table style={{ borderCollapse: 'collapse', width: '100%' }}><tbody>
+        {/* ── Line-item grid: EVERY format renders through HotInvoiceTable ── */}
+        {activeColumns.length > 0 && (
+          <HotInvoiceTable
+            key={`${invoiceFormat === 'custom' ? `custom-${activeCfId}` : invoiceFormat}-${inv.id}-${loadGen}`}
+            ref={hotRef}
+            columns={activeColumns}
+            formatAttr={
+              invoiceFormat === 'format1' ? 'data-format1' :
+              invoiceFormat === 'format2' ? 'data-format2' :
+              invoiceFormat === 'format3' ? 'data-format3' :
+              invoiceFormat === 'musashi' ? 'data-musashi-fmt' :
+              'data-custom-fmt'
+            }
+            extraColumns={activeExtraCols?.extraColumns}
+            initialRows={gridInitialRows}
+            onTotalChange={setHotGrandTotal}
+          />
+        )}
+
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}><tbody>
 
             {/* ── Bank (left) + Tax Summary (right) ── */}
             <tr>
-              <td colSpan={invoiceFormat === 'format2' || invoiceFormat === 'format3' ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
+              <td colSpan={wideFormats ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
                 <div style={{ fontSize: 10, marginBottom: 4 }}><strong>Amount in Words :</strong> <span data-words contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>{amtWords}</span></div>
                 <div contentEditable suppressContentEditableWarning data-bank-detail style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap', marginTop: 6 }}>
                   {bankText}
                 </div>
               </td>
-              <td colSpan={invoiceFormat === 'format2' ? 5 : 5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
+              <td colSpan={5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
                 <div data-tax-summary="1" contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
-                  {taxSummary}
+                  {hasLoadedOnce ? undefined : taxSummaryInitial}
                 </div>
               </td>
             </tr>
 
             {/* ── Bank footer line ── */}
             <tr>
-              <td colSpan={invoiceFormat === 'format2' || invoiceFormat === 'format3' ? 15 : 14} style={{ border: '1px solid #000', padding: '3px 7px', fontSize: 9, textAlign: 'center' }}>
+              <td colSpan={wideFormats ? 15 : 14} style={{ border: '1px solid #000', padding: '3px 7px', fontSize: 9, textAlign: 'center' }}>
                 <div contentEditable suppressContentEditableWarning data-bank-footer style={{ outline: 'none', fontFamily: 'Arial, sans-serif', fontSize: 9, whiteSpace: 'pre-wrap' }}>
                   {bankFooter}
                 </div>
@@ -1783,7 +769,7 @@ img{max-width:100%;object-fit:contain}
 
             {/* ── Notes (left) + Signature (right) ── */}
             <tr>
-              <td colSpan={invoiceFormat === 'format2' || invoiceFormat === 'format3' ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
+              <td colSpan={wideFormats ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 9, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
                   <div>NOTES :</div>
                   <div>1. DIFFERENCE, IF ANY, MAY BE NOTIFIED WITHIN 3 DAYS OF RECEIPT.</div>
@@ -1796,7 +782,7 @@ img{max-width:100%;object-fit:contain}
                   <div>8. S. Tax.      AAGCT2294NSD001</div>
                 </div>
               </td>
-              <td colSpan={invoiceFormat === 'format2' ? 5 : 5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'bottom', textAlign: 'right' }}>
+              <td colSpan={5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'bottom', textAlign: 'right' }}>
                 <div contentEditable suppressContentEditableWarning style={{ outline: 'none', fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap', textAlign: 'right' }}>
                   {`For TRIVENI CARGO EXPRESS INDIA PVT LTD\n\n\n\nAuthorised Signatory`}
                 </div>
@@ -1816,12 +802,10 @@ img{max-width:100%;object-fit:contain}
               <button onClick={() => setShowCfModal(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer' }}>✕</button>
             </div>
 
-            {/* Format name */}
             <label style={{ fontSize: 12, fontWeight: 600 }}>Format Name</label>
             <input value={cfName} onChange={e => setCfName(e.target.value)} placeholder="e.g. My Export Format"
               style={{ display: 'block', width: '100%', marginTop: 4, marginBottom: 14, padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, boxSizing: 'border-box' }} />
 
-            {/* Saved formats list */}
             {customFormats.length > 0 && (
               <div style={{ marginBottom: 14 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Saved Formats</div>
@@ -1836,7 +820,6 @@ img{max-width:100%;object-fit:contain}
               </div>
             )}
 
-            {/* Column builder */}
             <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Columns ({cfCols.length})</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: 6, alignItems: 'center', marginBottom: 6, fontSize: 11, color: '#6b7280', fontWeight: 600 }}>
               <span>Column Header</span><span>Numeric?</span><span>Total?</span><span></span>
