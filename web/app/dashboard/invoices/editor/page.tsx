@@ -256,86 +256,86 @@ function InvoiceEditorInner() {
 
   // ── Build line rows from AWB/docket bookings (used only for a BRAND NEW invoice
   //    that has never been saved before -- once saved, the grid's own data is authoritative) ──
-  type LineRow = { origin:string; dest:string; boxes:string; chgWt:string; rate:string; freight:string; tsp:string; taxable:string; awbNo:string; date:string };
+  //
+  //  AWB field → Format 1 column mapping (precise):
+  //    weightCharge (= weight × baseRate)  → Freight (col: freight, computed)
+  //    otherChargesDueAgent               → AWB & DO (col: awbDo)
+  //    otherChargesDueCarrier             → Due Carrier (col: carrier)
+  //    valuationCharge                    → Forwrd & Others (col: forwrd)
+  //    markupAmount                       → TSP & Others (col: tsp)
+  //    sum of all above                   → Taxable Amount (col: taxable, computed)
+  //    pieces                             → Boxes (col: boxes)
+  //    weight                             → Charg. Weight (col: chgWt)
+  //    baseRate                           → Rate (col: rate)
+  //    origin / destination               → Origin / Dest#
+  //    bookingDate                        → Date
+  //    awbNo                              → AWB#/Ref. Number
+  //
+  //  Docket field → Format 1 column mapping:
+  //    rateFittedAmount                   → Freight (= base charge for the docket)
+  //    markupAmount                       → TSP & Others
+  //    sum above                          → Taxable Amount
+  //    weight                             → Charg. Weight
+  //    pieces                             → Boxes
+  //    origin / destination               → Origin / Dest#
+  //    bookingDate                        → Date
+  //    docketNo                           → AWB#/Ref. Number
+  type LineRow = {
+    sl: string; origin: string; dest: string; boxes: string; chgWt: string;
+    rate: string; freight: string; awbDo: string; carrier: string; forwrd: string;
+    tsp: string; taxable: string; awbNo: string; date: string;
+  };
   const lineRows: LineRow[] = useMemo(() => {
     if (!inv) return [];
+    const refs = inv.bookingRef.split(',').map(r => r.trim()).filter(Boolean);
     const rows: LineRow[] = [];
-    let runningTSP = 0;
-    const mainLines = inv.lines.filter(l => !l.description.toLowerCase().includes('handling') && !l.description.toLowerCase().includes('markup'));
-    const markupLines = inv.lines.filter(l => l.description.toLowerCase().includes('handling') || l.description.toLowerCase().includes('markup'));
-    const useLines = mainLines.length > 0 ? mainLines : inv.lines;
 
-    useLines.forEach((line, i) => {
-      const metaMatch = line.description.match(/\|\|META\|\|(.+)$/);
-      if (metaMatch) {
-        try {
-          const meta = JSON.parse(metaMatch[1]) as {
-            docketNo: string; origin: string; destination: string;
-            weight: number; pieces: number; rate: number; freight: number;
-            bookingDate: string;
-          };
-          const markupLine = markupLines.find(ml =>
-            ml.description.includes(meta.docketNo) ||
-            ml.description.includes(inv.bookingRef.split(',')[i]?.trim() ?? '')
-          );
-          const tspAmt = markupLine?.amount ?? 0;
-          if (mainLines.length > 0) runningTSP += tspAmt;
-          const [dy, dm, dd] = (meta.bookingDate || inv.invoiceDate).split('-');
-          rows.push({
-            origin: meta.origin, dest: meta.destination,
-            boxes: String(meta.pieces || 1),
-            chgWt: meta.weight > 0 ? String(meta.weight) : '',
-            rate: meta.rate > 0 ? String(meta.rate) : '',
-            freight: fmt(line.amount), awbNo: meta.docketNo,
-            date: `${dd}/${dm}/${dy.slice(-2)}`,
-            tsp: tspAmt > 0 ? fmt(tspAmt) : '0.00',
-            taxable: fmt(line.amount + tspAmt),
-          });
-          return;
-        } catch { /* fall through */ }
+    refs.forEach((ref, i) => {
+      const awbBk = awbBookings.find(a => a.awbNo === ref);
+      const dktBk = !awbBk ? docketBookings.find(d => d.docketNo === ref) : undefined;
+
+      const sl = String(i + 1);
+      const [ry, rm, rd] = ((awbBk?.bookingDate ?? dktBk?.bookingDate ?? inv.invoiceDate) || inv.invoiceDate).split('-');
+      const date = `${rd}/${rm}/${ry.slice(-2)}`;
+
+      if (awbBk) {
+        const freight   = awbBk.weightCharge   ?? (awbBk.weight * awbBk.baseRate);
+        const awbDo     = awbBk.otherChargesDueAgent   ?? 0;
+        const carrier   = awbBk.otherChargesDueCarrier ?? 0;
+        const forwrd    = awbBk.valuationCharge ?? 0;
+        const tsp       = awbBk.markupAmount ?? 0;
+        const taxable   = freight + awbDo + carrier + forwrd + tsp;
+        rows.push({
+          sl, awbNo: awbBk.awbNo,
+          origin: awbBk.origin, dest: awbBk.destination,
+          boxes: String(awbBk.pieces), chgWt: String(awbBk.weight), rate: String(awbBk.baseRate),
+          freight: fmt(freight), awbDo: fmt(awbDo), carrier: fmt(carrier),
+          forwrd: fmt(forwrd), tsp: fmt(tsp), taxable: fmt(taxable), date,
+        });
+      } else if (dktBk) {
+        const freight = dktBk.rateFittedAmount;
+        const tsp     = dktBk.markupAmount ?? 0;
+        const taxable = freight + tsp;
+        rows.push({
+          sl, awbNo: dktBk.docketNo,
+          origin: dktBk.origin ?? '', dest: dktBk.destination ?? '',
+          boxes: String(dktBk.pieces ?? 1), chgWt: String(dktBk.weight ?? 0), rate: '0',
+          freight: fmt(freight), awbDo: '0.00', carrier: '0.00', forwrd: '0.00',
+          tsp: fmt(tsp), taxable: fmt(taxable), date,
+        });
+      } else {
+        // Fallback: ref exists in inv.bookingRef but no matching booking found
+        // Use the invoice line amount as freight if available
+        const lineAmt = inv.lines[i]?.amount ?? 0;
+        rows.push({
+          sl, awbNo: ref, origin: '', dest: '',
+          boxes: '1', chgWt: '', rate: '',
+          freight: fmt(lineAmt), awbDo: '0.00', carrier: '0.00', forwrd: '0.00',
+          tsp: '0.00', taxable: fmt(lineAmt), date,
+        });
       }
-
-      const m    = line.description.match(/([A-Z]{3})[→\->]([A-Z]{3})/i);
-      const rm   = line.description.match(/@\s*₹?([\d.]+)/i);
-      const awbM = line.description.match(/\b(\d{3}-\d{7,8})\b/);
-      const refs = inv.bookingRef.split(',');
-      const ref  = (awbM?.[1] ?? refs[i]?.trim() ?? refs[0]?.trim() ?? '').trim();
-
-      const awbBk  = awbBookings.find(a => a.awbNo === ref || a.awbNo === awbM?.[1]);
-      const dktRef = refs[i]?.trim() ?? refs[0]?.trim() ?? '';
-      const dktBk  = !awbBk ? docketBookings.find(d => d.docketNo === dktRef || d.docketNo === ref) : undefined;
-      const booking = awbBk ?? dktBk;
-
-      const boxes = booking ? String(awbBk ? awbBk.pieces : (dktBk?.pieces ?? 1)) : String(Math.round(line.qty));
-      const dktWeight = dktBk?.weight ?? 0;
-      const awbWeight = awbBk?.weight ?? 0;
-      const chgWt = booking
-        ? String(awbBk ? awbWeight : (dktWeight > 0 ? dktWeight : ''))
-        : (line.description.match(/(\d+(?:\.\d+)?)\s*kg/i)?.[1] ?? '');
-
-      let rate: string;
-      if (awbBk) rate = rm?.[1] ?? String(awbBk.baseRate);
-      else if (dktBk) {
-        const dktRate = dktWeight > 0 ? parseFloat((dktBk.rateFittedAmount / dktWeight).toFixed(2)) : 0;
-        rate = rm?.[1] ?? (dktRate > 0 ? String(dktRate) : '');
-      } else rate = rm?.[1] ?? String(line.rate);
-
-      const myMarkup = markupLines.find(ml => ml.description.includes(ref) || ml.description.includes(dktRef));
-      const tspAmt = myMarkup?.amount ?? 0;
-      if (mainLines.length > 0) runningTSP += tspAmt;
-
-      const originVal = awbBk?.origin ?? dktBk?.origin ?? m?.[1] ?? '';
-      const destVal   = awbBk?.destination ?? dktBk?.destination ?? m?.[2] ?? '';
-      const displayRef = dktBk?.docketNo ?? awbBk?.awbNo ?? ref;
-
-      rows.push({
-        origin: originVal, dest: destVal, boxes, chgWt, rate,
-        freight: fmt(line.amount), awbNo: displayRef,
-        date: (() => { const rawDate = dktBk?.bookingDate ?? awbBk?.bookingDate ?? inv.invoiceDate; const [ry,rm2,rd] = rawDate.split('-'); return `${rd}/${rm2}/${ry.slice(-2)}`; })(),
-        tsp: tspAmt > 0 ? fmt(tspAmt) : '0.00',
-        taxable: fmt(line.amount + tspAmt),
-      });
     });
+
     return rows;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inv?.id]);
@@ -480,8 +480,17 @@ function InvoiceEditorInner() {
     // the very first time a brand-new invoice is opened; once saved, savedRowsByFormat wins).
     return lineRows.map((row, i) => {
       const base: Record<string, string> = {
-        sl: String(i + 1), origin: row.origin, awbNo: row.awbNo, date: row.date, dest: row.dest,
-        boxes: row.boxes, chgWt: row.chgWt, rate: row.rate, freight: row.freight, tsp: row.tsp, taxable: row.taxable,
+        sl: row.sl ?? String(i + 1),
+        origin: row.origin, awbNo: row.awbNo, date: row.date, dest: row.dest,
+        boxes: row.boxes, chgWt: row.chgWt, rate: row.rate,
+        freight: row.freight,
+        awbDo: row.awbDo, carrier: row.carrier, forwrd: row.forwrd,
+        tsp: row.tsp, taxable: row.taxable,
+        // Format 2/3/musashi aliases
+        docketNo: row.awbNo, box: row.boxes, weight: row.chgWt,
+        pkt: row.boxes, wt: row.chgWt,
+        invoiceNo: '', invoice: '', sector: `${row.origin}-${row.dest}`,
+        destination: row.dest,
       };
       return activeColumns.map(c => base[c.key] ?? '');
     });
@@ -703,9 +712,16 @@ img{max-width:100%;object-fit:contain}
               <td colSpan={5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
                 <div
                   contentEditable suppressContentEditableWarning
+                  ref={el => {
+                    // Set initial content only once (on first mount) -- never update from React
+                    // after that, to prevent React reconciliation from resetting the cursor position
+                    // every time liveInvoiceNo state changes while the user is still typing.
+                    if (el && !el.textContent?.trim()) {
+                      el.innerText = `Bill No. : ${liveInvoiceNo || inv.invoiceNo}\nBill Date : ${billDate}\nPOS : DELHI\nBilling Period From : ${inv.invoiceDate} to ${inv.dueDate}`;
+                    }
+                  }}
                   style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}
                   onInput={e => {
-                    // Extract the invoice number from "Bill No. : XXX" (first line)
                     const text = (e.currentTarget as HTMLElement).innerText;
                     const m = text.match(/Bill No\.\s*:\s*([^\n]+)/);
                     if (m) setLiveInvoiceNo(m[1].trim());
@@ -718,15 +734,12 @@ img{max-width:100%;object-fit:contain}
                     const result = await renameInvoiceNo(inv.id, newNo);
                     if (result && 'error' in result) {
                       alert(result.error as string);
-                      // Reset the text back to the last known good value
                       e.currentTarget.innerText = `Bill No. : ${liveInvoiceNo}\nBill Date : ${billDate}\nPOS : DELHI\nBilling Period From : ${inv.invoiceDate} to ${inv.dueDate}`;
                     } else if (result && 'invoiceNo' in result) {
                       setLiveInvoiceNo(result.invoiceNo as string);
                     }
                   }}
-                >
-                  {`Bill No. : ${liveInvoiceNo || inv.invoiceNo}\nBill Date : ${billDate}\nPOS : DELHI\nBilling Period From : ${inv.invoiceDate} to ${inv.dueDate}`}
-                </div>
+                />
               </td>
             </tr>
 
