@@ -344,7 +344,7 @@ function InvoiceEditorInner() {
 
     return rows;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inv?.id]);
+  }, [inv?.id, awbBookings, docketBookings]);
 
   // ── Load saved HTML: detect saved format + extract row data for the active grid ──
   const [savedRowsByFormat, setSavedRowsByFormat] = useState<Record<string, string[][]>>({});
@@ -518,7 +518,7 @@ function InvoiceEditorInner() {
     await fetch(`/api/invoices/${inv.id}/editor-html`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html }),
+      body: JSON.stringify({ html, grandTotalHint: hotGrandTotal }),
     });
 
     // Keep in-memory state in sync with what was just written to the DB, for THIS format --

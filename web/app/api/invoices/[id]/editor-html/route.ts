@@ -17,8 +17,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
-  const { html } = await req.json();
+  const { html, grandTotalHint } = await req.json();
   const totals = typeof html === 'string' ? extractEditorInvoiceTotals(html) : null;
+  // If the HTML doesn't contain parseable tax summary text (e.g. first save before the
+  // tax summary was properly populated), fall back to the client-sent grandTotalHint
+  // (= hotGrandTotal, the Handsontable grid's live computed total).
+  const effectiveTotals = totals ?? (
+    typeof grandTotalHint === 'number' && grandTotalHint > 0
+      ? { subtotal: grandTotalHint, gstTotal: 0, grandTotal: grandTotalHint }
+      : null
+  );
 
   await prisma.$transaction(async (tx) => {
     const inv = await tx.invoice.findUnique({
@@ -27,31 +35,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
     if (!inv) throw new Error('Invoice not found');
 
-    if (!totals) {
+    if (!effectiveTotals) {
       await tx.invoice.update({ where: { id }, data: { editorHtml: html } });
       return;
     }
 
-    const outstandingTotal = Math.max(0, totals.grandTotal - inv.paidTotal);
+    const outstandingTotal = Math.max(0, effectiveTotals.grandTotal - inv.paidTotal);
     await tx.invoice.update({
       where: { id },
       data: {
         editorHtml: html,
-        subtotal: totals.subtotal,
-        gstTotal: totals.gstTotal,
-        grandTotal: totals.grandTotal,
+        subtotal: effectiveTotals.subtotal,
+        gstTotal: effectiveTotals.gstTotal,
+        grandTotal: effectiveTotals.grandTotal,
         outstandingTotal,
       },
     });
     await tx.outstandingEntry.updateMany({
       where: { invoiceId: id },
       data: {
-        originalAmount: totals.grandTotal,
+        originalAmount: effectiveTotals.grandTotal,
         paidAmount: inv.paidTotal,
         outstandingAmount: outstandingTotal,
       },
     });
   });
 
-  return NextResponse.json({ ok: true, totals });
+  return NextResponse.json({ ok: true, totals: effectiveTotals });
 }
