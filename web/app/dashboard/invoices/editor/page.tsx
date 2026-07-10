@@ -6,6 +6,7 @@ import { useSharedData } from '@/lib/useSharedData';
 import { listCustomFormats, saveCustomFormat, deleteCustomFormat, type CustomFormatCol } from '@/lib/actions/customFormats';
 import { amountToWords } from '@/lib/invoiceAmounts';
 import HotInvoiceTable, { FORMAT_COLUMNS, parseHtmlTableToRows, parseExtraColumnsFromHtmlTable, mapRowsBetweenFormats, type HotColDef, type HotInvoiceHandle } from '@/components/HotInvoiceTable';
+import { renameInvoiceNo } from '@/lib/actions/invoices';
 
 type FormatKey = 'format1' | 'format2' | 'format3' | 'musashi' | 'custom';
 
@@ -26,6 +27,7 @@ function buildCustomColumns(cols: CustomFormatCol[]): HotColDef[] {
 }
 
 const CANON_FIELDS: HotColDef[] = [
+  { header: '', key: 'sl', canonical: 'sl' },
   { header: '', key: 'origin', canonical: 'origin' },
   { header: '', key: 'awbNo', canonical: 'refNo' },
   { header: '', key: 'date', canonical: 'date' },
@@ -138,26 +140,24 @@ function InvoiceEditorInner() {
   const isRoundedRef = useRef(isRounded);
   useEffect(() => { isRoundedRef.current = isRounded; }, [isRounded]);
 
-  function updateGstSummaryFromTotal(totalTaxable: number) {
-    const paper = paperRef.current;
-    if (!paper) return;
-    const taxSummaryEl = paper.querySelector<HTMLElement>('[data-tax-summary]');
-    if (!taxSummaryEl) return;
+  // ── Computed tax summary (React state, not imperative DOM writes) ─────────
+  // Drives both the tax summary panel AND Amount in Words consistently.
+  const taxSummary = useMemo(() => {
+    const totalTaxable = hotGrandTotal;
     const sgstAmt = parseFloat((totalTaxable * sgstRate / 100).toFixed(2));
     const cgstAmt = parseFloat((totalTaxable * cgstRate / 100).toFixed(2));
     const igstAmt = parseFloat((totalTaxable * igstRate / 100).toFixed(2));
     const exactNet = totalTaxable + sgstAmt + cgstAmt + igstAmt;
-    const roundedNet = isRoundedRef.current ? Math.round(exactNet) : exactNet;
-    const roundOff = isRoundedRef.current ? parseFloat((roundedNet - exactNet).toFixed(2)) : 0;
+    const roundedNet = isRounded ? Math.round(exactNet) : exactNet;
+    const roundOff = isRounded ? parseFloat((roundedNet - exactNet).toFixed(2)) : 0;
     const fmtN = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     let roundOffText = '';
-    if (isRoundedRef.current) roundOffText = `Round Off              : ${roundOff >= 0 ? '+' : ''}${roundOff.toFixed(2)}\n`;
-    taxSummaryEl.innerText = `Total Taxable Amount : ${fmtN(totalTaxable)}\nSGST @ ${sgstRate}%              : ${fmtN(sgstAmt)}\nCGST @ ${cgstRate}%              : ${fmtN(cgstAmt)}\nIGST @ ${igstRate}%             : ${fmtN(igstAmt)}\n${roundOffText}Net Payable Amount  : ${fmtN(roundedNet)}`;
-    const wordsEl = paper.querySelector<HTMLElement>('[data-words]');
-    if (wordsEl && roundedNet > 0) wordsEl.innerText = amountToWords(roundedNet);
-  }
-
-  useEffect(() => { updateGstSummaryFromTotal(hotGrandTotal); }, [hotGrandTotal, igstRate, cgstRate, sgstRate, isRounded]);
+    if (isRounded) roundOffText = `Round Off              : ${roundOff >= 0 ? '+' : ''}${roundOff.toFixed(2)}\n`;
+    return {
+      text: `Total Taxable Amount : ${fmtN(totalTaxable)}\nSGST @ ${sgstRate}%              : ${fmtN(sgstAmt)}\nCGST @ ${cgstRate}%              : ${fmtN(cgstAmt)}\nIGST @ ${igstRate}%             : ${fmtN(igstAmt)}\n${roundOffText}Net Payable Amount  : ${fmtN(roundedNet)}`,
+      words: totalTaxable > 0 ? amountToWords(roundedNet) : '',
+    };
+  }, [hotGrandTotal, igstRate, cgstRate, sgstRate, isRounded]);
 
   // ── Custom Formats ──────────────────────────────────────────────────────────
   type SavedCustomFmt = { id: string; name: string; columns: CustomFormatCol[] };
@@ -220,6 +220,10 @@ function InvoiceEditorInner() {
   const party = inv ? parties.find(p => p.id === inv.partyId) : undefined;
   useEffect(() => { if (inv?.lines?.[0]?.taxRate) setIgstRate(inv.lines[0].taxRate); }, [inv?.id]);
   const bank = banks.find(b => b.id === selectedBankId) ?? banks[0];
+
+  // ── Invoice number: tracks live edits to Bill No. in the editor ──────────
+  const [liveInvoiceNo, setLiveInvoiceNo] = useState(inv?.invoiceNo ?? '');
+  useEffect(() => { if (inv?.invoiceNo) setLiveInvoiceNo(inv.invoiceNo); }, [inv?.invoiceNo]);
 
   const applyBankToPaper = useCallback((b: typeof banks[number] | undefined, paper: HTMLElement) => {
     if (!b) return;
@@ -576,7 +580,6 @@ img{max-width:100%;object-fit:contain}
   );
 
   const billDate = inv.invoiceDate.split('-').reverse().join('.');
-  const invIgstRate = inv.lines[0]?.taxRate ?? 18;
   const amtWords = amountToWords(inv.grandTotal);
 
   const bankText = bank
@@ -587,21 +590,13 @@ img{max-width:100%;object-fit:contain}
     ? `${bank.bank_name}, A/c Name: ${bank.account_name}, A/C No. - ${bank.account_number}, IFSC Code - ${bank.ifsc}, Branch - ${bank.branch}`
     : `YES BANK Ltd., A/c Name: TRIVENI CARGO EXPRESS INDIA PVT LTD, A/C No. - 008463700000641, IFSC Code - YESB0000283, Branch - Vasant Kunj, New Delhi`;
 
-  const sgstAmt  = parseFloat((inv.subtotal * 9 / 100).toFixed(2));
-  const cgstAmtV = sgstAmt;
-  const igstAmt  = parseFloat((inv.subtotal * invIgstRate / 100).toFixed(2));
-  const useIgst  = Math.abs(inv.gstTotal - igstAmt) < Math.abs(inv.gstTotal - (sgstAmt + cgstAmtV));
-  const taxSummaryInitial = useIgst
-    ? `Total Taxable Amount : ${fmt(inv.subtotal)}\nSGST @ 9%              : 0.00\nCGST @ 9%              : 0.00\nIGST @ ${invIgstRate}%             : ${fmt(inv.gstTotal)}\nNet Payable Amount  : ${fmt(inv.grandTotal)}`
-    : `Total Taxable Amount : ${fmt(inv.subtotal)}\nSGST @ 9%              : ${fmt(sgstAmt)}\nCGST @ 9%              : ${fmt(cgstAmtV)}\nIGST @ 0%             : 0.00\nNet Payable Amount  : ${fmt(inv.grandTotal)}`;
-
   const wideFormats = invoiceFormat === 'format2' || invoiceFormat === 'format3';
 
   return (
     <div style={{ minHeight: '100vh', background: '#e5e7eb', fontFamily: 'Arial, sans-serif' }}>
       {/* Toolbar */}
       <div style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, position: 'sticky', top: 0, zIndex: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontWeight: 700, fontSize: 14 }}>Invoice Editor — <span style={{ fontFamily: 'monospace', color: '#2563eb' }}>{inv.invoiceNo}</span></span>
+        <span style={{ fontWeight: 700, fontSize: 14 }}>Invoice Editor — <span style={{ fontFamily: 'monospace', color: '#2563eb' }}>{liveInvoiceNo || inv.invoiceNo}</span></span>
         <span style={{ fontSize: 12, color: '#6b7280' }}>{inv.partyName}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
@@ -706,8 +701,31 @@ img{max-width:100%;object-fit:contain}
                 </div>
               </td>
               <td colSpan={5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
-                  {`Bill No. : ${inv.invoiceNo}\nBill Date : ${billDate}\nPOS : DELHI\nBilling Period From : ${inv.invoiceDate} to ${inv.dueDate}`}
+                <div
+                  contentEditable suppressContentEditableWarning
+                  style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}
+                  onInput={e => {
+                    // Extract the invoice number from "Bill No. : XXX" (first line)
+                    const text = (e.currentTarget as HTMLElement).innerText;
+                    const m = text.match(/Bill No\.\s*:\s*([^\n]+)/);
+                    if (m) setLiveInvoiceNo(m[1].trim());
+                  }}
+                  onBlur={async e => {
+                    const text = e.currentTarget.innerText;
+                    const m = text.match(/Bill No\.\s*:\s*([^\n]+)/);
+                    const newNo = m?.[1]?.trim();
+                    if (!newNo || !inv) return;
+                    const result = await renameInvoiceNo(inv.id, newNo);
+                    if (result && 'error' in result) {
+                      alert(result.error as string);
+                      // Reset the text back to the last known good value
+                      e.currentTarget.innerText = `Bill No. : ${liveInvoiceNo}\nBill Date : ${billDate}\nPOS : DELHI\nBilling Period From : ${inv.invoiceDate} to ${inv.dueDate}`;
+                    } else if (result && 'invoiceNo' in result) {
+                      setLiveInvoiceNo(result.invoiceNo as string);
+                    }
+                  }}
+                >
+                  {`Bill No. : ${liveInvoiceNo || inv.invoiceNo}\nBill Date : ${billDate}\nPOS : DELHI\nBilling Period From : ${inv.invoiceDate} to ${inv.dueDate}`}
                 </div>
               </td>
             </tr>
@@ -746,14 +764,19 @@ img{max-width:100%;object-fit:contain}
             {/* ── Bank (left) + Tax Summary (right) ── */}
             <tr>
               <td colSpan={wideFormats ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
-                <div style={{ fontSize: 10, marginBottom: 4 }}><strong>Amount in Words :</strong> <span data-words contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>{amtWords}</span></div>
+                <div style={{ fontSize: 10, marginBottom: 4 }}>
+                  <strong>Amount in Words :</strong>{' '}
+                  <span contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>
+                    {taxSummary.words || amtWords}
+                  </span>
+                </div>
                 <div contentEditable suppressContentEditableWarning data-bank-detail style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap', marginTop: 6 }}>
                   {bankText}
                 </div>
               </td>
               <td colSpan={5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
-                <div data-tax-summary="1" contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
-                  {hasLoadedOnce ? undefined : taxSummaryInitial}
+                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
+                  {taxSummary.text}
                 </div>
               </td>
             </tr>

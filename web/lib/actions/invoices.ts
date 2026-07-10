@@ -23,6 +23,38 @@ export async function getInvoice(id: string) {
   return prisma.invoice.findUnique({ where: { id }, include: { lines: true, party: true } });
 }
 
+/**
+ * Rename an invoice's invoice number. Updates the denormalized invoiceNo copies in
+ * OutstandingEntry and PaymentReceipt (both store it redundantly via invoiceId FK),
+ * and revalidates all pages that show invoice numbers.
+ */
+export async function renameInvoiceNo(invoiceId: string, newInvoiceNo: string) {
+  const session = await requireAuth();
+  const no = newInvoiceNo.trim();
+  if (!no) return { error: 'Invoice number cannot be blank' };
+  if (no.length > 100) return { error: 'Invoice number too long' };
+
+  const inv = await prisma.invoice.findUnique({ where: { id: invoiceId }, select: { invoiceNo: true } });
+  if (!inv) return { error: 'Invoice not found' };
+  if (inv.invoiceNo === no) return { success: true, invoiceNo: no }; // nothing changed
+
+  const dupe = await prisma.invoice.findFirst({ where: { invoiceNo: no, id: { not: invoiceId } }, select: { id: true } });
+  if (dupe) return { error: `Invoice number "${no}" is already in use` };
+
+  await prisma.$transaction([
+    prisma.invoice.update({ where: { id: invoiceId }, data: { invoiceNo: no } }),
+    prisma.outstandingEntry.updateMany({ where: { invoiceId }, data: { invoiceNo: no, bookingRef: no } }),
+    prisma.paymentReceipt.updateMany({ where: { invoiceId }, data: { invoiceNo: no } }),
+  ]);
+
+  serverLog('info', 'invoice.renamed', { userId: session.user.id, invoiceId, oldNo: inv.invoiceNo, newNo: no });
+  revalidatePath('/dashboard/invoices');
+  revalidatePath('/dashboard/outstanding');
+  revalidatePath('/dashboard/payments');
+  revalidatePath('/dashboard');
+  return { success: true, invoiceNo: no };
+}
+
 async function nextInvoiceNo() {
   const year = new Date().getFullYear();
   // Use timestamp + random suffix to avoid race conditions on concurrent invoice generation
