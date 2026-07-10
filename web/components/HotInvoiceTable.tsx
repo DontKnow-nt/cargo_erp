@@ -16,6 +16,10 @@ export type HotColDef = {
    *  used to carry data between formats when switching. Columns with no canonical tag (format-specific
    *  charge fields like ODA, GMR, Pickup/Delivery) have no equivalent elsewhere and stay blank on switch. */
   canonical?: string;
+  /** When true, this column is numeric (for display/editing) but should NOT be included in the
+   *  auto-sum for the total column. Use this for physical quantity columns like Boxes/Weight/Pkt/Wt
+   *  that are counts/weights, not money amounts. */
+  excludeFromTotal?: boolean;
 };
 
 export type FormatKey = 'format1' | 'format2' | 'format3' | 'musashi' | 'custom';
@@ -27,14 +31,14 @@ export const FORMAT_COLUMNS: Record<'format1'|'format2'|'format3'|'musashi', Hot
     { header: 'AWB#/Ref. Number', key: 'awbNo', align: 'center', canonical: 'refNo' },
     { header: 'Date', key: 'date', align: 'center', canonical: 'date' },
     { header: 'Dest#', key: 'dest', align: 'center', canonical: 'dest' },
-    { header: 'Boxes', key: 'boxes', numeric: true, align: 'center', canonical: 'boxes' },
-    { header: 'Charg. Weight', key: 'chgWt', numeric: true, align: 'right', canonical: 'weight' },
-    { header: 'Rate', key: 'rate', numeric: true, align: 'right', canonical: 'rate' },
-    { header: 'Freight', key: 'freight', numeric: true, computed: true, align: 'right' },
-    { header: 'AWB & DO', key: 'awbDo', numeric: true, align: 'right' },
-    { header: 'Due Carrier', key: 'carrier', numeric: true, align: 'right' },
-    { header: 'Forwrd & Others', key: 'forwrd', numeric: true, align: 'right' },
-    { header: 'TSP & Others', key: 'tsp', numeric: true, align: 'right' },
+    { header: 'Boxes', key: 'boxes', numeric: true, align: 'center', canonical: 'boxes', excludeFromTotal: true },
+    { header: 'Charg. Weight', key: 'chgWt', numeric: true, align: 'right', canonical: 'weight', excludeFromTotal: true },
+    { header: 'Rate', key: 'rate', numeric: true, align: 'right', canonical: 'rate', excludeFromTotal: true },
+    { header: 'Freight', key: 'freight', numeric: true, computed: true, align: 'right', canonical: 'freight' },
+    { header: 'AWB & DO', key: 'awbDo', numeric: true, align: 'right', canonical: 'awbDo' },
+    { header: 'Due Carrier', key: 'carrier', numeric: true, align: 'right', canonical: 'carrier' },
+    { header: 'Forwrd & Others', key: 'forwrd', numeric: true, align: 'right', canonical: 'forwrd' },
+    { header: 'TSP & Others', key: 'tsp', numeric: true, align: 'right', canonical: 'tsp' },
     { header: 'Taxable Amount', key: 'taxable', numeric: true, computed: true, align: 'right' },
   ],
   format2: [
@@ -46,12 +50,12 @@ export const FORMAT_COLUMNS: Record<'format1'|'format2'|'format3'|'musashi', Hot
     { header: 'Origin Airport', key: 'originAirport', align: 'center' },
     { header: 'Dest', key: 'dest', align: 'center', canonical: 'dest' },
     { header: 'Destination Airport', key: 'destAirport', align: 'center' },
-    { header: 'Box', key: 'box', numeric: true, align: 'center', canonical: 'boxes' },
-    { header: 'Weight', key: 'weight', numeric: true, align: 'right', canonical: 'weight' },
-    { header: 'Rate', key: 'rate', numeric: true, align: 'right', canonical: 'rate' },
-    { header: 'Freight', key: 'freight', numeric: true, computed: true, align: 'right' },
-    { header: 'ODA', key: 'oda', numeric: true, align: 'right' },
-    { header: 'Docket chg', key: 'docketChg', numeric: true, align: 'right' },
+    { header: 'Box', key: 'box', numeric: true, align: 'center', canonical: 'boxes', excludeFromTotal: true },
+    { header: 'Weight', key: 'weight', numeric: true, align: 'right', canonical: 'weight', excludeFromTotal: true },
+    { header: 'Rate', key: 'rate', numeric: true, align: 'right', canonical: 'rate', excludeFromTotal: true },
+    { header: 'Freight', key: 'freight', numeric: true, computed: true, align: 'right', canonical: 'freight' },
+    { header: 'ODA', key: 'oda', numeric: true, align: 'right', canonical: 'awbDo' },
+    { header: 'Docket chg', key: 'docketChg', numeric: true, align: 'right', canonical: 'tsp' },
     { header: 'Amount', key: 'amount', numeric: true, computed: true, align: 'right' },
   ],
   format3: [
@@ -60,13 +64,13 @@ export const FORMAT_COLUMNS: Record<'format1'|'format2'|'format3'|'musashi', Hot
     { header: 'AWB NO', key: 'awbNo', align: 'center', canonical: 'refNo' },
     { header: 'Invoice', key: 'invoice', align: 'center' },
     { header: 'Sector', key: 'sector', align: 'center' },
-    { header: 'Pkt', key: 'pkt', numeric: true, align: 'center', canonical: 'boxes' },
-    { header: 'Wt.', key: 'wt', numeric: true, align: 'right', canonical: 'weight' },
-    { header: 'Freight', key: 'freight', numeric: true, align: 'right' },
-    { header: 'F/C', key: 'fc', numeric: true, align: 'right' },
-    { header: 'GMR', key: 'gmr', numeric: true, align: 'right' },
-    { header: 'TSP', key: 'tsp', numeric: true, align: 'right' },
-    { header: 'Clearance', key: 'clearance', numeric: true, align: 'right' },
+    { header: 'Pkt', key: 'pkt', numeric: true, align: 'center', canonical: 'boxes', excludeFromTotal: true },
+    { header: 'Wt.', key: 'wt', numeric: true, align: 'right', canonical: 'weight', excludeFromTotal: true },
+    { header: 'Freight', key: 'freight', numeric: true, align: 'right', canonical: 'freight' },
+    { header: 'F/C', key: 'fc', numeric: true, align: 'right', canonical: 'awbDo' },
+    { header: 'GMR', key: 'gmr', numeric: true, align: 'right', canonical: 'carrier' },
+    { header: 'TSP', key: 'tsp', numeric: true, align: 'right', canonical: 'tsp' },
+    { header: 'Clearance', key: 'clearance', numeric: true, align: 'right', canonical: 'forwrd' },
     { header: 'Awb Fees', key: 'awbFees', numeric: true, align: 'right' },
     { header: 'H Chge', key: 'hChge', numeric: true, align: 'right' },
     { header: 'Amount', key: 'amount', numeric: true, computed: true, align: 'right' },
@@ -78,13 +82,13 @@ export const FORMAT_COLUMNS: Record<'format1'|'format2'|'format3'|'musashi', Hot
     { header: 'Invoice No.', key: 'invoiceNo', align: 'center' },
     { header: 'Origin', key: 'origin', align: 'center', canonical: 'origin' },
     { header: 'Destination', key: 'destination', align: 'center', canonical: 'dest' },
-    { header: 'Pkt', key: 'pkt', numeric: true, align: 'center', canonical: 'boxes' },
-    { header: 'Wt.', key: 'wt', numeric: true, align: 'right', canonical: 'weight' },
-    { header: 'Rate', key: 'rate', numeric: true, align: 'right', canonical: 'rate' },
-    { header: 'Freight', key: 'freight', numeric: true, computed: true, align: 'right' },
-    { header: 'AWB', key: 'awb', numeric: true, align: 'right' },
-    { header: 'Pickup', key: 'pickup', numeric: true, align: 'right' },
-    { header: 'Delivery', key: 'delivery', numeric: true, align: 'right' },
+    { header: 'Pkt', key: 'pkt', numeric: true, align: 'center', canonical: 'boxes', excludeFromTotal: true },
+    { header: 'Wt.', key: 'wt', numeric: true, align: 'right', canonical: 'weight', excludeFromTotal: true },
+    { header: 'Rate', key: 'rate', numeric: true, align: 'right', canonical: 'rate', excludeFromTotal: true },
+    { header: 'Freight', key: 'freight', numeric: true, computed: true, align: 'right', canonical: 'freight' },
+    { header: 'AWB', key: 'awb', numeric: true, align: 'right', canonical: 'awbDo' },
+    { header: 'Pickup', key: 'pickup', numeric: true, align: 'right', canonical: 'carrier' },
+    { header: 'Delivery', key: 'delivery', numeric: true, align: 'right', canonical: 'forwrd' },
     { header: 'Total Amt', key: 'totalAmt', numeric: true, computed: true, align: 'right' },
   ],
 };
@@ -158,7 +162,7 @@ function computeRow(row: Record<string, string>, columns: HotColDef[]): Record<s
     let sum = 0;
     columns.forEach(c => {
       if (c.key === totalCol.key) return;
-      if (c.numeric) sum += parseNum(out[c.key]);
+      if (c.numeric && !c.excludeFromTotal) sum += parseNum(out[c.key]);
     });
     out[totalCol.key] = sum.toFixed(2);
   }

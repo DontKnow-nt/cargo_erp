@@ -35,6 +35,12 @@ const CANON_FIELDS: HotColDef[] = [
   { header: '', key: 'boxes', canonical: 'boxes' },
   { header: '', key: 'chgWt', canonical: 'weight' },
   { header: '', key: 'rate', canonical: 'rate' },
+  // Charge amount fields -- these carry between formats so ODA→F/C, carrier→GMR etc.
+  { header: '', key: 'freight', canonical: 'freight' },
+  { header: '', key: 'awbDo', canonical: 'awbDo' },
+  { header: '', key: 'carrier', canonical: 'carrier' },
+  { header: '', key: 'forwrd', canonical: 'forwrd' },
+  { header: '', key: 'tsp', canonical: 'tsp' },
 ];
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
@@ -486,11 +492,19 @@ function InvoiceEditorInner() {
         freight: row.freight,
         awbDo: row.awbDo, carrier: row.carrier, forwrd: row.forwrd,
         tsp: row.tsp, taxable: row.taxable,
-        // Format 2/3/musashi aliases
+        // Format 2 aliases
         docketNo: row.awbNo, box: row.boxes, weight: row.chgWt,
+        oda: row.awbDo, docketChg: row.tsp,
+        amount: row.taxable,
+        // Format 3 aliases
         pkt: row.boxes, wt: row.chgWt,
+        fc: row.awbDo, gmr: row.carrier, clearance: row.forwrd,
+        // Musashi aliases
+        awb: row.awbDo, pickup: row.carrier, delivery: row.forwrd,
+        totalAmt: row.taxable,
+        // Shared text aliases
         invoiceNo: '', invoice: '', sector: `${row.origin}-${row.dest}`,
-        destination: row.dest,
+        destination: row.dest, originAirport: row.origin, destAirport: row.dest,
       };
       return activeColumns.map(c => base[c.key] ?? '');
     });
