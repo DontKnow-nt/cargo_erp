@@ -479,13 +479,12 @@ function InvoiceEditorInner() {
   const gridInitialRows: string[][] = useMemo(() => {
     const saved = savedRowsByFormat[rowsKey];
     if (saved) {
-      // Non-destructive canonical merge: for non-format1 formats, fill in any blank/zero
-      // charge cells from the fresh AWB booking data. This auto-corrects invoices that were
-      // saved before the canonical charge mapping was introduced (where e.g. DocketChg was
-      // 0 even though the AWB had otherChargesDueCarrier > 0). User-edited non-zero values
-      // are always preserved.
+      // Canonical merge: fill in any blank/zero charge cells from fresh AWB booking data.
+      // Also detects duplicate charge values (e.g. TSP showing the same value as DueCarrier,
+      // which was a past bug where carrier was consolidated into TSP incorrectly) and resets
+      // them to the correct fresh value. Applies to ALL formats including Format 1.
       let finalSaved = saved;
-      if (invoiceFormat !== 'format1' && invoiceFormat !== 'custom' && lineRows.length > 0) {
+      if (invoiceFormat !== 'custom' && lineRows.length > 0) {
         const freshRows = lineRows.map((row, i) => {
           const base: Record<string, string> = {
             sl: row.sl ?? String(i + 1), origin: row.origin, awbNo: row.awbNo, date: row.date, dest: row.dest,
@@ -500,12 +499,27 @@ function InvoiceEditorInner() {
           if (!freshRow) return savedRow;
           return savedRow.map((savedVal, colIdx) => {
             const fresh = freshRow[colIdx];
-            if (!fresh || fresh === '0' || fresh === '0.00') return savedVal; // fresh is empty/zero, keep saved
+            // Always use fresh value for blank/zero saved cells
             const isBlankOrZero = !savedVal || savedVal === '0' || savedVal === '0.00';
-            return isBlankOrZero ? fresh : savedVal; // only overwrite if saved was blank/zero
+            if (isBlankOrZero && fresh && fresh !== '0' && fresh !== '0.00') return fresh;
+            // Detect bug-introduced duplicates: if this charge column's saved value equals
+            // another charge column's saved value AND the fresh value differs, use fresh.
+            // This fixes e.g. TSP=2128.80 when Due Carrier=2128.80 (carrier was wrongly
+            // consolidated into TSP by an old version of the code).
+            const tc = activeColumns[colIdx];
+            if (tc?.numeric && !tc.computed && !tc.excludeFromTotal && fresh && fresh !== savedVal) {
+              const isDuplicate = savedRow.some((otherVal, otherIdx) => {
+                if (otherIdx === colIdx) return false;
+                const otherCol = activeColumns[otherIdx];
+                return otherCol?.numeric && !otherCol.computed && !otherCol.excludeFromTotal
+                  && otherVal === savedVal && otherVal !== '0' && otherVal !== '0.00';
+              });
+              if (isDuplicate) return fresh; // reset to correct fresh value
+            }
+            return savedVal;
           });
         });
-      }
+      } // end if (invoiceFormat !== 'custom')
       if (!activeExtraCols) return finalSaved;
       return finalSaved.map((r, i) => [...r, ...(activeExtraCols.extraValues[i] ?? activeExtraCols.extraColumns.map(() => ''))]);
     }

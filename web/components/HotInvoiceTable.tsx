@@ -267,6 +267,15 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
   // Tracks which column index (physical) the user most recently clicked/interacted with,
   // so removeCol removes that specific column rather than guessing from getSelectedLast().
   const lastClickedColRef = useRef(-1);
+  // History stacks for undo/redo of column structure changes (add/remove/rename columns).
+  // Cell-level undo/redo is handled by Handsontable's built-in UndoRedo plugin separately.
+  const colUndoStack = useRef<HotColDef[][]>([]);
+  const colRedoStack = useRef<HotColDef[][]>([]);
+  function pushColHistory(prev: HotColDef[]) {
+    colUndoStack.current.push([...prev]);
+    if (colUndoStack.current.length > 30) colUndoStack.current.shift();
+    colRedoStack.current = []; // clear redo on new action
+  }
 
   const colDefs = useMemo(() => columns.map(c => ({
     data: c.key,
@@ -419,25 +428,16 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
       extraCounter.current += 1;
       const newKey = `extra${extraCounter.current}`;
       const newCol: HotColDef = { header: `Extra ${extraCounter.current}`, key: newKey, numeric: false, align: 'center' };
-      // Seed the new column's value as blank in every existing row via the instance API
-      // (setDataAtRowProp is a no-op for rows that don't have the schema yet, so we rely on
-      // updateSettings's own column-map rebuild, triggered by the `columns` prop diff below,
-      // to add the new property; existing values for other columns are preserved automatically
-      // since we never touch `data`).
-      setColumns(prev => [...prev, newCol]);
+      setColumns(prev => { pushColHistory(prev); return [...prev, newCol]; });
       setTimeout(() => onTotalChange?.(grandTotal()), 0);
     },
     removeCol: () => {
       if (columns.length <= 1) { alert('Must keep at least one column.'); return; }
-      // Use the column that was most recently interacted with (clicked header or active cell).
-      // lastClickedColRef tracks the column index from the most recent header click or cell selection.
       const inst = hotRef.current?.hotInstance;
       let colIdx = lastClickedColRef.current;
       if (colIdx < 0) {
-        // Fallback: read from current cell selection
         const sel = inst?.getSelectedLast();
         if (sel) {
-          // Convert visual column to physical in case manualColumnMove reordered them
           const visualCol = Math.min(sel[1], sel[3]);
           colIdx = visualCol >= 0 ? (inst?.toPhysicalColumn(visualCol) ?? visualCol) : columns.length - 1;
         } else {
@@ -453,11 +453,33 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
         : true;
       if (!confirmed) return;
       lastClickedColRef.current = -1;
-      setColumns(prev => prev.filter((_, i) => i !== colIdx));
+      setColumns(prev => { pushColHistory(prev); return prev.filter((_, i) => i !== colIdx); });
       setTimeout(() => onTotalChange?.(grandTotal()), 0);
     },
-    undo: () => { const i = hotRef.current?.hotInstance; if (i && !i.isDestroyed) i.getPlugin('undoRedo')?.undo(); },
-    redo: () => { const i = hotRef.current?.hotInstance; if (i && !i.isDestroyed) i.getPlugin('undoRedo')?.redo(); },
+    undo: () => {
+      // Undo column structure changes first (add/remove/rename); if none, undo cell changes.
+      if (colUndoStack.current.length > 0) {
+        const prev = colUndoStack.current.pop()!;
+        colRedoStack.current.push([...columns]);
+        setColumns(prev);
+        setTimeout(() => onTotalChange?.(grandTotal()), 0);
+      } else {
+        const i = hotRef.current?.hotInstance;
+        if (i && !i.isDestroyed) i.getPlugin('undoRedo')?.undo();
+      }
+    },
+    redo: () => {
+      // Redo column structure changes first; if none, redo cell changes.
+      if (colRedoStack.current.length > 0) {
+        const next = colRedoStack.current.pop()!;
+        colUndoStack.current.push([...columns]);
+        setColumns(next);
+        setTimeout(() => onTotalChange?.(grandTotal()), 0);
+      } else {
+        const i = hotRef.current?.hotInstance;
+        if (i && !i.isDestroyed) i.getPlugin('undoRedo')?.redo();
+      }
+    },
     getRowsMatrix: () => {
       const inst = hotRef.current?.hotInstance;
       if (!inst || inst.isDestroyed) return [];
@@ -515,7 +537,7 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
         div.style.outline = '';
         div.style.cursor = '';
         if (newHeader !== current) {
-          setColumns(prev => prev.map((c, i) => i === col ? { ...c, header: newHeader } : c));
+          setColumns(prev => { pushColHistory(prev); return prev.map((c, i) => i === col ? { ...c, header: newHeader } : c); });
         }
       };
       div.addEventListener('blur', commit, { once: true });
