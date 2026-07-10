@@ -95,10 +95,9 @@ export const FORMAT_COLUMNS: Record<'format1'|'format2'|'format3'|'musashi', Hot
 
 /**
  * Convert row data from one format's columns into another format's columns, mapping by
- * canonical field tags (date, rate, origin, dest, weight, boxes, refNo, sl). Non-canonical
- * fields (format-specific charge columns like ODA, GMR, Pickup/Delivery) have no equivalent
- * in the target format and come out blank -- this is a genuine limitation of switching between
- * formats with structurally different charge breakdowns, not a bug.
+ * canonical field tags. Any source charge amounts that have no matching canonical column
+ * in the target format are consolidated into the last available non-total, non-excluded
+ * charge column, so the grand total always matches regardless of format structure.
  */
 export function mapRowsBetweenFormats(
   sourceRows: string[][],
@@ -108,7 +107,37 @@ export function mapRowsBetweenFormats(
   return sourceRows.map(row => {
     const canonMap: Record<string, string> = {};
     sourceCols.forEach((c, i) => { if (c.canonical && row[i]) canonMap[c.canonical] = row[i]; });
-    return targetCols.map(tc => (tc.canonical && canonMap[tc.canonical]) ? canonMap[tc.canonical] : '');
+
+    // Build target row with canonical matches
+    const result = targetCols.map(tc => (tc.canonical && canonMap[tc.canonical]) ? canonMap[tc.canonical] : '');
+
+    // Find any source charge amounts that have NO canonical match in the target.
+    // Read directly from the source row (by index) not from canonMap.
+    const targetCanonicals = new Set(targetCols.map(c => c.canonical).filter(Boolean));
+    let unmappedSum = 0;
+    sourceCols.forEach((sc, si) => {
+      if (!sc.canonical) return;                  // no canonical = not transferable
+      if (targetCanonicals.has(sc.canonical)) return; // already mapped to a target col
+      if (sc.excludeFromTotal || sc.computed) return;  // skip quantity/auto-calc cols
+      if (!sc.numeric) return;
+      const val = parseFloat((row[si] ?? '').replace(/,/g, ''));
+      if (!isNaN(val) && val !== 0) unmappedSum += val;
+    });
+
+    // If there are unmapped amounts, add them to the last available editable charge column
+    // (numeric, not computed, not excludeFromTotal) so the total is preserved
+    if (unmappedSum !== 0) {
+      let lastChargeIdx = -1;
+      targetCols.forEach((tc, i) => {
+        if (tc.numeric && !tc.computed && !tc.excludeFromTotal) lastChargeIdx = i;
+      });
+      if (lastChargeIdx >= 0) {
+        const existing = parseFloat((result[lastChargeIdx] || '0').replace(/,/g, '')) || 0;
+        result[lastChargeIdx] = (existing + unmappedSum).toFixed(2);
+      }
+    }
+
+    return result;
   });
 }
 
