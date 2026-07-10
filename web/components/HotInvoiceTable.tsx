@@ -426,13 +426,22 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
     },
     removeCol: () => {
       if (columns.length <= 1) { alert('Must keep at least one column.'); return; }
-      const lastCol = columns[columns.length - 1];
-      const isBase = !lastCol.key.startsWith('extra');
+      // Remove the column that is currently selected/active in the grid.
+      // Falls back to the last column if nothing is selected.
+      const inst = hotRef.current?.hotInstance;
+      const sel = inst?.getSelectedLast();
+      // sel: [row, col, row2, col2] -- col of -1 means a row header was selected
+      const rawColIdx = sel ? Math.min(sel[1], sel[3]) : columns.length - 1;
+      const colIdx = rawColIdx < 0 ? 0 : Math.min(rawColIdx, columns.length - 1);
+      if (colIdx < 0 || colIdx >= columns.length) return;
+      const targetCol = columns[colIdx];
+      if (columns.length <= 1) { alert('Must keep at least one column.'); return; }
+      const isBase = !targetCol.key.startsWith('extra');
       const confirmed = isBase
-        ? window.confirm(`Remove the "${lastCol.header}" column? This is a base format column — removing it will affect calculations. Continue?`)
+        ? window.confirm(`Remove the "${targetCol.header}" column? This is a base format column — removing it may affect calculations. Continue?`)
         : true;
       if (!confirmed) return;
-      setColumns(prev => prev.slice(0, -1));
+      setColumns(prev => prev.filter((_, i) => i !== colIdx));
       setTimeout(() => onTotalChange?.(grandTotal()), 0);
     },
     undo: () => { const i = hotRef.current?.hotInstance; if (i && !i.isDestroyed) i.getPlugin('undoRedo')?.undo(); },
@@ -450,38 +459,48 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
     getColumns: () => columns,
   }), [columns, formatAttr]);
 
-  // Allow editing column headers by double-clicking them. The header text becomes
-  // an inline input; on blur/Enter the columns state is updated and Handsontable
-  // re-renders the new header via updateSettings.
+  // Column headers are editable with a single click — exactly like typing in data cells.
+  // Clicking a header makes it contentEditable; pressing Enter or clicking away commits
+  // the change, Escape cancels. The new name is saved with the invoice on next Save.
   function afterGetColHeader(col: number, th: HTMLTableCellElement) {
-    if (col < 0) return; // skip corner header
-    // Only attach once per th element
-    if ((th as HTMLElement & { __hdrDblclick?: boolean }).__hdrDblclick) return;
-    (th as HTMLElement & { __hdrDblclick?: boolean }).__hdrDblclick = true;
-    th.addEventListener('dblclick', () => {
-      if (th.querySelector('input')) return; // already editing
+    if (col < 0) return;
+    if ((th as HTMLElement & { __hdrClick?: boolean }).__hdrClick) return;
+    (th as HTMLElement & { __hdrClick?: boolean }).__hdrClick = true;
+    th.addEventListener('click', (e) => {
+      // Don't activate editing if the user is dragging to move/resize
+      if ((e.target as HTMLElement).classList.contains('colHeader') === false &&
+          !(e.target as HTMLElement).closest('.colHeader')) return;
+      if (th.querySelector('[contenteditable="true"]')) return;
       const current = columns[col]?.header ?? '';
-      th.style.padding = '0';
-      const input = document.createElement('input');
-      input.value = current;
-      input.style.cssText = 'width:100%;box-sizing:border-box;border:2px solid #2563eb;outline:none;padding:3px 5px;font-size:9.5px;font-weight:700;font-family:Arial,sans-serif;text-align:center;background:#fffbe6;';
-      th.replaceChildren(input);
-      input.focus();
-      input.select();
+      const div = th.querySelector<HTMLElement>('.colHeader') ?? th;
+      div.setAttribute('contenteditable', 'true');
+      div.style.outline = '2px solid #2563eb';
+      div.style.background = '#fffbe6';
+      div.style.cursor = 'text';
+      div.focus();
+      // Select all text in the div
+      const range = document.createRange();
+      range.selectNodeContents(div);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
 
       const commit = () => {
-        const newHeader = input.value.trim() || current;
-        th.style.padding = '';
-        setColumns(prev => prev.map((c, i) => i === col ? { ...c, header: newHeader } : c));
-        // Restore normal header rendering -- Handsontable will call afterGetColHeader again
-        // once columns state updates and updateSettings fires
-        th.replaceChildren(document.createTextNode(newHeader));
+        const newHeader = div.innerText.trim() || current;
+        div.removeAttribute('contenteditable');
+        div.style.outline = '';
+        div.style.background = '';
+        div.style.cursor = '';
+        if (newHeader !== current) {
+          setColumns(prev => prev.map((c, i) => i === col ? { ...c, header: newHeader } : c));
+        }
       };
-      input.addEventListener('blur', commit, { once: true });
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-        if (e.key === 'Escape') { input.value = current; input.blur(); }
+      div.addEventListener('blur', commit, { once: true });
+      div.addEventListener('keydown', (ke) => {
+        if (ke.key === 'Enter') { ke.preventDefault(); div.blur(); }
+        if (ke.key === 'Escape') { div.innerText = current; div.blur(); }
       });
+      e.stopPropagation();
     });
   }
 
