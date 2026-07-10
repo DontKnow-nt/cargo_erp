@@ -479,8 +479,35 @@ function InvoiceEditorInner() {
   const gridInitialRows: string[][] = useMemo(() => {
     const saved = savedRowsByFormat[rowsKey];
     if (saved) {
-      if (!activeExtraCols) return saved;
-      return saved.map((r, i) => [...r, ...(activeExtraCols.extraValues[i] ?? activeExtraCols.extraColumns.map(() => ''))]);
+      // Non-destructive canonical merge: for non-format1 formats, fill in any blank/zero
+      // charge cells from the fresh AWB booking data. This auto-corrects invoices that were
+      // saved before the canonical charge mapping was introduced (where e.g. DocketChg was
+      // 0 even though the AWB had otherChargesDueCarrier > 0). User-edited non-zero values
+      // are always preserved.
+      let finalSaved = saved;
+      if (invoiceFormat !== 'format1' && invoiceFormat !== 'custom' && lineRows.length > 0) {
+        const freshRows = lineRows.map((row, i) => {
+          const base: Record<string, string> = {
+            sl: row.sl ?? String(i + 1), origin: row.origin, awbNo: row.awbNo, date: row.date, dest: row.dest,
+            boxes: row.boxes, chgWt: row.chgWt, rate: row.rate,
+            freight: row.freight, awbDo: row.awbDo, carrier: row.carrier, forwrd: row.forwrd, tsp: row.tsp, taxable: row.taxable,
+          };
+          return FORMAT_COLUMNS.format1.map(c => base[c.key] ?? '');
+        });
+        const remapped = mapRowsBetweenFormats(freshRows, FORMAT_COLUMNS.format1, activeColumns);
+        finalSaved = saved.map((savedRow, rowIdx) => {
+          const freshRow = remapped[rowIdx];
+          if (!freshRow) return savedRow;
+          return savedRow.map((savedVal, colIdx) => {
+            const fresh = freshRow[colIdx];
+            if (!fresh || fresh === '0' || fresh === '0.00') return savedVal; // fresh is empty/zero, keep saved
+            const isBlankOrZero = !savedVal || savedVal === '0' || savedVal === '0.00';
+            return isBlankOrZero ? fresh : savedVal; // only overwrite if saved was blank/zero
+          });
+        });
+      }
+      if (!activeExtraCols) return finalSaved;
+      return finalSaved.map((r, i) => [...r, ...(activeExtraCols.extraValues[i] ?? activeExtraCols.extraColumns.map(() => ''))]);
     }
     // No saved data for this format yet -- seed from the original booking rows (only meaningful
     // the very first time a brand-new invoice is opened; once saved, savedRowsByFormat wins).
