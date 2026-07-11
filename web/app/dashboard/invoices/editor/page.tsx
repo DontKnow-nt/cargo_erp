@@ -145,6 +145,7 @@ function InvoiceEditorInner() {
   const [isRounded, setIsRounded] = useState(false);
   const isRoundedRef = useRef(isRounded);
   useEffect(() => { isRoundedRef.current = isRounded; }, [isRounded]);
+  const [useSignature, setUseSignature] = useState(false);
 
   // ── Computed tax summary (React state, not imperative DOM writes) ─────────
   // Drives both the tax summary panel AND Amount in Words consistently.
@@ -713,6 +714,10 @@ img{max-width:100%;object-fit:contain}
             ))}
           </span>
           <span style={{ fontSize: 11, color: '#6b7280' }}>💡 Click any field to edit</span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151', padding: '6px 10px', background: useSignature ? '#ecfdf5' : '#f9fafb', border: `1px solid ${useSignature ? '#059669' : '#d1d5db'}`, borderRadius: 7 }}>
+            <input type="checkbox" checked={useSignature} onChange={e => setUseSignature(e.target.checked)} style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#059669' }} />
+            ✍️ Company Signature
+          </label>
           <button onClick={() => setIsRounded(p => !p)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: isRounded ? '#7c3aed' : '#4b5563', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
             {isRounded ? '🔢 Exact Amount' : '🪙 Round Off'}
           </button>
@@ -879,9 +884,26 @@ img{max-width:100%;object-fit:contain}
                   <div>8. S. Tax.      AAGCT2294NSD001</div>
                 </div>
               </td>
-              <td colSpan={5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'bottom', textAlign: 'right' }}>
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap', textAlign: 'right' }}>
-                  {`For TRIVENI CARGO EXPRESS INDIA PVT LTD\n\n\n\nAuthorised Signatory`}
+              <td colSpan={5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'bottom', textAlign: 'center' }}>
+                <div style={{ textAlign: 'center', fontFamily: 'Arial, sans-serif', fontSize: 10 }}>
+                  <div contentEditable suppressContentEditableWarning style={{ outline: 'none', fontWeight: 700, fontSize: 10 }}>
+                    For TRIVENI CARGO EXPRESS INDIA PVT LTD
+                  </div>
+                  {useSignature ? (
+                    <img
+                      src="/signature.jpg"
+                      alt="Authorised Signatory"
+                      style={{ width: 90, height: 90, objectFit: 'contain', display: 'block', margin: '4px auto 2px' }}
+                    />
+                  ) : (
+                    <div style={{ height: 55 }} />
+                  )}
+                  <div style={{ fontWeight: 700, fontSize: 11, marginTop: 2 }}>Authorised Signatory</div>
+                  {!useSignature && (
+                    <div style={{ fontSize: 8, fontStyle: 'italic', color: '#555', marginTop: 3 }}>
+                      Note: This is computer generated invoice no signature required.
+                    </div>
+                  )}
                 </div>
               </td>
             </tr>
