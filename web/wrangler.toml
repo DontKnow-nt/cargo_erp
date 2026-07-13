@@ -1,3 +1,4 @@
 name = "cargo-erp"
+pages_build_output_dir = ".vercel/output/static"
 compatibility_date = "2026-07-13"
 compatibility_flags = ["nodejs_compat"]
