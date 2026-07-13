@@ -1,9 +1,13 @@
+import '@/lib/polyfill';
 import { notFound, redirect } from 'next/navigation';
 import { AutoPrint } from '@/components/AutoPrint';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { amountToWords } from '@/lib/invoiceAmounts';
+
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
 type BankRecord = Awaited<ReturnType<typeof prisma.bankDetail.findMany>>[number];
 type BankView = {

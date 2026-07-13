@@ -1,3 +1,4 @@
+import '@/lib/polyfill';
 import { getServerSession, type NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
@@ -84,7 +85,7 @@ export const authOptions: NextAuthOptions = {
     },
   },
   pages: { signIn: '/login', error: '/login' },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET || 'temp-secret-key-for-building-purposes-only',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

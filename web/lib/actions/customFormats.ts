@@ -1,4 +1,5 @@
 'use server';
+import '@/lib/polyfill';
 import prisma from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';

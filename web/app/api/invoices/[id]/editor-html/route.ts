@@ -1,3 +1,4 @@
+import '@/lib/polyfill';
 export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';

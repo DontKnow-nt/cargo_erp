@@ -62,7 +62,7 @@ const nextConfig: NextConfig = {
   productionBrowserSourceMaps: false,
   poweredByHeader: false,
   // Reduce dev server memory: disable source maps in dev, limit bundle analysis
-  webpack(config, { dev }) {
+  webpack(config, { dev, isServer, webpack }) {
     if (dev) {
       config.devtool = false; // no source maps in dev = less RAM
     }
@@ -70,8 +70,54 @@ const nextConfig: NextConfig = {
     config.externals = [
       ...(Array.isArray(config.externals) ? config.externals : []),
       'better-sqlite3',
-      'bcryptjs',
     ];
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      crypto: require.resolve('crypto-browserify'),
+      'node:crypto': require.resolve('crypto-browserify'),
+      url: require.resolve('url/'),
+      'node:url': require.resolve('url/'),
+      https: require.resolve('https-browserify'),
+      'node:https': require.resolve('https-browserify'),
+      http: require.resolve('stream-http'),
+      'node:http': require.resolve('stream-http'),
+      querystring: require.resolve('querystring-es3'),
+      'node:querystring': require.resolve('querystring-es3'),
+      buffer: require.resolve('buffer/'),
+      'node:buffer': require.resolve('buffer/'),
+      stream: require.resolve('stream-browserify'),
+      'node:stream': require.resolve('stream-browserify'),
+      util: require.resolve('util/'),
+      'node:util': require.resolve('util/'),
+      vm: false,
+      'node:vm': false,
+    };
+
+    const polyfills = {
+      crypto: require.resolve('crypto-browserify'),
+      url: require.resolve('url/'),
+      https: require.resolve('https-browserify'),
+      http: require.resolve('stream-http'),
+      querystring: require.resolve('querystring-es3'),
+      buffer: require.resolve('buffer/'),
+      stream: require.resolve('stream-browserify'),
+      util: require.resolve('util/'),
+    };
+
+    for (const [name, path] of Object.entries(polyfills)) {
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(
+          new RegExp(`^(node:)?${name}$`),
+          path
+        )
+      );
+    }
+
+    config.plugins.push(
+      new webpack.DefinePlugin({
+        'process.version': JSON.stringify('v18.0.0'),
+      })
+    );
     return config;
   },
 };
