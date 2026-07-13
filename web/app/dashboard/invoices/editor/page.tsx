@@ -234,11 +234,10 @@ function InvoiceEditorInner() {
 
   const applyBankToPaper = useCallback((b: typeof banks[number] | undefined, paper: HTMLElement) => {
     if (!b) return;
-    const bankText = `Bank           : ${b.bank_name}\nA/c Name     : ${b.account_name}\nAccount No.  : ${b.account_number}\nIFSC Code    : ${b.ifsc}\nBranch         : ${b.branch}`;
+    // Bank details table is now pure React JSX reading from `bank` state -- no DOM writes needed.
+    // Only update the bank footer line which is still a plain contentEditable div.
     const bankFooter = `${b.bank_name}, A/c Name: ${b.account_name}, A/C No. - ${b.account_number}, IFSC Code - ${b.ifsc}, Branch - ${b.branch}`;
-    const bankDiv = paper.querySelector<HTMLElement>('[data-bank-detail]');
     const footerDiv = paper.querySelector<HTMLElement>('[data-bank-footer]');
-    if (bankDiv) bankDiv.innerText = bankText;
     if (footerDiv) footerDiv.innerText = bankFooter;
   }, []);
 
@@ -653,10 +652,6 @@ img{max-width:100%;object-fit:contain}
   const billDate = inv.invoiceDate.split('-').reverse().join('.');
   const amtWords = amountToWords(inv.grandTotal);
 
-  const bankText = bank
-    ? `Bank           : ${bank.bank_name}\nA/c Name     : ${bank.account_name}\nAccount No.  : ${bank.account_number}\nIFSC Code    : ${bank.ifsc}\nBranch         : ${bank.branch}`
-    : `Bank           : YES BANK Ltd.\nA/c Name     : TRIVENI CARGO EXPRESS INDIA PVT LTD\nAccount No.  : 008463700000641\nIFSC Code    : YESB0000283\nBranch         : Vasant Kunj, New Delhi`;
-
   const bankFooter = bank
     ? `${bank.bank_name}, A/c Name: ${bank.account_name}, A/C No. - ${bank.account_number}, IFSC Code - ${bank.ifsc}, Branch - ${bank.branch}`
     : `YES BANK Ltd., A/c Name: TRIVENI CARGO EXPRESS INDIA PVT LTD, A/C No. - 008463700000641, IFSC Code - YESB0000283, Branch - Vasant Kunj, New Delhi`;
@@ -843,20 +838,66 @@ img{max-width:100%;object-fit:contain}
             {/* ── Bank (left) + Tax Summary (right) ── */}
             <tr>
               <td colSpan={wideFormats ? 10 : 9} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
-                <div style={{ fontSize: 10, marginBottom: 4 }}>
+                <div style={{ fontSize: 10, marginBottom: 5, fontFamily: 'Arial, sans-serif' }}>
                   <strong>Amount in Words :</strong>{' '}
                   <span contentEditable suppressContentEditableWarning style={{ outline: 'none' }}>
                     {taxSummary.words || amtWords}
                   </span>
                 </div>
-                <div contentEditable suppressContentEditableWarning data-bank-detail style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap', marginTop: 6 }}>
-                  {bankText}
-                </div>
+                {/* Bank details: fixed two-column layout so colons always align */}
+                <table data-bank-detail style={{ borderCollapse: 'collapse', width: '100%', fontSize: 10, fontFamily: 'Arial, sans-serif', marginTop: 4 }}>
+                  <tbody>
+                    {[
+                      ['Bank', bank?.bank_name ?? ''],
+                      ['A/c Name', bank?.account_name ?? ''],
+                      ['Account No.', bank?.account_number ?? ''],
+                      ['IFSC Code', bank?.ifsc ?? ''],
+                      ['Branch', bank?.branch ?? ''],
+                    ].map(([label, value]) => (
+                      <tr key={label}>
+                        <td style={{ padding: '1px 0', whiteSpace: 'nowrap', width: 80, verticalAlign: 'top', color: '#111' }}>
+                          {label}
+                        </td>
+                        <td style={{ padding: '1px 4px', whiteSpace: 'nowrap', width: 6, verticalAlign: 'top', color: '#111' }}>:</td>
+                        <td contentEditable suppressContentEditableWarning style={{ outline: 'none', padding: '1px 0', verticalAlign: 'top', color: '#111' }}>
+                          {value}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </td>
               <td colSpan={5} style={{ border: '1px solid #000', padding: '5px 7px', verticalAlign: 'top' }}>
-                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', minHeight: 60, fontSize: 10, fontFamily: 'Arial, sans-serif', whiteSpace: 'pre-wrap' }}>
-                  {taxSummary.text}
-                </div>
+                {/* Tax summary: fixed two-column layout so colons and amounts always align */}
+                <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 10, fontFamily: 'Arial, sans-serif' }}>
+                  <tbody>
+                    {(() => {
+                      const fmtN = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                      const total = hotGrandTotal;
+                      const sgstAmt = parseFloat((total * sgstRate / 100).toFixed(2));
+                      const cgstAmt = parseFloat((total * cgstRate / 100).toFixed(2));
+                      const igstAmt = parseFloat((total * igstRate / 100).toFixed(2));
+                      const exactNet = total + sgstAmt + cgstAmt + igstAmt;
+                      const roundedNet = isRounded ? Math.round(exactNet) : exactNet;
+                      const roundOff = isRounded ? parseFloat((roundedNet - exactNet).toFixed(2)) : 0;
+                      const rows: [string, string][] = [
+                        ['Total Taxable Amount', fmtN(total)],
+                        [`SGST @ ${sgstRate}%`, fmtN(sgstAmt)],
+                        [`CGST @ ${cgstRate}%`, fmtN(cgstAmt)],
+                        [`IGST @ ${igstRate}%`, fmtN(igstAmt)],
+                        ...(isRounded ? [['Round Off', `${roundOff >= 0 ? '+' : ''}${fmtN(roundOff)}`] as [string, string]] : []),
+                        ['Net Payable Amount', fmtN(roundedNet)],
+                      ];
+                      return rows.map(([label, value], i) => (
+                        <tr key={label} style={i === rows.length - 1 ? { fontWeight: 700, borderTop: '1px solid #ccc' } : {}}>
+                          <td style={{ padding: '1px 0', whiteSpace: 'nowrap', verticalAlign: 'top' }}>{label}</td>
+                          <td style={{ padding: '1px 8px', whiteSpace: 'nowrap', verticalAlign: 'top' }}>:</td>
+                          <td style={{ padding: '1px 0', textAlign: 'right', whiteSpace: 'nowrap', verticalAlign: 'top' }}>{value}</td>
+                        </tr>
+                      ));
+                    })()}
+                  </tbody>
+                </table>
               </td>
             </tr>
 
