@@ -1,0 +1,49 @@
+# Git
+.git
+.gitignore
+
+# Next.js build output (rebuilt inside Docker)
+web/.next
+web/out
+
+# Dependencies (reinstalled inside Docker)
+web/node_modules
+
+# Dev & local files
+web/.env
+web/.env.local
+web/.env.development
+web/.env.test
+web/dev.log
+web/dev.db
+web/dev.db-wal
+web/dev.db-shm
+web/scratch/
+
+# Test files
+web/__tests__
+web/jest.config.js
+web/jest.config.ts
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+Thumbs.db
+.vscode/
+.idea/
+
+# Misc
+README.md
+SECURITY_REMEDIATION.md
+CLAUDE.md
+AGENTS.md
+web/CLAUDE.md
+web/AGENTS.md
+web/README.md
+web/tsconfig.tsbuildinfo
+
+# Docker files themselves (avoid build context bloat)
+Dockerfile
+.dockerignore
+cloudbuild.yaml

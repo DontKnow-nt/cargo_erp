@@ -47,6 +47,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  output: 'standalone',       // produce a minimal self-contained build for Docker
   outputFileTracingRoot: path.join(__dirname, '../'),
   async headers() {
     return [
