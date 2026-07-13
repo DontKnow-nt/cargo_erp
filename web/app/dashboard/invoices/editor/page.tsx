@@ -611,18 +611,28 @@ function InvoiceEditorInner() {
     const clone = temp;
 
     try {
-      const [resp1, resp2] = await Promise.all([fetch('/logo.png'), fetch('/iata.png')]);
-      const [blob1, blob2] = await Promise.all([resp1.blob(), resp2.blob()]);
-      const [b64_triveni, b64_iata] = await Promise.all([
-        new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(blob1); }),
-        new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(blob2); }),
+      const [resp1, resp2, resp3] = await Promise.all([fetch('/logo.png'), fetch('/iata.png'), fetch('/signature.jpg').catch(() => null)]);
+      const [blob1, blob2, blob3] = await Promise.all([resp1.blob(), resp2.blob(), resp3 ? resp3.blob() : Promise.resolve(null)]);
+      const toBase64 = (blob: Blob) => new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(blob); });
+      const [b64_triveni, b64_iata, b64_sig] = await Promise.all([
+        toBase64(blob1),
+        toBase64(blob2),
+        blob3 ? toBase64(blob3) : Promise.resolve(''),
       ]);
       clone.querySelectorAll('img').forEach(img => {
         const htmlImg = img as HTMLImageElement;
-        if (htmlImg.alt.toLowerCase().includes('iata') || htmlImg.src.includes('iata.png')) htmlImg.src = b64_iata;
-        else htmlImg.src = b64_triveni;
+        const src = htmlImg.src || '';
+        const alt = htmlImg.alt.toLowerCase();
+        if (alt.includes('iata') || src.includes('iata.png')) {
+          htmlImg.src = b64_iata;
+        } else if (alt.includes('authorised signatory') || src.includes('signature')) {
+          if (b64_sig) htmlImg.src = b64_sig;
+        } else if (alt.includes('triveni') || src.includes('logo.png')) {
+          htmlImg.src = b64_triveni;
+        }
+        // any other images: leave as-is
       });
-    } catch { /* logo missing, skip */ }
+    } catch { /* logos missing, skip */ }
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Tax Invoice - ${inv?.invoiceNo ?? ''}</title>
 <style>
