@@ -9,7 +9,7 @@ let pdfjsLib: typeof import('pdfjs-dist') | null = null;
 
 async function getPdfjs() {
   if (!pdfjsLib) {
-    pdfjsLib = await import('pdfjs-dist');
+    pdfjsLib = await import('pdfjs-dist/build/pdf');
     // Point the worker at the static file we copied to /public
     pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
   }
