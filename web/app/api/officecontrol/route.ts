@@ -1,3 +1,4 @@
+export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual, createHash } from 'crypto';
 import { serverLog } from '@/lib/logger';
