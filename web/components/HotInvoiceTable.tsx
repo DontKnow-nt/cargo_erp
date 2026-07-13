@@ -172,6 +172,31 @@ const parseNum = (s: string) => {
   return isNaN(n) ? 0 : n;
 };
 
+/**
+ * Evaluate a BODMAS expression safely. Accepts +, -, *, /, (, ), digits, dots, spaces, %.
+ * Returns the computed number formatted to 2 decimal places, or null if input is
+ * not a formula (plain number) or is unsafe.
+ * Examples:  "8*7" → "56.00",  "100+50*2" → "200.00",  "1000/4" → "250.00"
+ */
+function evalFormula(input: string): string | null {
+  const s = (input ?? '').replace(/,/g, '').trim();
+  if (!s) return null;
+  // Only evaluate if it contains an operator (otherwise it's a plain number)
+  if (!/[+\-*/]/.test(s)) return null;
+  // Safety: only allow digits, operators, parens, dot, space, %
+  if (!/^[\d\s+\-*/().%]+$/.test(s)) return null;
+  try {
+    const normalized = s.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');
+    // eslint-disable-next-line no-new-func
+    const result = Function('"use strict"; return (' + normalized + ')')() as number;
+    if (!isFinite(result) || isNaN(result)) return null;
+    // Return as plain number string (no trailing zeros for whole numbers, 2dp otherwise)
+    return Number.isInteger(result) ? String(result) : result.toFixed(2);
+  } catch {
+    return null;
+  }
+}
+
 function computeRow(row: Record<string, string>, columns: HotColDef[]): Record<string, string> {
   const out = { ...row };
   const totalCol = columns.find(c => c.computed && (c.key === 'taxable' || c.key === 'amount' || c.key === 'totalAmt'));
@@ -305,6 +330,24 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
       sum += parseNum(String(inst.getDataAtRowProp(r, totalCol.key) ?? ''));
     }
     return parseFloat(sum.toFixed(2));
+  }
+
+  // Evaluate BODMAS formulas before the value is committed to the cell.
+  // e.g. user types "8*7" and presses Enter → cell stores "56" and auto-sum fires.
+  // Only applies to numeric (non-computed) columns to avoid mangling text cells.
+  function beforeChange(changes: Handsontable.CellChange[], source: string) {
+    if (source === 'loadData' || source === 'internal') return;
+    changes.forEach((change, i) => {
+      const [, prop, , newVal] = change;
+      if (typeof newVal !== 'string') return;
+      // Find the column definition for this prop key
+      const col = columns.find(c => c.key === prop);
+      if (!col?.numeric || col.computed) return; // only evaluate numeric, non-computed cells
+      const evaluated = evalFormula(newVal);
+      if (evaluated !== null) {
+        changes[i][3] = evaluated; // replace the value in-place before Handsontable stores it
+      }
+    });
   }
 
   function afterChange(changes: Handsontable.CellChange[] | null, source: string) {
@@ -572,6 +615,7 @@ const HotInvoiceTable = forwardRef<HotInvoiceHandle, Props>(function HotInvoiceT
         height="auto"
         stretchH="all"
         afterChange={afterChange}
+        beforeChange={beforeChange}
         beforeKeyDown={beforeKeyDown}
         afterGetColHeader={afterGetColHeader}
         afterSelectionEnd={afterSelectionEnd}
