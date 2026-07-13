@@ -1,10 +1,9 @@
 export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
-import { timingSafeEqual, createHash } from 'crypto';
 import { serverLog } from '@/lib/logger';
 
 const OC_PASSWORD = process.env.OFFICECONTROL_PASSWORD ?? 'OfficeControl@2024';
-const OC_TOKEN = Buffer.from(process.env.NEXTAUTH_SECRET ?? '').toString('base64').slice(0, 32);
+const OC_TOKEN = btoa(process.env.NEXTAUTH_SECRET ?? '').slice(0, 32);
 const COOKIE_NAME = 'oc_session';
 
 // Rate limiting: 5 attempts per IP per 15 min
@@ -23,6 +22,22 @@ function isRateLimited(ip: string): boolean {
   return entry.count > MAX;
 }
 
+// Timing-safe comparison — prevents timing attacks
+function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.byteLength !== b.byteLength) return false;
+  let result = 0;
+  for (let i = 0; i < a.byteLength; i++) {
+    result |= a[i] ^ b[i];
+  }
+  return result === 0;
+}
+
+async function sha256(text: string): Promise<Uint8Array> {
+  const msgUint8 = new TextEncoder().encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+  return new Uint8Array(hashBuffer);
+}
+
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
 
@@ -36,8 +51,8 @@ export async function POST(req: NextRequest) {
   // Timing-safe comparison — prevents timing attacks
   let valid = false;
   try {
-    const a = createHash('sha256').update(password ?? '').digest();
-    const b = createHash('sha256').update(OC_PASSWORD).digest();
+    const a = await sha256(password ?? '');
+    const b = await sha256(OC_PASSWORD);
     valid = timingSafeEqual(a, b);
   } catch { valid = false; }
 
