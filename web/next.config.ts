@@ -49,7 +49,7 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   // Exclude heavy server/Node-only packages from the edge bundle.
   // @cloudflare/next-on-pages traces these and they blow up the 25 MiB limit.
-  serverExternalPackages: ['xlsx', '@prisma/client', 'prisma', 'bcryptjs', '@neondatabase/serverless', '@prisma/adapter-neon', '@prisma/adapter-pg', 'pg'],
+  serverExternalPackages: ['@prisma/client', 'prisma', 'bcryptjs', '@neondatabase/serverless', '@prisma/adapter-neon', '@prisma/adapter-pg', 'pg'],
   ...(process.env.CF_PAGES === '1' ? {} : {
     output: 'standalone',       // produce a minimal self-contained build for Docker
     outputFileTracingRoot: path.join(__dirname, '../'),
@@ -73,9 +73,6 @@ const nextConfig: NextConfig = {
     config.externals = [
       ...(Array.isArray(config.externals) ? config.externals : []),
       'better-sqlite3',
-      // xlsx is ~1.5 MB — only used in the import-excel API route; treat as external
-      // so next-on-pages doesn't inline it into the edge worker bundle.
-      ...(isServer ? ['xlsx'] : []),
     ];
     // Only apply Node.js polyfill aliases for client-side builds.
     // Applying them to the server/edge build wastes bundle space because
