@@ -80,7 +80,23 @@ const nextConfig: NextConfig = {
     // Only apply Node.js polyfill aliases for client-side builds.
     // Applying them to the server/edge build wastes bundle space because
     // edge workers have native crypto, url, etc. via nodejs_compat.
-    if (!isServer) {
+    if (isServer) {
+      // Tell webpack NOT to bundle these — nodejs_compat supplies them at runtime.
+      // Without this, next-auth and other libs that import 'crypto' cause a
+      // "Can't resolve 'crypto'" build error on the edge runtime.
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        crypto: false,
+        url: false,
+        https: false,
+        http: false,
+        querystring: false,
+        buffer: false,
+        stream: false,
+        util: false,
+        vm: false,
+      };
+    } else {
       config.resolve.alias = {
         ...config.resolve.alias,
         crypto: require.resolve('crypto-browserify'),
