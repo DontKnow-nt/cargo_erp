@@ -11,8 +11,12 @@ async function getPdfjs() {
   if (!pdfjsLib) {
     // Load the browser bundle from /public so Cloudflare's edge bundler never
     // traverses pdfjs-dist's Node fallback imports (fs/http/https/url).
-    // @ts-expect-error This runtime module is copied to /public at build time.
-    pdfjsLib = await import('/pdf.min.mjs');
+    // Keep the URL out of the server/edge dependency graph; it is fetched by
+    // the browser from the static asset copied to /public.
+    const loadBrowserModule = new Function('specifier', 'return import(specifier)') as (
+      specifier: string,
+    ) => Promise<typeof import('pdfjs-dist')>;
+    pdfjsLib = await loadBrowserModule('/pdf.min.mjs');
     // Point the worker at the static file we copied to /public
     pdfjsLib!.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
   }
