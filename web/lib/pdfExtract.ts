@@ -9,6 +9,8 @@ let pdfjsLib: typeof import('pdfjs-dist') | null = null;
 
 async function getPdfjs() {
   if (!pdfjsLib) {
+    // pdfjs-dist does not ship declarations for this browser-only subpath.
+    // @ts-expect-error The runtime module is present and avoids Node built-ins.
     pdfjsLib = await import('pdfjs-dist/build/pdf');
     // Point the worker at the static file we copied to /public
     pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
