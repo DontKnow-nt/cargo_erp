@@ -13,7 +13,7 @@ async function getPdfjs() {
     // @ts-expect-error The runtime module is present and avoids Node built-ins.
     pdfjsLib = await import('pdfjs-dist/build/pdf');
     // Point the worker at the static file we copied to /public
-    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+    pdfjsLib!.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
   }
   return pdfjsLib;
 }
