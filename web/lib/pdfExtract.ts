@@ -9,9 +9,10 @@ let pdfjsLib: typeof import('pdfjs-dist') | null = null;
 
 async function getPdfjs() {
   if (!pdfjsLib) {
-    // pdfjs-dist does not ship declarations for this browser-only subpath.
-    // @ts-expect-error The runtime module is present and avoids Node built-ins.
-    pdfjsLib = await import('pdfjs-dist/build/pdf');
+    // Load the browser bundle from /public so Cloudflare's edge bundler never
+    // traverses pdfjs-dist's Node fallback imports (fs/http/https/url).
+    // @ts-expect-error This runtime module is copied to /public at build time.
+    pdfjsLib = await import('/pdf.min.mjs');
     // Point the worker at the static file we copied to /public
     pdfjsLib!.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
   }
