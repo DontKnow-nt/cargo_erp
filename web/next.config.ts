@@ -47,6 +47,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Exclude heavy server/Node-only packages from the edge bundle.
+  // @cloudflare/next-on-pages traces these and they blow up the 25 MiB limit.
+  serverExternalPackages: ['xlsx', '@prisma/client', 'prisma', 'bcryptjs', '@neondatabase/serverless', '@prisma/adapter-neon', '@prisma/adapter-pg', 'pg'],
   ...(process.env.CF_PAGES === '1' ? {} : {
     output: 'standalone',       // produce a minimal self-contained build for Docker
     outputFileTracingRoot: path.join(__dirname, '../'),
@@ -66,51 +69,61 @@ const nextConfig: NextConfig = {
     if (dev) {
       config.devtool = false; // no source maps in dev = less RAM
     }
-    // Tell webpack these heavy packages are server-only (don't bundle for client)
+    // Tell webpack these packages are not available in edge/server and should not be bundled.
     config.externals = [
       ...(Array.isArray(config.externals) ? config.externals : []),
       'better-sqlite3',
+      // xlsx is ~1.5 MB — only used in the import-excel API route; treat as external
+      // so next-on-pages doesn't inline it into the edge worker bundle.
+      ...(isServer ? ['xlsx'] : []),
     ];
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      crypto: require.resolve('crypto-browserify'),
-      'node:crypto': require.resolve('crypto-browserify'),
-      url: require.resolve('url/'),
-      'node:url': require.resolve('url/'),
-      https: require.resolve('https-browserify'),
-      'node:https': require.resolve('https-browserify'),
-      http: require.resolve('stream-http'),
-      'node:http': require.resolve('stream-http'),
-      querystring: require.resolve('querystring-es3'),
-      'node:querystring': require.resolve('querystring-es3'),
-      buffer: require.resolve('buffer/'),
-      'node:buffer': require.resolve('buffer/'),
-      stream: require.resolve('stream-browserify'),
-      'node:stream': require.resolve('stream-browserify'),
-      util: require.resolve('util/'),
-      'node:util': require.resolve('util/'),
-      vm: false,
-      'node:vm': false,
-    };
+    // Only apply Node.js polyfill aliases for client-side builds.
+    // Applying them to the server/edge build wastes bundle space because
+    // edge workers have native crypto, url, etc. via nodejs_compat.
+    if (!isServer) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        crypto: require.resolve('crypto-browserify'),
+        'node:crypto': require.resolve('crypto-browserify'),
+        url: require.resolve('url/'),
+        'node:url': require.resolve('url/'),
+        https: require.resolve('https-browserify'),
+        'node:https': require.resolve('https-browserify'),
+        http: require.resolve('stream-http'),
+        'node:http': require.resolve('stream-http'),
+        querystring: require.resolve('querystring-es3'),
+        'node:querystring': require.resolve('querystring-es3'),
+        buffer: require.resolve('buffer/'),
+        'node:buffer': require.resolve('buffer/'),
+        stream: require.resolve('stream-browserify'),
+        'node:stream': require.resolve('stream-browserify'),
+        util: require.resolve('util/'),
+        'node:util': require.resolve('util/'),
+        vm: false,
+        'node:vm': false,
+      };
 
-    const polyfills = {
-      crypto: require.resolve('crypto-browserify'),
-      url: require.resolve('url/'),
-      https: require.resolve('https-browserify'),
-      http: require.resolve('stream-http'),
-      querystring: require.resolve('querystring-es3'),
-      buffer: require.resolve('buffer/'),
-      stream: require.resolve('stream-browserify'),
-      util: require.resolve('util/'),
-    };
+      const polyfills: Record<string, string | false> = {
+        crypto: require.resolve('crypto-browserify'),
+        url: require.resolve('url/'),
+        https: require.resolve('https-browserify'),
+        http: require.resolve('stream-http'),
+        querystring: require.resolve('querystring-es3'),
+        buffer: require.resolve('buffer/'),
+        stream: require.resolve('stream-browserify'),
+        util: require.resolve('util/'),
+      };
 
-    for (const [name, path] of Object.entries(polyfills)) {
-      config.plugins.push(
-        new webpack.NormalModuleReplacementPlugin(
-          new RegExp(`^(node:)?${name}$`),
-          path
-        )
-      );
+      for (const [name, resolvedPath] of Object.entries(polyfills)) {
+        if (resolvedPath) {
+          config.plugins.push(
+            new webpack.NormalModuleReplacementPlugin(
+              new RegExp(`^(node:)?${name}$`),
+              resolvedPath as string
+            )
+          );
+        }
+      }
     }
 
     config.plugins.push(

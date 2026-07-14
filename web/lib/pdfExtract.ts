@@ -3,6 +3,10 @@
  * Uses PDF.js (pdfjs-dist) to extract all text from a PDF file (ArrayBuffer).
  * Works for both text-layer PDFs and most digitally-created PDFs.
  * Returns the full concatenated text string, preserving newlines between pages.
+ *
+ * The actual PDF.js library files (pdf.min.mjs, pdf.worker.min.mjs) are served
+ * from /public and loaded via URL — NOT imported from node_modules. This keeps
+ * pdfjs-dist out of the edge/server bundle entirely.
  */
 
 type PdfJsModule = {
