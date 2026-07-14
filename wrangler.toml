@@ -1,6 +1,8 @@
 name = "cargo-erp"
+main = "web/.open-next/worker.js"
 compatibility_date = "2026-07-13"
 compatibility_flags = ["nodejs_compat"]
 
-# OpenNext output — static assets directory for Cloudflare Pages
-pages_build_output_dir = "web/.open-next/assets"
+[assets]
+directory = "web/.open-next/assets"
+binding = "ASSETS"
