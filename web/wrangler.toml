@@ -1,4 +1,6 @@
 name = "cargo-erp"
-pages_build_output_dir = ".vercel/output/static"
 compatibility_date = "2026-07-13"
 compatibility_flags = ["nodejs_compat"]
+
+# OpenNext output — used when running opennextjs-cloudflare preview/deploy locally
+pages_build_output_dir = ".open-next/assets"
