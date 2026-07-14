@@ -5,7 +5,19 @@
  * Returns the full concatenated text string, preserving newlines between pages.
  */
 
-let pdfjsLib: typeof import('pdfjs-dist') | null = null;
+type PdfJsModule = {
+  GlobalWorkerOptions: { workerSrc: string };
+  getDocument: (options: { data: Uint8Array }) => {
+    promise: Promise<{
+      numPages: number;
+      getPage: (pageNumber: number) => Promise<{
+        getTextContent: () => Promise<{ items: Array<{ str: string; transform?: number[] }> }>;
+      }>;
+    }>;
+  };
+};
+
+let pdfjsLib: PdfJsModule | null = null;
 
 async function getPdfjs() {
   if (!pdfjsLib) {
@@ -15,7 +27,7 @@ async function getPdfjs() {
     // the browser from the static asset copied to /public.
     const loadBrowserModule = new Function('specifier', 'return import(specifier)') as (
       specifier: string,
-    ) => Promise<typeof import('pdfjs-dist')>;
+    ) => Promise<PdfJsModule>;
     pdfjsLib = await loadBrowserModule('/pdf.min.mjs');
     // Point the worker at the static file we copied to /public
     pdfjsLib!.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
