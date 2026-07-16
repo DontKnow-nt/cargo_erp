@@ -2,6 +2,7 @@
 import { useState, useRef } from 'react';
 import { Upload, CheckCircle, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { extractInvoiceFacts } from '@/lib/excelImport';
 
 type Result = { outstanding: number; skipped: number; errors: string[]; skipReasons?: Record<string, number> };
 
@@ -22,9 +23,22 @@ export default function ExcelImportPage() {
     if (!file) { toast.error('Select a file first'); return; }
     setLoading(true); setResult(null);
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await fetch('/api/import-excel', { method: 'POST', body: fd });
+      // Keep the large XLSX parser in this client-only route chunk. The API
+      // receives only the four normalized facts needed for persistence.
+      const XLSX = await import('xlsx');
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const sheets = workbook.SheetNames.flatMap(sheetName => {
+        const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, defval: '' });
+        if (rows.length < 2) return [];
+        const facts = extractInvoiceFacts(rows);
+        return [{ sheetName, ...(facts ?? { company: '', billNo: '', date: '', netAmount: 0 }) }];
+      });
+
+      const res = await fetch('/api/import-excel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheets }),
+      });
       const data = await res.json();
       if (data.error) { toast.error(data.error); return; }
       setResult(data);
